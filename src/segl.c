@@ -271,7 +271,7 @@ static GLuint loadShaders(EGL_t *dev, const char *vertex, const char *fragment)
 	return programID;
 }
 
-EGL_t *segl_create(EGLConfig_t *config)
+EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 {
 	EGLNativeDisplayType ndisplay = EGL_DEFAULT_DISPLAY;
 	EGLNative_t *natives[] = 
@@ -573,7 +573,7 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 	return 0;
 }
 
-int segl_dequeue(EGL_t *dev)
+int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
 {
 	int id = dev->curbufferid;
 	dev->curbufferid = -1;

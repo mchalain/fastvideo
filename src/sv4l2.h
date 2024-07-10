@@ -62,7 +62,7 @@ typedef struct V4L2_s V4L2_t;
  *
  * @return V4L2_t object.
  */
-V4L2_t *sv4l2_create(const char *devicename, enum v4l2_buf_type type, CameraConfig_t *config);
+V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config);
 /**
  * @brief select and create a type of buffers.
  *
@@ -222,6 +222,13 @@ int sv4l2_interactive(V4L2_t *dev, const char *json, size_t length);
  * @param dev the V4L2_t object.
  */
 void sv4l2_destroy(V4L2_t *dev);
+
+/**
+ * @brief create a default config object.
+ *
+ * @return the object or NULL
+ */
+DeviceConf_t * sv4l2_createconfig();
 
 #ifdef HAVE_JANSSON
 int sv4l2_loadjsonsettings(void *dev, void *jconfig);

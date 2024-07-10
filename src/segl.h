@@ -29,10 +29,10 @@ struct EGLConfig_s
 
 typedef struct EGL_s EGL_t;
 
-EGL_t *segl_create(EGLConfig_t *config);
+EGL_t *segl_create(const char *devicename, EGLConfig_t *config);
 int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...);
 int segl_queue(EGL_t *dev, int id, size_t bytesused);
-int segl_dequeue(EGL_t *dev);
+int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused);
 int segl_start(EGL_t *dev);
 int segl_stop(EGL_t *dev);
 void segl_destroy(EGL_t *dev);

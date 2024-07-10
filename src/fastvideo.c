@@ -60,7 +60,7 @@ int main_loop(V4L2_t *cam, EGL_t *gpu)
 				run = 0;
 				break;
 			}
-			if ((index = segl_dequeue(gpu)) < 0)
+			if ((index = segl_dequeue(gpu, NULL, NULL)) < 0)
 			{
 				err("display buffer dequeuing error %m");
 				if (errno == EAGAIN)
@@ -88,8 +88,7 @@ int main(int argc, char * const argv[])
 {
 	const char *configfile = NULL;
 	const char *input = "cam";
-	const char *gpuname = "gpu";
-	const char *output = "screen";
+	const char *output = "gpu";
 
 	CameraConfig_t CAMERACONFIG(configcam, "/dev/video0");
 
@@ -98,7 +97,7 @@ int main(int argc, char * const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:g:j:Iw:h:");
+		opt = getopt(argc, argv, "i:o:j:Iw:h:");
 		switch (opt)
 		{
 			case 'i':
@@ -107,14 +106,8 @@ int main(int argc, char * const argv[])
 			case 'o':
 				output = optarg;
 			break;
-			case 'g':
-				gpuname = optarg;
-			break;
 			case 'j':
 				configfile = optarg;
-			break;
-			case 'v':
-				configcam.mode |= MODE_VERBOSE;
 			break;
 			case 'I':
 				configcam.mode |= MODE_INTERACTIVE;
@@ -131,10 +124,10 @@ int main(int argc, char * const argv[])
 	if (configfile)
 	{
 		config_parseconfigfile(input, configfile, &configcam.parent);
-		config_parseconfigfile(gpuname, configfile, &configgpu.parent);
+		config_parseconfigfile(output, configfile, &configgpu.parent);
 	}
 
-	V4L2_t *cam = sv4l2_create(configcam.device, V4L2_BUF_TYPE_VIDEO_CAPTURE, &configcam);
+	V4L2_t *cam = sv4l2_create(configcam.device, &configcam);
 	if (!cam)
 	{
 		err("camera not available");
@@ -146,7 +139,7 @@ int main(int argc, char * const argv[])
 	configgpu.texture.height = configcam.height;
 	configgpu.texture.stride = configcam.stride;
 	configgpu.texture.fourcc = configcam.fourcc;
-	EGL_t *gpu = segl_create(&configgpu);
+	EGL_t *gpu = segl_create(NULL, &configgpu);
 	if (!gpu)
 	{
 		err("gpu not available");
@@ -156,7 +149,7 @@ int main(int argc, char * const argv[])
 	if (configfile)
 	{
 		config_parseconfigfile(input, configfile, &configcam.parent);
-		config_parseconfigfile(gpuname, configfile, &configgpu.parent);
+		config_parseconfigfile(output, configfile, &configgpu.parent);
 	}
 
 	int *dma_bufs = {0};

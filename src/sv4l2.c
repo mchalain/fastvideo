@@ -199,6 +199,20 @@ static V4L2Buffer_t *createbuffers_mplane(V4L2_t *dev, int number, enum v4l2_mem
 
 static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 {
+	if (type == 0 && (mode & MODE_OUTPUT))
+	{
+		if (mode & MODE_META)
+			type = V4L2_BUF_TYPE_META_OUTPUT;
+		else
+			type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+	}
+	else if (type == 0 && (mode & MODE_CAPTURE))
+	{
+		if (mode & MODE_META)
+			type = V4L2_BUF_TYPE_META_CAPTURE;
+		else
+			type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	}
 	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT || type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
 	{
 		if ((mode & (MODE_OUTPUT | MODE_MPLANE)) == (MODE_MPLANE | MODE_OUTPUT))
@@ -902,9 +916,12 @@ int sv4l2_treecontrolmenu(V4L2_t *dev, int id, int (*cb)(void *arg, struct v4l2_
 	}
 }
 
-V4L2_t *sv4l2_create(const char *devicename, enum v4l2_buf_type type, CameraConfig_t *config)
+V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
 {
+	enum v4l2_buf_type type = 0;
 	int mode = 0;
+	if (config && config->mode)
+		mode = config->mode;
 	const char *device = devicename;
 	if (config && config->device)
 		device = config->device;
@@ -1724,6 +1741,7 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	json_t *height = NULL;
 	json_t *fourcc = NULL;
 	json_t *fps = NULL;
+	json_t *mode = NULL;
 	json_t *definition = json_object_get(jconfig, "definition");
 	if (definition && json_is_array(definition))
 	{
@@ -1754,6 +1772,11 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 				{
 					fps = json_object_get(field, "value");
 				}
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "mode"))
+				{
+					mode = json_object_get(field, "value");
+				}
 			}
 		}
 	}
@@ -1763,6 +1786,7 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 		height = json_object_get(definition, "height");
 		fourcc = json_object_get(definition, "fourcc");
 		fps = json_object_get(definition, "fps");
+		mode = json_object_get(definition, "mode");
 	}
 	else
 	{
@@ -1770,6 +1794,7 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 		height = json_object_get(jconfig, "height");
 		fourcc = json_object_get(jconfig, "fourcc");
 		fps = json_object_get(jconfig, "fps");
+		mode = json_object_get(jconfig, "mode");
 	}
 	if (width && json_is_integer(width))
 	{
@@ -1790,6 +1815,14 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	{
 		int value = json_integer_value(fps);
 		config->fps = value;
+	}
+	if (mode && json_is_string(mode))
+	{
+		const char *value = json_string_value(fourcc);
+		if (strstr(value,"capture"))
+			config->mode |= MODE_CAPTURE;
+		if (strstr(value,"output"))
+			config->mode |= MODE_OUTPUT;
 	}
 	json_t *interactive = json_object_get(jconfig, "interactive");
 	if (interactive && json_is_boolean(interactive) && json_is_true(interactive))
