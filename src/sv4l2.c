@@ -732,6 +732,10 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 			}
 		}
 		break;
+		default:
+			err("sv4l2: unkonwn buffer type");
+			va_end(ap);
+			return -1;
 	}
 	va_end(ap);
 	return ret;
