@@ -290,7 +290,7 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	{
 		for (int i = 0; i < sizeof(natives) / sizeof(*natives); i++)
 		{
-			if (strcmp(natives[i]->name, config->native))
+			if (!strcmp(natives[i]->name, config->native))
 			{
 				native = natives[i];
 				break;
@@ -479,7 +479,7 @@ static int link_texturedma(EGL_t *dev, int dma_fd, size_t size)
 		EGL_DMA_BUF_PLANE0_PITCH_EXT, stride,
 		EGL_NONE
 	};
-	dbg("segl: create image for dma %d : %dx%d %lu %.4s", dma_fd, dev->config->texture.width, dev->config->texture.height, stride, &dev->config->texture.fourcc);
+	dbg("segl: create image for dma %d : %dx%d %u %.4s", dma_fd, dev->config->texture.width, dev->config->texture.height, stride, (char*)&dev->config->texture.fourcc);
 	dma_image = eglCreateImageKHR(	  
 					dev->egldisplay,
 					EGL_NO_CONTEXT,
@@ -532,8 +532,10 @@ int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 		break;
 		default:
 			err("segl: support only dmabuf");
-		break;
+			va_end(ap);
+			return -1;
 	}
+	va_end(ap);
 	return ret;
 }
 

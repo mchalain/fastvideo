@@ -13,6 +13,7 @@
 #include <drm/drm_fourcc.h>
 #include <gbm.h>
 
+#include "segl.h"
 #include "log.h"
 
 static struct {
