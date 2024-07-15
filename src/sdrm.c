@@ -471,8 +471,6 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 			int *ntargets = va_arg(ap, int *);
 			void **targets = va_arg(ap, void **);
 			size_t *psize = va_arg(ap, size_t *);
-			if (ntargets != NULL)
-				*ntargets = disp->nbuffers;
 			if (targets != NULL)
 			{
 				*targets = calloc(disp->nbuffers, sizeof(void*));
@@ -486,6 +484,8 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 					targets[i] = disp->buffers[i].memory;
 				}
 			}
+			if (ntargets != NULL)
+				*ntargets = disp->nbuffers;
 			if (psize != NULL)
 				*psize = disp->buffers[0].size;
 		}
