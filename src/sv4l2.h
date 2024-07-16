@@ -34,11 +34,7 @@ struct CameraConfig_s
 	const char *subdevice;
 	int (*transfer)(void *, int id, const char *mem, size_t size);
 	int fd;
-	uint32_t fourcc;
 	int mode;
-	uint32_t width;
-	uint32_t height;
-	uint32_t stride;
 	int fps;
 };
 

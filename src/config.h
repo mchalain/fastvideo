@@ -36,6 +36,11 @@ struct DeviceConf_s
 {
 	void *dev;
 	const char *name;
+	const char *type;
+	uint32_t fourcc;
+	uint32_t width;
+	uint32_t height;
+	uint32_t stride;
 	struct
 	{
 		int (*loadconfiguration)(void *storage, void *config);

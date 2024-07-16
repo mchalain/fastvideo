@@ -113,10 +113,10 @@ int main(int argc, char * const argv[])
 				configcam.mode |= MODE_INTERACTIVE;
 			break;
 			case 'w':
-				configcam.width = strtol(optarg, NULL, 10);
+				configcam.parent.width = strtol(optarg, NULL, 10);
 			break;
 			case 'h':
-				configcam.height = strtol(optarg, NULL, 10);
+				configcam.parent.height = strtol(optarg, NULL, 10);
 			break;
 		}
 	} while(opt != -1);
@@ -135,10 +135,10 @@ int main(int argc, char * const argv[])
 	}
 
 	configgpu.texture.name = "vTexture";
-	configgpu.texture.width = configcam.width;
-	configgpu.texture.height = configcam.height;
-	configgpu.texture.stride = configcam.stride;
-	configgpu.texture.fourcc = configcam.fourcc;
+	configgpu.parent.width = configcam.parent.width;
+	configgpu.parent.height = configcam.parent.height;
+	configgpu.parent.stride = configcam.parent.stride;
+	configgpu.parent.fourcc = configcam.parent.fourcc;
 	EGL_t *gpu = segl_create(NULL, &configgpu);
 	if (!gpu)
 	{

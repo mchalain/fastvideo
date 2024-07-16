@@ -438,8 +438,8 @@ Display_t *sdrm_create(const char *name, DisplayConf_t *config)
 	disp->format = &g_formats[0];
 	disp->type = DRM_PLANE_TYPE_PRIMARY;
 
-	disp->mode.hdisplay = config->width;
-	disp->mode.vdisplay = config->height;
+	disp->mode.hdisplay = config->parent.width;
+	disp->mode.vdisplay = config->parent.height;
 	if (sdrm_ids(disp, &disp->connector_id, &disp->encoder_id, &disp->crtc_id, &disp->mode) == -1)
 	{
 		free(disp);
@@ -711,64 +711,6 @@ int sdrm_loadjsonconfiguration(void *arg, void *entry)
 	{
 		const char *value = json_string_value(device);
 		config->device = value;
-	}
-	json_t *width = NULL;
-	json_t *height = NULL;
-	json_t *fourcc = NULL;
-	json_t *definition = json_object_get(jconfig, "definition");
-	if (definition && json_is_array(definition))
-	{
-		json_t *field = NULL;
-		int index = 0;
-		json_array_foreach(definition, index, field)
-		{
-			if (json_is_object(field))
-			{
-				json_t *name = json_object_get(field, "name");
-				if (name && json_is_string(name) &&
-					!strcmp(json_string_value(name), "width"))
-				{
-					width = json_object_get(field, "value");
-				}
-				if (name && json_is_string(name) &&
-					!strcmp(json_string_value(name), "height"))
-				{
-					height = json_object_get(field, "value");
-				}
-				if (name && json_is_string(name) &&
-					!strcmp(json_string_value(name), "fourcc"))
-				{
-					fourcc = json_object_get(field, "value");
-				}
-			}
-		}
-	}
-	else if (definition && json_is_object(definition))
-	{
-		width = json_object_get(definition, "width");
-		height = json_object_get(definition, "height");
-		fourcc = json_object_get(definition, "fourcc");
-	}
-	else
-	{
-		width = json_object_get(jconfig, "width");
-		height = json_object_get(jconfig, "height");
-		fourcc = json_object_get(jconfig, "fourcc");
-	}
-	if (width && json_is_integer(width))
-	{
-		int value = json_integer_value(width);
-		config->width = value;
-	}
-	if (height && json_is_integer(height))
-	{
-		int value = json_integer_value(height);
-		config->height = value;
-	}
-	if (fourcc && json_is_string(fourcc))
-	{
-		const char *value = json_string_value(fourcc);
-		config->fourcc = FOURCC(value[0], value[1], value[2], value[3]);
 	}
 	return 0;
 }

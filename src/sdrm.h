@@ -13,10 +13,7 @@ struct DisplayConf_s
 {
 	DeviceConf_t parent;
 	const char *device;
-	uint32_t fourcc;
 	int mode;
-	uint32_t width;
-	uint32_t height;
 };
 
 typedef struct Display_s Display_t;

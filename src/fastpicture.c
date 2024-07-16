@@ -111,10 +111,10 @@ int main(int argc, char * const argv[])
 				configfile = optarg;
 			break;
 			case 'w':
-				inconfig.width = strtol(optarg, NULL, 10);
+				inconfig.parent.width = strtol(optarg, NULL, 10);
 			break;
 			case 'h':
-				inconfig.height = strtol(optarg, NULL, 10);
+				inconfig.parent.height = strtol(optarg, NULL, 10);
 			break;
 		}
 	} while(opt != -1);
@@ -132,10 +132,10 @@ int main(int argc, char * const argv[])
 		return -1;
 	}
 
-	outconfig.width = inconfig.width;
-	outconfig.height = inconfig.height;
-	outconfig.fourcc = inconfig.fourcc;
-	outconfig.stride = inconfig.stride;
+	outconfig.parent.width = inconfig.parent.width;
+	outconfig.parent.height = inconfig.parent.height;
+	outconfig.parent.fourcc = inconfig.parent.fourcc;
+	outconfig.parent.stride = inconfig.parent.stride;
 	outconfig.direction = File_Input_e;
 	File_t *file = sfile_create(outconfig.filename, &outconfig);
 	if (!file)

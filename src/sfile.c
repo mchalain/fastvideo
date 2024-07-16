@@ -169,10 +169,10 @@ int sfile_start(File_t *dev)
 	dev->lastbufferid = 0;
 	if (config->direction & File_Input_e)
 	{
-		switch (config->fourcc)
+		switch (config->parent.fourcc)
 		{
 			case FOURCC('R','G', 'B', 'A'):
-				dprintf(dev->fd, "P7 WIDTH %d HEIGHT %d DEPTH %d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR", config->width, config->height, config->stride / config->width);
+				dprintf(dev->fd, "P7 WIDTH %d HEIGHT %d DEPTH %d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR", config->parent.width, config->parent.height, config->parent.stride / config->parent.width);
 			break;
 			case FOURCC('J','P','E','G'):
 			case FOURCC('M','J','P','G'):
@@ -294,27 +294,6 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 	{
 		const char *value = json_string_value(path);
 		config->rootpath = value;
-	}
-	json_t *width = NULL;
-	width = json_object_get(jconfig, "width");
-	if (width && json_is_integer(width))
-	{
-		int value = json_integer_value(width);
-		config->width = value;
-	}
-	json_t *height = NULL;
-	height = json_object_get(jconfig, "height");
-	if (height && json_is_integer(height))
-	{
-		int value = json_integer_value(height);
-		config->height = value;
-	}
-	json_t *fourcc = NULL;
-	fourcc = json_object_get(jconfig, "fourcc");
-	if (fourcc && json_is_string(fourcc))
-	{
-		const char *value = json_string_value(fourcc);
-		config->fourcc = FOURCC(value[0], value[1], value[2], value[3]);
 	}
 library_end:
 	return 0;

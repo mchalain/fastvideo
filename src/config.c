@@ -15,6 +15,83 @@
 static int main_parseconfigdevice(json_t *jconfig, DeviceConf_t *devconfig)
 {
 	int ret;
+	json_t *type = NULL;
+	json_t *width = NULL;
+	json_t *height = NULL;
+	json_t *fourcc = NULL;
+	json_t *stride = NULL;
+
+	json_t *definition = json_object_get(jconfig, "definition");
+	if (definition && json_is_array(definition))
+	{
+		json_t *field = NULL;
+		int index = 0;
+		json_array_foreach(definition, index, field)
+		{
+			if (json_is_object(field))
+			{
+				json_t *name = json_object_get(field, "name");
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "type"))
+				{
+					type = json_object_get(field, "value");
+				}
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "width"))
+				{
+					width = json_object_get(field, "value");
+				}
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "height"))
+				{
+					height = json_object_get(field, "value");
+				}
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "fourcc"))
+				{
+					fourcc = json_object_get(field, "value");
+				}
+			}
+		}
+	}
+	else if (definition && json_is_object(definition))
+	{
+		type = json_object_get(jconfig, "type");
+		width = json_object_get(definition, "width");
+		height = json_object_get(definition, "height");
+		fourcc = json_object_get(definition, "fourcc");
+		stride = json_object_get(definition, "stride");
+	}
+	else
+	{
+		type = json_object_get(jconfig, "type");
+		width = json_object_get(jconfig, "width");
+		height = json_object_get(jconfig, "height");
+		fourcc = json_object_get(jconfig, "fourcc");
+		stride = json_object_get(jconfig, "stride");
+	}
+	if (type && json_is_string(type))
+	{
+		devconfig->type = json_string_value(type);
+	}
+	if (width && json_is_integer(width))
+	{
+		devconfig->width = json_integer_value(width);
+	}
+	if (height && json_is_integer(height))
+	{
+		devconfig->height = json_integer_value(height);
+	}
+	if (fourcc && json_is_string(fourcc))
+	{
+		const char *value = json_string_value(fourcc);
+		devconfig->fourcc = FOURCC(value[0], value[1], value[2], value[3]);
+	}
+	if (stride && json_is_integer(stride))
+	{
+		devconfig->stride = json_integer_value(stride);
+	}
+
 	if (devconfig->dev && devconfig->ops.loadsettings)
 	{
 		json_t *jcontrols = json_object_get(jconfig,"controls");
@@ -76,9 +153,13 @@ static int main_parseconfigdevices(const char *name, json_t *jconfig, DeviceConf
 		 */
 		json_t *jdevice = json_object_get(jconfig, tmpname);
 		if (jdevice && json_is_object(jdevice))
+		{
 			ret = main_parseconfigdevice(jdevice, devconfig);
+		}
 		else
+		{
 			ret = main_parseconfigdevice(jconfig, devconfig);
+		}
 	}
 	return ret;
 }

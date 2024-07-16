@@ -38,7 +38,7 @@
 #define dbg_buffer(v4l2) if (v4l2->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE || v4l2->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) \
 		{dbg_buffer_mplane(v4l2);}else{dbg_buffer_splane(v4l2);}
 
-CameraConfig_t formats[] = {
+DeviceConf_t formats[] = {
 	{.fourcc = FOURCC('Y','U','Y','V')},
 	{.fourcc = 0, },
 };
@@ -333,9 +333,9 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, CameraConfig
 		dbg("\t%.4s => %s", (char*)&fmtdesc.pixelformat,
 				fmtdesc.description);
 		fmtdesc.index++;
-		if (config->fourcc != 0)
+		if (config->parent.fourcc != 0)
 		{
-			if (fmtdesc.pixelformat != config->fourcc)
+			if (fmtdesc.pixelformat != config->parent.fourcc)
 				continue;
 			pixelformat = fmtdesc.pixelformat;
 		}
@@ -355,7 +355,7 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, CameraConfig
 		return -1;
 	}
 	dbg("V4l2 settings: %.4s", (char*)&fmt.fmt.pix.pixelformat);
-	config->fourcc = fmt.fmt.pix.pixelformat;
+	config->parent.fourcc = fmt.fmt.pix.pixelformat;
 	return pixelformat;
 }
 
@@ -363,7 +363,7 @@ static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, CameraConfig
 {
 	uint32_t framesize = 0;
 	struct v4l2_frmsizeenum video_cap = {0};
-	video_cap.pixel_format = config->fourcc;
+	video_cap.pixel_format = config->parent.fourcc;
 	video_cap.index = 0;
 	if (ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &video_cap) != 0)
 	{
@@ -379,29 +379,29 @@ static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, CameraConfig
 	{
 		dbg("\t%d < width  < %d, step %d", video_cap.stepwise.min_width, video_cap.stepwise.max_width, video_cap.stepwise.step_width);
 		dbg("\t%d < height < %d, step %d", video_cap.stepwise.min_height, video_cap.stepwise.max_height, video_cap.stepwise.step_height);
-		if (config->width < (video_cap.stepwise.max_width + 1) && config->width > (video_cap.stepwise.min_width - 1))
-			fmt.fmt.pix.width = config->width;
-		else if (config->width > (video_cap.stepwise.max_width))
+		if (config->parent.width < (video_cap.stepwise.max_width + 1) && config->parent.width > (video_cap.stepwise.min_width - 1))
+			fmt.fmt.pix.width = config->parent.width;
+		else if (config->parent.width > (video_cap.stepwise.max_width))
 			fmt.fmt.pix.width = video_cap.stepwise.max_width;
 		else
 			fmt.fmt.pix.width = video_cap.stepwise.min_width;
 
-		if (config->height < (video_cap.stepwise.max_height + 1) && config->height > (video_cap.stepwise.min_height - 1))
-			fmt.fmt.pix.height = config->height;
-		else if (config->height > (video_cap.stepwise.max_height))
+		if (config->parent.height < (video_cap.stepwise.max_height + 1) && config->parent.height > (video_cap.stepwise.min_height - 1))
+			fmt.fmt.pix.height = config->parent.height;
+		else if (config->parent.height > (video_cap.stepwise.max_height))
 			fmt.fmt.pix.height = video_cap.stepwise.max_height;
 		else
 			fmt.fmt.pix.height = video_cap.stepwise.min_height;
 	}
 	else if (video_cap.type == V4L2_FRMSIZE_TYPE_DISCRETE)
 	{
-		uint32_t nbpixels = config->height * config->width;
-		if (config->height == 0 && config->width > 0)
-			config->height = (config->width * 9) / 16;
+		uint32_t nbpixels = config->parent.height * config->parent.width;
+		if (config->parent.height == 0 && config->parent.width > 0)
+			config->parent.height = (config->parent.width * 9) / 16;
 		for (video_cap.index = 0; ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &video_cap) != -1; video_cap.index++)
 		{
 			dbg("\twidth %d, height %d", video_cap.discrete.width, video_cap.discrete.height);
-			if (config->height > 0 && config->height <= video_cap.discrete.height)
+			if (config->parent.height > 0 && config->parent.height <= video_cap.discrete.height)
 			{
 				fmt.fmt.pix.height = video_cap.discrete.height;
 				fmt.fmt.pix.width = video_cap.discrete.width;
@@ -411,7 +411,7 @@ static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, CameraConfig
 		}
 	}
 
-	fmt.fmt.pix.pixelformat = config->fourcc;
+	fmt.fmt.pix.pixelformat = config->parent.fourcc;
 	if (ioctl(fd, VIDIOC_S_FMT, &fmt) != 0)
 	{
 		return -1;
@@ -972,25 +972,25 @@ V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
 	uint32_t sizeimage = 0;
 	if (mode & MODE_MPLANE)
 	{
-		config->width = fmt.fmt.pix_mp.width;
-		config->height = fmt.fmt.pix_mp.height;
-		config->fourcc = fmt.fmt.pix_mp.pixelformat;
+		config->parent.width = fmt.fmt.pix_mp.width;
+		config->parent.height = fmt.fmt.pix_mp.height;
+		config->parent.fourcc = fmt.fmt.pix_mp.pixelformat;
 		bytesperline = fmt.fmt.pix_mp.plane_fmt[0].bytesperline;
 		sizeimage = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
 	}
 	else
 	{
-		config->width = fmt.fmt.pix.width;
-		config->height = fmt.fmt.pix.height;
-		config->fourcc = fmt.fmt.pix.pixelformat;
+		config->parent.width = fmt.fmt.pix.width;
+		config->parent.height = fmt.fmt.pix.height;
+		config->parent.fourcc = fmt.fmt.pix.pixelformat;
 		bytesperline = fmt.fmt.pix.bytesperline;
 		sizeimage = fmt.fmt.pix.sizeimage;
 	}
 
 	if (bytesperline)
-		config->stride = bytesperline;
+		config->parent.stride = bytesperline;
 	else
-		config->stride = sizeimage / config->height;
+		config->parent.stride = sizeimage / config->parent.height;
 
 	if (mode & MODE_MEDIACTL)
 	{
@@ -1017,7 +1017,7 @@ V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
 	{
 		err("interactive is disabled %m");
 	}
-	dbg("V4l2 settings: %dx%d, %.4s", config->width, config->height, (char*)&config->fourcc);
+	dbg("V4l2 settings: %dx%d, %.4s", config->parent.width, config->parent.height, (char*)&config->parent.fourcc);
 	config->parent.dev = dev;
 	return dev;
 }
@@ -1353,9 +1353,9 @@ static int sv4l2_subdev_setpixformat(int ctrlfd, CameraConfig_t *config)
 	struct v4l2_subdev_format ffs = {0};
 	ffs.pad = 0;
 	ffs.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	ffs.format.width = config->width;
-	ffs.format.height = config->height;
-	ffs.format.code = sv4l2_subdev_translate_fmtbus(ctrlfd, config->fourcc);
+	ffs.format.width = config->parent.width;
+	ffs.format.height = config->parent.height;
+	ffs.format.code = sv4l2_subdev_translate_fmtbus(ctrlfd, config->parent.fourcc);
 	if (ioctl(ctrlfd, VIDIOC_SUBDEV_S_FMT, &ffs) != 0)
 	{
 		err("smedia: subdev set format error %m");
@@ -1398,9 +1398,9 @@ static uint32_t _set_config(void *arg, struct v4l2_subdev_format *ffs)
 		fourcc = V4L2_PIX_FMT_SRGGB12;
 	break;
 	};
-	config->fourcc = fourcc;
-	config->width = ffs->format.width;
-	config->height = ffs->format.height;
+	config->parent.fourcc = fourcc;
+	config->parent.width = ffs->format.width;
+	config->parent.height = ffs->format.height;
 	return fourcc;
 }
 
@@ -1741,9 +1741,6 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 		const char *value = json_string_value(subdevice);
 		config->subdevice = value;
 	}
-	json_t *width = NULL;
-	json_t *height = NULL;
-	json_t *fourcc = NULL;
 	json_t *fps = NULL;
 	json_t *mode = NULL;
 	json_t *definition = json_object_get(jconfig, "definition");
@@ -1756,21 +1753,6 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 			if (json_is_object(field))
 			{
 				json_t *name = json_object_get(field, "name");
-				if (name && json_is_string(name) &&
-					!strcmp(json_string_value(name), "width"))
-				{
-					width = json_object_get(field, "value");
-				}
-				if (name && json_is_string(name) &&
-					!strcmp(json_string_value(name), "height"))
-				{
-					height = json_object_get(field, "value");
-				}
-				if (name && json_is_string(name) &&
-					!strcmp(json_string_value(name), "fourcc"))
-				{
-					fourcc = json_object_get(field, "value");
-				}
 				if (name && json_is_string(name) &&
 					!strcmp(json_string_value(name), "fps"))
 				{
@@ -1786,34 +1768,13 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	}
 	else if (definition && json_is_object(definition))
 	{
-		width = json_object_get(definition, "width");
-		height = json_object_get(definition, "height");
-		fourcc = json_object_get(definition, "fourcc");
 		fps = json_object_get(definition, "fps");
 		mode = json_object_get(definition, "mode");
 	}
 	else
 	{
-		width = json_object_get(jconfig, "width");
-		height = json_object_get(jconfig, "height");
-		fourcc = json_object_get(jconfig, "fourcc");
 		fps = json_object_get(jconfig, "fps");
 		mode = json_object_get(jconfig, "mode");
-	}
-	if (width && json_is_integer(width))
-	{
-		int value = json_integer_value(width);
-		config->width = value;
-	}
-	if (height && json_is_integer(height))
-	{
-		int value = json_integer_value(height);
-		config->height = value;
-	}
-	if (fourcc && json_is_string(fourcc))
-	{
-		const char *value = json_string_value(fourcc);
-		config->fourcc = FOURCC(value[0], value[1], value[2], value[3]);
 	}
 	if (fps && json_is_integer(fps))
 	{
@@ -1822,7 +1783,7 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	}
 	if (mode && json_is_string(mode))
 	{
-		const char *value = json_string_value(fourcc);
+		const char *value = json_string_value(mode);
 		if (strstr(value,"capture"))
 			config->mode |= MODE_CAPTURE;
 		if (strstr(value,"output"))

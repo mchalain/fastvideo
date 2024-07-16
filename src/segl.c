@@ -298,7 +298,7 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 		}
 	}
 	ndisplay = native->display();
-	EGLNativeWindowType nwindow = native->createwindow(ndisplay, config->texture.width, config->texture.height, "segl");
+	EGLNativeWindowType nwindow = native->createwindow(ndisplay, config->parent.width, config->parent.height, "segl");
 
 	EGLDisplay eglDisplay = eglGetDisplay(ndisplay);
 
@@ -407,7 +407,7 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 #endif
 
 	glClearColor(0.5, 0.5, 0.5, 1.0);
-	glViewport(0, 0, config->texture.width,config->texture.height);
+	glViewport(0, 0, config->parent.width,config->parent.height);
 	glClearDepthf(1.0);
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
@@ -468,18 +468,18 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 
 static int link_texturedma(EGL_t *dev, int dma_fd, size_t size)
 {
-	uint32_t stride = size / dev->config->texture.height;
+	uint32_t stride = size / dev->config->parent.height;
 	EGLImageKHR dma_image;
 	GLint attrib_list[] = {
-		EGL_WIDTH, dev->config->texture.width,
-		EGL_HEIGHT, dev->config->texture.height,
-		EGL_LINUX_DRM_FOURCC_EXT, dev->config->texture.fourcc,
+		EGL_WIDTH, dev->config->parent.width,
+		EGL_HEIGHT, dev->config->parent.height,
+		EGL_LINUX_DRM_FOURCC_EXT, dev->config->parent.fourcc,
 		EGL_DMA_BUF_PLANE0_FD_EXT, dma_fd,
 		EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
 		EGL_DMA_BUF_PLANE0_PITCH_EXT, stride,
 		EGL_NONE
 	};
-	dbg("segl: create image for dma %d : %dx%d %u %.4s", dma_fd, dev->config->texture.width, dev->config->texture.height, stride, (char*)&dev->config->texture.fourcc);
+	dbg("segl: create image for dma %d : %dx%d %u %.4s", dma_fd, dev->config->parent.width, dev->config->parent.height, stride, (char*)&dev->config->parent.fourcc);
 	dma_image = eglCreateImageKHR(	  
 					dev->egldisplay,
 					EGL_NO_CONTEXT,
