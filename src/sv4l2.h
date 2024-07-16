@@ -10,12 +10,6 @@
 #define MODE_INTERACTIVE 0x04
 #define MODE_SHOT 0x08
 
-#ifndef FOURCC
-#define FOURCC(a,b,c,d)	((a << 0) | (b << 8) | (c << 16) | (d << 24))
-#endif
-
-#define BPP_TO_BYTE(_bpp)	(((_bpp) + 7) / 8)
-
 #define CAMERACONFIG(config, defaultdevice) config = { \
 	.DEVICECONFIG(parent, config, sv4l2_loadjsonconfiguration, sv4l2_loadjsonsettings), \
 	.device = defaultdevice, \

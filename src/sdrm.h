@@ -3,10 +3,6 @@
 
 #include "config.h"
 
-#ifndef FOURCC
-#define FOURCC(a,b,c,d)	((a << 0) | (b << 8) | (c << 16) | (d << 24))
-#endif
-
 #define DISPLAYCONFIG(name, defaultdevice) name = { \
 	.DEVICECONFIG(parent, sdrm_loadjsonconfiguration, sdrm_loadjsonsettings), \
 	.device = defaultdevice, \

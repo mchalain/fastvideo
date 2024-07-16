@@ -1,6 +1,12 @@
 #ifndef __FASTVIDEO_CONFIG_H__
 #define __FASTVIDEO_CONFIG_H__
 
+#ifndef FOURCC
+#define FOURCC(a,b,c,d)	((a << 0) | (b << 8) | (c << 16) | (d << 24))
+#endif
+
+#define BPP_TO_BYTE(_bpp)	(((_bpp) + 7) / 8)
+
 /**
  * @brief buffers to communicate with another V4L2_t object.
  *

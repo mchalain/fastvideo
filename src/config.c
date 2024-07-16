@@ -34,6 +34,19 @@ static int main_parseconfigdevice(json_t *jconfig, DeviceConf_t *devconfig)
 static int main_parseconfigdevices(const char *name, json_t *jconfig, DeviceConf_t *devconfig)
 {
 	int ret;
+	if (name == NULL)
+		return -1;
+	char tmpname[256] = {0};
+	const char *end = strchr(name, ':');
+	int length = strlen(name);
+	if (end)
+		length = end - name;
+	if (length > 255)
+		return -1;
+	strncpy(tmpname, name, length);
+
+	devconfig->name = name;
+
 	if (json_is_array(jconfig))
 	{
 		int index = 0;
@@ -48,7 +61,7 @@ static int main_parseconfigdevices(const char *name, json_t *jconfig, DeviceConf
 				continue;
 			json_t *jname = json_object_get(jdevice, "name");
 			if (jname && json_is_string(jname) &&
-				!strcmp(json_string_value(jname), name))
+				!strcmp(json_string_value(jname), tmpname))
 			{
 				ret = main_parseconfigdevice(jdevice, devconfig);
 				break;
@@ -61,7 +74,7 @@ static int main_parseconfigdevices(const char *name, json_t *jconfig, DeviceConf
 		 * json format:
 		 * { "cam":{"device":"/dev/video0","Gain":1000,"Exposure":1}
 		 */
-		json_t *jdevice = json_object_get(jconfig, name);
+		json_t *jdevice = json_object_get(jconfig, tmpname);
 		if (jdevice && json_is_object(jdevice))
 			ret = main_parseconfigdevice(jdevice, devconfig);
 		else
