@@ -23,13 +23,13 @@
 
 #define MAX_BUFFERS 4
 
-#define dbg_buffer_splane(v4l2) 		dbg("buf %d info:", v4l2->index); \
+#define dbg_buffer_splane(v4l2) 		dbg("sv4l2: buf %d info:", v4l2->index); \
 		dbg("\ttype: %s", (v4l2->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)? "CAPTURE":"OUTPUT"); \
 		dbg("\tmemory: %s", (v4l2->memory == V4L2_MEMORY_DMABUF)? "DMABUF":"MMAP"); \
 		dbg("\tdmafd: %d", v4l2->m.fd); \
 		dbg("\tlength: %u", v4l2->length); \
 		dbg("\tbytesused: %u", v4l2->bytesused);
-#define dbg_buffer_mplane(v4l2) 		dbg("mplane buf %d info:", v4l2->index); \
+#define dbg_buffer_mplane(v4l2) 		dbg("sv4l2: mplane buf %d info:", v4l2->index); \
 		dbg("\ttype: %s", (v4l2->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)? "CAPTURE":"OUTPUT"); \
 		dbg("\tmemory: %s", (v4l2->memory == V4L2_MEMORY_DMABUF)? "DMABUF":"MMAP"); \
 		dbg("\tdmafd: %d", v4l2->m.planes[0].m.fd); \
@@ -524,7 +524,6 @@ int sv4l2_requestbuffer_mmap(V4L2_t *dev)
 			ret = -1;
 			break;
 		}
-		dbg_buffer((&dev->buffers[i].v4l2));
 	}
 
 	return ret;
@@ -585,7 +584,6 @@ int sv4l2_requestbuffer_dmabuf(V4L2_t *dev)
 			size_t size = oldbuffers[i].ops.getsize(&oldbuffers[i]);
 			dev->buffers[i].ops.setdma(&dev->buffers[i], dma_fd, size);
 		}
-		dbg_buffer((&dev->buffers[i].v4l2));
 	}
 	if (oldbuffers)
 		free(oldbuffers);
@@ -636,7 +634,6 @@ int sv4l2_requestbuffer_userptr(V4L2_t *dev, int nmems, void *mems[], size_t siz
 	for (int i = 0; i < count; i++)
 	{
 		dev->buffers[i].ops.setmem(&dev->buffers[i], mems[i], size);
-		dbg_buffer((&dev->buffers[i].v4l2));
 	}
 	return 0;
 }
@@ -738,6 +735,12 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 			return -1;
 	}
 	va_end(ap);
+#ifdef DEBUG
+	for (int i = 0; i < dev->nbuffers; i++)
+	{
+		dbg_buffer((&dev->buffers[i].v4l2));
+	}
+#endif
 	return ret;
 }
 
