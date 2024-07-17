@@ -31,11 +31,15 @@ static EGLNativeDisplayType native_display()
 	return (EGLNativeDisplayType)display;
 }
 
-static GLboolean native_running(EGLNativeWindowType native_win)
+static int native_fd(EGLNativeWindowType native_win)
+{
+	return -1;
+}
+
+static int native_flush(EGLNativeWindowType native_win)
 {
 	XEvent xev;
 	KeySym key;
-	GLboolean running = GL_TRUE;
 
 	while (XPending(display))
 	{
@@ -46,18 +50,23 @@ static GLboolean native_running(EGLNativeWindowType native_win)
 			if (XLookupString(&xev.xkey,&text,1,&key,0)==1)
 			{
 				if (text == 'q')
-					running = GL_FALSE;
+					return -1;
 			}
 			if (xev.xkey.keycode == 0x09)
-				running = GL_FALSE;
+				return -1;
 		}
 		if (xev.type == KeyRelease)
 		{
 		}
 		if ( xev.type == DestroyNotify )
-			running = GL_FALSE;
+			return -1;
 	}
-	return running;
+	return 0;
+}
+
+static int native_sync(EGLNativeWindowType native_win)
+{
+	return 0;
 }
 
 static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLuint width, GLuint height, const GLchar *name)
@@ -112,6 +121,8 @@ EGLNative_t *eglnative_x11 = &(EGLNative_t)
 	.name = "x11",
 	.display = native_display,
 	.createwindow = native_createwindow,
-	.running = native_running,
+	.fd = native_fd,
+	.flush = native_flush,
+	.sync = native_sync,
 	.destroy = native_destroy,
 };

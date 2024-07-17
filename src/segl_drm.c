@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h> 
+#include <errno.h>
 
 #include <GLES2/gl2.h>
 #include <EGL/egl.h>
@@ -21,7 +22,7 @@ static struct {
 	struct gbm_surface *surface;
 } gbm;
 
-static struct {
+static struct drm_s {
 	int fd;
 	drmModeModeInfo *mode;
 	uint32_t crtc_id;
@@ -29,8 +30,10 @@ static struct {
 } drm;
 
 struct drm_fb {
+	struct drm_s *drm;
 	struct gbm_bo *bo;
 	uint32_t fb_id;
+	int waiting_for_flip;
 };
 
 static uint32_t find_crtc_for_encoder(const drmModeRes *resources,
@@ -182,6 +185,7 @@ static struct drm_fb * drm_fb_get_from_bo(struct gbm_bo *bo)
 
 	fb = calloc(1, sizeof *fb);
 	fb->bo = bo;
+	fb->drm = &drm;
 
 	width = gbm_bo_get_width(bo);
 	height = gbm_bo_get_height(bo);
@@ -237,14 +241,19 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 	return (EGLNativeWindowType) gbm.surface;
 }
 
-static GLboolean native_running(EGLNativeWindowType native_win)
+static int native_fd(EGLNativeWindowType native_win)
 {
-	static struct gbm_bo *old_bo = NULL;
+	return drm.fd;
+}
+
+static struct gbm_bo *old_bo = NULL;
+static int native_flush(EGLNativeWindowType native_win)
+{
 	struct gbm_surface *surface = (struct gbm_surface *)native_win;
 
 	if (old_bo == NULL)
 	{
-		old_bo = gbm_surface_lock_front_buffer(gbm.surface);
+		old_bo = gbm_surface_lock_front_buffer(surface);
 		struct drm_fb *fb;
 		fb = drm_fb_get_from_bo(old_bo);
 
@@ -253,52 +262,50 @@ static GLboolean native_running(EGLNativeWindowType native_win)
 				&drm.connector_id, 1, drm.mode);
 		if (ret) {
 			err("glmotor: failed to set mode: %m");
-			return 0;
+			return -1;
 		}
-		return 1;
+		return 0;
 	}
 	struct gbm_bo *bo;
-	bo = gbm_surface_lock_front_buffer(gbm.surface);
+	bo = gbm_surface_lock_front_buffer(surface);
 	struct drm_fb *fb;
 	fb = drm_fb_get_from_bo(bo);
 
-	int waiting_for_flip = 1;
-	int ret = drmModePageFlip(drm.fd, drm.crtc_id, fb->fb_id,
-			DRM_MODE_PAGE_FLIP_EVENT, &waiting_for_flip);
-	if (ret) {
+	fb->waiting_for_flip = 1;
+	int ret = drmModePageFlip(fb->drm->fd, fb->drm->crtc_id, fb->fb_id,
+			DRM_MODE_PAGE_FLIP_EVENT, &fb->waiting_for_flip);
+	if (ret)
+	{
 		err("glmotor: failed to queue page flip: %m");
-		return 0;
+		return -1;
 	}
+
+	return 0;
+}
+
+static int native_sync(EGLNativeWindowType native_win)
+{
+	struct gbm_surface *surface = (struct gbm_surface *)native_win;
+	struct gbm_bo *bo;
+	bo = gbm_surface_lock_front_buffer(surface);
+	struct drm_fb *fb;
+	fb = drm_fb_get_from_bo(bo);
 
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
 			.page_flip_handler = page_flip_handler,
 	};
-	fd_set fds;
-	FD_ZERO(&fds);
-	FD_SET(0, &fds);
-	FD_SET(drm.fd, &fds);
-	while (waiting_for_flip) {
-		ret = select(drm.fd + 1, &fds, NULL, NULL, NULL);
-		if (ret < 0) {
-			err("glmotor: select err: %m");
-			return ret;
-		} else if (ret == 0) {
-			warn("select timeout!");
-			return -1;
-		} else if (FD_ISSET(0, &fds)) {
-			warn("user interrupted!");
-			break;
-		}
-		drmHandleEvent(drm.fd, &evctx);
+	drmHandleEvent(fb->drm->fd, &evctx);
+	if (fb->waiting_for_flip)
+	{
+		errno = EAGAIN;
+		return -1;
 	}
-
 	/* release last buffer to render on again: */
 	if (old_bo)
 		gbm_surface_release_buffer(surface, old_bo);
 	old_bo = bo;
-
-	return 1;
+	return 0;
 }
 
 static void native_destroy(EGLNativeDisplayType native_display)
@@ -310,6 +317,8 @@ EGLNative_t *eglnative_drm = &(EGLNative_t)
 	.name = "drm",
 	.display = native_display,
 	.createwindow = native_createwindow,
-	.running = native_running,
+	.fd = native_fd,
+	.flush = native_flush,
+	.sync = native_sync,
 	.destroy = native_destroy,
 };

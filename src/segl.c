@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <errno.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -353,6 +354,11 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	}
 	eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext);
 
+	GLint minswapinterval = 1;
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_MIN_SWAP_INTERVAL, &minswapinterval);
+	dbg("segl: swap interval %d", minswapinterval);
+	eglSwapInterval(eglDisplay, minswapinterval);
+
 	EGL_t *dev = calloc(1, sizeof(*dev));
 	dev->config = config;
 	dev->native = native;
@@ -553,11 +559,20 @@ int segl_stop(EGL_t *dev)
 
 int segl_queue(EGL_t *dev, int id, size_t bytesused)
 {
-	eglSwapBuffers(dev->egldisplay, dev->eglsurface);
+	if (eglSwapBuffers(dev->egldisplay, dev->eglsurface) == EGL_FALSE)
+		err("EGL swapbuffers error %m");
+	// errno is set to EAGAIN after eglSwapBuffers
+	errno = 0;
 	if ((int)id > dev->nbuffers)
+	{
+		err("segl: unknown buffer id %d", id);
 		return -1;
+	}
 	if (dev->curbufferid != -1)
+	{
+		err("segl: device not ready %d", dev->curbufferid);
 		return -1;
+	}
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glUseProgram(dev->programID);
 #ifdef USE_VERTEXARRAY
@@ -571,8 +586,8 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 	glDrawElements(GL_TRIANGLE_STRIP, 3 * 2, GL_UNSIGNED_SHORT, 0);
 
 	dev->curbufferid = (int)id;
-	dev->native->running(dev->native_window);
-	return 0;
+	
+	return dev->native->flush(dev->native_window);
 }
 
 int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
@@ -582,7 +597,15 @@ int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
 #ifdef USE_VERTEXARRAY
 	glBindVertexArrayOES(0);
 #endif
+	if (dev->native->sync(dev->native_window) < 0)
+		return -1;
+	
 	return id;
+}
+
+int segl_fd(EGL_t *dev)
+{
+	return dev->native->fd(dev->native_window);
 }
 
 void segl_destroy(EGL_t *dev)

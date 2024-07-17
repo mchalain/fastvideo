@@ -31,6 +31,7 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused);
 int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused);
 int segl_start(EGL_t *dev);
 int segl_stop(EGL_t *dev);
+int segl_fd(EGL_t *dev);
 void segl_destroy(EGL_t *dev);
 
 typedef struct EGLNative_s EGLNative_t;
@@ -40,7 +41,9 @@ struct EGLNative_s
 	EGLNativeDisplayType (*display)();
 	EGLNativeWindowType (*createwindow)(EGLNativeDisplayType native_display,
 							GLuint width, GLuint height, const GLchar *name);
-	GLboolean (*running)(EGLNativeWindowType native_win);
+	int (*fd)(EGLNativeWindowType native_win);
+	int (*flush)(EGLNativeWindowType native_win);
+	int (*sync)(EGLNativeWindowType native_win);
 	void (*destroy)(EGLNativeDisplayType native_display);
 };
 
