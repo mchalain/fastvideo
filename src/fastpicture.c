@@ -144,11 +144,8 @@ int main(int argc, char * const argv[])
 		return -1;
 	}
 
-	if (configfile)
-	{
-		config_parseconfigfile(input, configfile, &inconfig.parent);
-		config_parseconfigfile(output, configfile, &outconfig.parent);
-	}
+	if (sv4l2_loadsettings && inconfig.parent.entry)
+		sv4l2_loadsettings(cam, inconfig.parent.entry);
 
 	int *dma_bufs = {0};
 	size_t size = 0;

@@ -4,7 +4,7 @@
 #include "config.h"
 
 #define DISPLAYCONFIG(name, defaultdevice) name = { \
-	.DEVICECONFIG(parent, sdrm_loadjsonconfiguration, sdrm_loadjsonsettings), \
+	.DEVICECONFIG(parent, sdrm_loadconfiguration), \
 	.device = defaultdevice, \
 	}
 
@@ -29,10 +29,14 @@ void sdrm_destroy(Display_t *disp);
 
 #ifdef HAVE_JANSSON
 int sdrm_loadjsonsettings(void *dev, void *jconfig);
+
 int sdrm_loadjsonconfiguration(void *config, void *jconfig);
+
+#define sdrm_loadsettings sdrm_loadjsonsettings
+#define sdrm_loadconfiguration sdrm_loadjsonconfiguration
 #else
-#define sdrm_loadjsonsettings NULL
-#define sdrm_loadjsonconfiguration NULL
+#define sdrm_loadsettings NULL
+#define sdrm_loadconfiguration NULL
 #endif
 
 #endif

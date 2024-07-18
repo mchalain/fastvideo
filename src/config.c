@@ -21,6 +21,8 @@ static int main_parseconfigdevice(json_t *jconfig, DeviceConf_t *devconfig)
 	json_t *fourcc = NULL;
 	json_t *stride = NULL;
 
+	devconfig->entry = jconfig;
+
 	json_t *definition = json_object_get(jconfig, "definition");
 	if (definition && json_is_array(definition))
 	{
@@ -92,16 +94,7 @@ static int main_parseconfigdevice(json_t *jconfig, DeviceConf_t *devconfig)
 		devconfig->stride = json_integer_value(stride);
 	}
 
-	if (devconfig->dev && devconfig->ops.loadsettings)
-	{
-		json_t *jcontrols = json_object_get(jconfig,"controls");
-		if (jcontrols && json_is_array(jcontrols))
-			jconfig = jcontrols;
-		else if (jcontrols && json_is_object(jcontrols))
-			jconfig = jcontrols;
-		ret = devconfig->ops.loadsettings(devconfig->dev, jconfig);
-	}
-	else if (devconfig->ops.loadconfiguration)
+	if (devconfig->ops.loadconfiguration)
 	{
 		ret = devconfig->ops.loadconfiguration(devconfig, jconfig);
 	}

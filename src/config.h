@@ -1,6 +1,10 @@
 #ifndef __FASTVIDEO_CONFIG_H__
 #define __FASTVIDEO_CONFIG_H__
 
+#ifdef HAVE_JANSSON
+# include <jansson.h>
+#endif
+
 #ifndef FOURCC
 #define FOURCC(a,b,c,d)	((a << 0) | (b << 8) | (c << 16) | (d << 24))
 #endif
@@ -35,6 +39,11 @@ typedef struct DeviceConf_s DeviceConf_t;
 struct DeviceConf_s
 {
 	void *dev;
+#ifdef HAVE_JANSSON
+	json_t *entry;
+#else
+	void *entry;
+#endif
 	const char *name;
 	const char *type;
 	uint32_t fourcc;
@@ -44,11 +53,15 @@ struct DeviceConf_s
 	struct
 	{
 		int (*loadconfiguration)(void *storage, void *config);
-		int (*loadsettings)(void *dev, void *config);
 	} ops;
 };
 
-#define DEVICECONFIG(config, _name, _loadconfig, _loadsettings) config = {.name = #_name, .dev = 0, .ops.loadconfiguration = _loadconfig, .ops.loadsettings = _loadsettings,}
+#define DEVICECONFIG(_config, _name, _loadconfig) \
+	_config = { \
+		.name = #_name, \
+		.dev = 0, \
+		.ops.loadconfiguration = _loadconfig, \
+	}
 
 #ifdef HAVE_JANSSON
 int config_parseconfigfile(const char *name, const char *configfile, DeviceConf_t *devconfig);

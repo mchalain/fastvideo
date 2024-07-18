@@ -5,7 +5,7 @@
 #include "config.h"
 
 #define FILECONFIG(config, ...) config = { \
-	.DEVICECONFIG(parent, config, sfile_loadjsonconfiguration, NULL), \
+	.DEVICECONFIG(parent, config, sfile_loadconfiguration), \
 	}
 
 typedef struct FileConfig_s FileConfig_t;
@@ -34,7 +34,9 @@ void sfile_destroy(File_t *dev);
 
 #ifdef HAVE_JANSSON
 int sfile_loadjsonconfiguration(void *arg, void *entry);
+
+# define sfile_loadconfiguration sfile_loadjsonconfiguration
 #else
-# define sfile_loadjsonconfiguration(...) NULL
+# define sfile_loadconfiguration NULL
 #endif
 #endif

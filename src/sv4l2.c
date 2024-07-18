@@ -901,7 +901,6 @@ static int _sv4l2_treecontrols(int ctrlfd, V4L2_t *dev, int (*cb)(void *arg, str
 int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev), void * arg)
 {
 	int nbctrls = 0;
-	int ctrlfd = dev->fd;
 	nbctrls += _sv4l2_treecontrols(dev->ctrlfd, dev, cb, arg);
 	if (dev->fd != dev->ctrlfd)
 		nbctrls += _sv4l2_treecontrols(dev->fd, dev, cb, arg);
@@ -1576,11 +1575,13 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t
 	}
 	return -1;
 }
-int sv4l2_loadjsonsettings(void *arg, void *entry)
+int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 {
 	json_t *jconfig = entry;
+	json_t *jcontrols = json_object_get(jconfig,"controls");
+	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
+		jconfig = jcontrols;
 
-	V4L2_t *dev = (V4L2_t *)arg;
 #if 1
 	json_t *crop = json_object_get(jconfig, "crop");
 	if (crop && json_is_object(crop))

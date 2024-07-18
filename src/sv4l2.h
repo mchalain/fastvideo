@@ -11,7 +11,7 @@
 #define MODE_SHOT 0x08
 
 #define CAMERACONFIG(config, defaultdevice) config = { \
-	.DEVICECONFIG(parent, config, sv4l2_loadjsonconfiguration, sv4l2_loadjsonsettings), \
+	.DEVICECONFIG(parent, config, sv4l2_loadconfiguration), \
 	.device = defaultdevice, \
 	}
 
@@ -221,11 +221,14 @@ void sv4l2_destroy(V4L2_t *dev);
 DeviceConf_t * sv4l2_createconfig();
 
 #ifdef HAVE_JANSSON
-int sv4l2_loadjsonsettings(void *dev, void *jconfig);
+int sv4l2_loadjsonsettings(V4L2_t *dev, void *jconfig);
 int sv4l2_loadjsonconfiguration(void *config, void *jconfig);
+
+#define sv4l2_loadsettings sv4l2_loadjsonsettings
+#define sv4l2_loadconfiguration sv4l2_loadjsonconfiguration
 #else
-#define sv4l2_loadjsonsettings NULL
-#define sv4l2_loadjsonconfiguration NULL
+#define sv4l2_loadsettings NULL
+#define sv4l2_loadconfiguration NULL
 #endif
 
 #endif

@@ -6,7 +6,7 @@
 #include "config.h"
 
 #define EGLCONFIG(name, _native) name = { \
-	.DEVICECONFIG(parent, name, segl_loadjsonconfiguration, NULL), \
+	.DEVICECONFIG(parent, name, segl_loadconfiguration), \
 	.native = #_native \
 	}
 
@@ -49,8 +49,10 @@ struct EGLNative_s
 
 #ifdef HAVE_JANSSON
 int segl_loadjsonconfiguration(void *arg, void *jconfig);
+
+#define segl_loadconfiguration segl_loadjsonconfiguration
 #else
-#define segl_loadjsonconfiguration NULL
+#define segl_loadconfiguration NULL
 #endif
 
 #endif
