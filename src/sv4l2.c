@@ -1046,7 +1046,7 @@ int sv4l2_start(V4L2_t *dev)
 	if (dev->type == V4L2_BUF_TYPE_VIDEO_CAPTURE ||
 		dev->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
 	{
-		dbg("start buffers enqueuing");
+		dbg("sv4l2: start buffers enqueuing");
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
 			dbg_buffer((&dev->buffers[i].v4l2));
@@ -1056,6 +1056,7 @@ int sv4l2_start(V4L2_t *dev)
 	}
 	if (ioctl(dev->fd, VIDIOC_STREAMON, &type) != 0)
 		return -1;
+	dbg("sv4l2: starting");
 	return 0;
 }
 
@@ -1204,20 +1205,22 @@ int sv4l2_transfer(V4L2_t *dev, V4L2_t *link)
 	}
 	int run = 1;
 	sv4l2_start(dev);
+	int infd = dev->fd;
+	int outfd = link->fd;
 	while (run)
 	{
 		fd_set rfds;
 		fd_set wfds;
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
-		FD_SET(dev->fd, &rfds);
-		FD_SET(link->fd, &wfds);
+		FD_SET(infd, &rfds);
+		FD_SET(outfd, &wfds);
 		struct timeval timeout = {
 			.tv_sec = 2,
 			.tv_usec = 0,
 		};
 		int ret;
-		int maxfd = (dev->fd > link->fd)? dev->fd: link->fd;
+		int maxfd = (infd > outfd)? infd: outfd;
 		if (dev->ifd[0] > 0)
 		{
 			FD_SET(dev->ifd[0], &rfds);
@@ -1227,7 +1230,12 @@ int sv4l2_transfer(V4L2_t *dev, V4L2_t *link)
 		ret = select(maxfd + 1, &rfds, &wfds, NULL, &timeout);
 		if (ret == -1 && errno == EINTR)
 			continue;
-		if (ret > 0 && FD_ISSET(dev->fd, &rfds))
+		if (ret == 0)
+		{
+			err("camera timeout");
+			continue;
+		}
+		if (ret > 0 && FD_ISSET(infd, &rfds))
 		{
 			int index = 0;
 			if ((index = sv4l2_dequeue(dev, NULL, NULL)) < 0)
@@ -1249,7 +1257,7 @@ int sv4l2_transfer(V4L2_t *dev, V4L2_t *link)
 			}
 			ret--;
 		}
-		if (ret > 0 && FD_ISSET(link->fd, &wfds))
+		if (ret > 0 && FD_ISSET(outfd, &wfds))
 		{
 			int index;
 			if ((index = sv4l2_dequeue(link, NULL, NULL)) < 0)
