@@ -181,6 +181,15 @@ int sfile_start(File_t *dev)
 		}
 
 	}
+	else
+	{
+		dbg("start buffers enqueuing");
+		for (int i = 0; i < dev->nbuffers; i++)
+		{
+			if (sfile_queue(dev, i, 0))
+				return -1;
+		}
+	}
 	return 0;
 }
 
@@ -296,6 +305,20 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 		config->rootpath = value;
 	}
 library_end:
+	return 0;
+}
+#else
+int sfile_loadjsonconfiguration(void *arg, void *entry)
+{
+	FileConfig_t *config = (FileConfig_t *)arg;
+	if (config->parent.name != NULL)
+	{
+		const char *filepath = strchr(config->parent.name, ':');
+		if (filepath)
+		{
+			config->filename = filepath + 1;
+		}
+	}
 	return 0;
 }
 #endif
