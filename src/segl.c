@@ -91,25 +91,26 @@ void main() {\n\
 }\n\
 ";
 #else
-static GLchar defaultvertex[] = "\
-attribute vec3 vPosition;\n\
-attribute vec2 vUV;\n\
-varying vec2 texUV;\n\
-\n\
-void main (void)\n\
-{\n\
-	gl_Position = vec4(vPosition, 1);\n\
-	texUV = vUV;\n\
-}\n\
-";
+static GLchar defaultvertex[] = ""
+"\n""attribute vec3 vPosition;"
+"\n""varying vec2 texUV;"
+"\n"
+"\n""void main (void)"
+"\n""{"
+"\n""	texUV = (vec2(0.5, 0.5) - vPosition.xy / 2.0);"
+"\n""	gl_Position = vec4(vPosition,1.);"
+"\n""}"
+"\n";
 static GLchar defaultfragment[] = ""
-"#extension GL_OES_EGL_image_external : require\n"
-"precision mediump float;\n"
-"uniform samplerExternalOES vTexture;\n"
-"varying vec2 texUV;\n"
-"void main() {\n"
-"	gl_FragColor = texture2D(vTexture, texUV);\n"
-"}\n";
+"\n""#extension GL_OES_EGL_image_external : require"
+"\n""precision mediump float;"
+"\n""uniform samplerExternalOES vTexture;"
+"\n""varying vec2 texUV;"
+"\n"
+"\n""void main() {"
+"\n""	gl_FragColor = texture2D(vTexture, texUV);"
+"\n""}"
+"\n";
 #endif
 
 static GLchar defaulttexturename[] = "vTexture";
@@ -371,6 +372,7 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 		EGL_GREEN_SIZE, 8,
 		EGL_BLUE_SIZE, 8,
 		EGL_ALPHA_SIZE, 8,
+		EGL_DEPTH_SIZE, 16,
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
 		EGL_NONE
 	};
@@ -455,12 +457,12 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	{
 		return NULL;
 	}
+#ifdef USE_VERTEXARRAY
 	glGenVertexArraysOES = (void *) eglGetProcAddress("glGenVertexArraysOES");
 	if(glGenVertexArraysOES == NULL)
 	{
 		return NULL;
 	}
-#ifdef USE_VERTEXARRAY
 	glBindVertexArrayOES = (void *) eglGetProcAddress("glBindVertexArrayOES");
 	if(glBindVertexArrayOES == NULL)
 	{
@@ -475,17 +477,18 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	glDepthFunc(GL_LESS);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-#ifdef USE_VERTEXARRAY
 	glGenVertexArraysOES(1, &dev->vertexArrayID);
 	glBindVertexArrayOES(dev->vertexArrayID);
-#endif
-	glGenBuffers(3, dev->vertexBufferObject);
+
+	glGenBuffers(1, dev->vertexBufferObject);
 
 	GLfloat vertices[] = {
-		-1.0f, -1.0f,  0.0f, // bottom left
 		-1.0f,  1.0f,  0.0f, // top left
-		 1.0f,  1.0f,  0.0f, // top right
+		-1.0f, -1.0f,  0.0f, // bottom left
 		 1.0f, -1.0f,  0.0f, // bottom right
+		-1.0f,  1.0f,  0.0f, // top left
+		 1.0f, -1.0f,  0.0f, // bottom right
+		 1.0f,  1.0f,  0.0f, // top right
 	};
 	glBindBuffer(GL_ARRAY_BUFFER, dev->vertexBufferObject[0]);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
@@ -493,31 +496,15 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	glEnableVertexAttribArray(pos);
 	glVertexAttribPointer(pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
-	GLfloat uves[] = {
-		 0.0f,  1.0f, // bottom left
-		 0.0f,  0.0f, // top left
-		 1.0f,  0.0f, // top right
-		 1.0f,  1.0f, // bottom right
-	};
-	glBindBuffer(GL_ARRAY_BUFFER, dev->vertexBufferObject[1]);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(uves), uves, GL_STATIC_DRAW);
-	GLint UV = glGetAttribLocation(dev->programIDs[0], "vUV");
-	glEnableVertexAttribArray(UV);
-	glVertexAttribPointer(UV, 2, GL_FLOAT, GL_FALSE, 0, 0);
-
-	GLushort indexes[] = {
-		0, 1, 3,
-		1, 2, 3
-	};
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, dev->vertexBufferObject[2]);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indexes), indexes, GL_STATIC_DRAW);
-
 	if (config->texture.name == NULL)
 		config->texture.name = defaulttexturename;
 	GLuint texid;
 	GLint texMap = glGetUniformLocation(dev->programIDs[0], config->texture.name);
 	glUniform1i(texMap, 0); // GL_TEXTURE0
 	glActiveTexture(GL_TEXTURE0);
+
+	GLuint resolutionID = glGetUniformLocation(dev->programIDs[0], "vResolution");
+	glUniform2f(resolutionID, (float)config->parent.width, (float)config->parent.height);
 
 	dev->native_window = nwindow;
 	dev->native_display = ndisplay;
@@ -604,6 +591,7 @@ int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 int segl_start(EGL_t *dev)
 {
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
+	dev->curbufferid = -1;
 	return 0;
 }
 
@@ -631,16 +619,11 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 	}
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glUseProgram(dev->programIDs[0]);
-#ifdef USE_VERTEXARRAY
 	glBindVertexArrayOES(dev->vertexArrayID);
-#else
-	glBindBuffer(GL_ARRAY_BUFFER, dev->vertexBufferObject[0]);
-	glBindBuffer(GL_ARRAY_BUFFER, dev->vertexBufferObject[1]);
+
 	glBindTexture(GL_TEXTURE_EXTERNAL_OES, dev->buffers[(int)id].dma_texture);
-#endif
 
-	glDrawElements(GL_TRIANGLE_STRIP, 3 * 2, GL_UNSIGNED_SHORT, 0);
-
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
 	dev->curbufferid = (int)id;
 	
 	return dev->native->flush(dev->native_window);
@@ -650,9 +633,8 @@ int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
 {
 	int id = dev->curbufferid;
 	dev->curbufferid = -1;
-#ifdef USE_VERTEXARRAY
-	glBindVertexArrayOES(0);
-#endif
+	glUseProgram(0);
+	glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
 	if (dev->native->sync(dev->native_window) < 0)
 		return -1;
 	
