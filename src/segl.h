@@ -47,6 +47,8 @@ struct EGLNative_s
 	void (*destroy)(EGLNativeDisplayType native_display);
 };
 
+DeviceConf_t * segl_createconfig();
+
 #ifdef HAVE_JANSSON
 int segl_loadjsonconfiguration(void *arg, void *jconfig);
 

@@ -322,3 +322,11 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 	return 0;
 }
 #endif
+
+DeviceConf_t * sfile_createconfig()
+{
+	FileConfig_t *devconfig = NULL;
+	devconfig = calloc(1, sizeof(FileConfig_t));
+	devconfig->parent.ops.loadconfiguration = sfile_loadjsonconfiguration;
+	return (DeviceConf_t *)devconfig;
+}

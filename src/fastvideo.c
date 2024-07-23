@@ -9,78 +9,231 @@
 #include "sv4l2.h"
 #include "sdrm.h"
 #include "segl.h"
+#include "sfile.h"
 #include "config.h"
 
-int main_loop(V4L2_t *cam, EGL_t *gpu)
+typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
+typedef void *(*FastVideoDevice_create_t)(const char *devicename, DeviceConf_t *config);
+typedef void *(*FastVideoDevice_loadsettings_t)(void *dev, void *configentry);
+typedef int (*FastVideoDevice_requestbuffer_t)(void *dev, enum buf_type_e t, ...);
+typedef int (*FastVideoDevice_eventfd_t)(void *dev);
+typedef int (*FastVideoDevice_start_t)(void *dev);
+typedef int (*FastVideoDevice_stop_t)(void *dev);
+typedef int (*FastVideoDevice_dequeue_t)(void *dev, void **mem, size_t *bytesused);
+typedef int (*FastVideoDevice_queue_t)(void *dev, int index, size_t bytesused);
+typedef void (*FastVideoDevice_destroy_t)(void *dev);
+
+typedef struct FastVideoDevice_ops_s FastVideoDevice_ops_t;
+struct FastVideoDevice_ops_s
 {
+	const char *name;
+	FastVideoDevice_createconfig_t createconfig;
+	FastVideoDevice_create_t create;
+	FastVideoDevice_loadsettings_t loadsettings;
+	FastVideoDevice_requestbuffer_t requestbuffer;
+	FastVideoDevice_eventfd_t eventfd;
+	FastVideoDevice_start_t start;
+	FastVideoDevice_stop_t stop;
+	FastVideoDevice_dequeue_t dequeue;
+	FastVideoDevice_queue_t queue;
+	FastVideoDevice_destroy_t destroy;
+};
+
+FastVideoDevice_ops_t sv4l2_ops = {
+	.name = "cam",
+	.createconfig = sv4l2_createconfig,
+	.create = (FastVideoDevice_create_t)sv4l2_create,
+	.loadsettings = (FastVideoDevice_loadsettings_t)sv4l2_loadsettings,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)sv4l2_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)sv4l2_fd,
+	.start = (FastVideoDevice_start_t)sv4l2_start,
+	.stop = (FastVideoDevice_stop_t)sv4l2_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)sv4l2_dequeue,
+	.queue = (FastVideoDevice_queue_t)sv4l2_queue,
+	.destroy = (FastVideoDevice_destroy_t)sv4l2_destroy,
+};
+#ifdef HAVE_EGL
+FastVideoDevice_ops_t segl_ops = {
+	.name = "gpu",
+	.createconfig = segl_createconfig,
+	.create = (FastVideoDevice_create_t)segl_create,
+	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)segl_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)segl_fd,
+	.start = (FastVideoDevice_start_t)segl_start,
+	.stop = (FastVideoDevice_stop_t)segl_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)segl_dequeue,
+	.queue = (FastVideoDevice_queue_t)segl_queue,
+	.destroy = (FastVideoDevice_destroy_t)segl_destroy,
+};
+#endif
+#ifdef HAVE_LIBDRM
+FastVideoDevice_ops_t sdrm_ops = {
+	.name = "screen",
+	.createconfig = sdrm_createconfig,
+	.create = (FastVideoDevice_create_t)sdrm_create,
+	.loadsettings = (FastVideoDevice_loadsettings_t)sdrm_loadsettings,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)sdrm_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)NULL,
+	.start = (FastVideoDevice_start_t)sdrm_start,
+	.stop = (FastVideoDevice_stop_t)sdrm_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)sdrm_dequeue,
+	.queue = (FastVideoDevice_queue_t)sdrm_queue,
+	.destroy = (FastVideoDevice_destroy_t)sdrm_destroy,
+};
+#endif
+FastVideoDevice_ops_t sfile_ops = {
+	.name = "file",
+	.createconfig = sfile_createconfig,
+	.create = (FastVideoDevice_create_t)sfile_create,
+	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)sfile_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)NULL,
+	.start = (FastVideoDevice_start_t)sfile_start,
+	.stop = (FastVideoDevice_stop_t)sfile_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)sfile_dequeue,
+	.queue = (FastVideoDevice_queue_t)sfile_queue,
+	.destroy = (FastVideoDevice_destroy_t)sfile_destroy,
+};
+
+typedef struct FastVideoDevice_s FastVideoDevice_t;
+struct FastVideoDevice_s
+{
+	void *dev;
+	FastVideoDevice_ops_t *ops;
+};
+
+FastVideoDevice_t *config_createdevice(const char *name, const char *configfile, FastVideoDevice_ops_t *ops[])
+{
+	FastVideoDevice_t *device = NULL;
+	DeviceConf_t devconfig = {0};
+	if (configfile != NULL)
+	{
+		config_parseconfigfile(name, configfile, &devconfig);
+	}
+	if (devconfig.type == NULL)
+	{
+		devconfig.type = name;
+	}
+
+	for (int i = 0; ops[i] != NULL; i++)
+	{
+		if (! strcmp(ops[i]->name, devconfig.type))
+		{
+			DeviceConf_t *config = ops[i]->createconfig();
+			config->name = name;
+			config_parseconfigfile(name, configfile, config);
+			device = calloc(1, sizeof(*device));
+			device->ops = ops[i];
+			device->dev = device->ops->create(name, config);
+			if (device->ops->loadsettings && config->entry)
+			{
+				dbg("loadsettings");
+				device->ops->loadsettings(device->dev, config->entry);
+			}
+			break;
+		}
+	}
+	return device;
+}
+
+int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
+{
+	output->ops->start(output->dev);
+	input->ops->start(input->dev);
+	int maxfd = 0;
+	int infd = -1;
+	if (input->ops->eventfd)
+	{
+		infd = input->ops->eventfd(input->dev);
+		maxfd = (infd > maxfd)?infd:maxfd;
+	}
+	int outfd = -1;
+	if (output->ops->eventfd)
+	{
+		outfd = output->ops->eventfd(output->dev);
+		maxfd = (outfd > maxfd)?outfd:maxfd;
+	}
+
 	int run = 1;
-	sv4l2_start(cam);
-	segl_start(gpu);
-	int camfd = sv4l2_fd(cam);
 	while (run)
 	{
 		fd_set rfds;
 		fd_set wfds;
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
-		FD_SET(camfd, &rfds);
+		if (infd > 0)
+			FD_SET(infd, &rfds);
+		if (outfd > 0)
+		{
+			FD_SET(outfd, &rfds);
+			FD_SET(outfd, &wfds);
+		}
 		struct timeval timeout = {
 			.tv_sec = 2,
 			.tv_usec = 0,
 		};
-		int ret;
-		int maxfd = camfd;
 
+		int ret;
 		ret = select(maxfd + 1, &rfds, &wfds, NULL, &timeout);
 		if (ret == -1 && errno == EINTR)
 			continue;
 		if (ret == 0)
 		{
-			err("camera timeout");
+			err("device timeout");
 			continue;
 		}
-		if (ret > 0 && FD_ISSET(camfd, &rfds))
+		if (infd < 0 || (ret > 0 && FD_ISSET(infd, &rfds)))
 		{
 			int index = 0;
 			size_t bytesused = 0;
-			if ((index = sv4l2_dequeue(cam, NULL, &bytesused)) < 0)
+			if ((index = input->ops->dequeue(input->dev, NULL, &bytesused)) < 0)
 			{
-				err("camera buffer dequeuing error %m");
 				if (errno == EAGAIN)
 					continue;
+				if (errno)
+					err("input buffer dequeuing error %m");
 				run = 0;
 				break;
 			}
 
-			if (segl_queue(gpu, index, bytesused) < 0)
+			if (output->ops->queue(output->dev, index, bytesused) < 0)
 			{
-				err("gpu buffer queuing error %m");
 				if (errno == EAGAIN)
 					continue;
+				if (errno)
+					err("output buffer queuing error %m");
 				run = 0;
 				break;
 			}
-			if ((index = segl_dequeue(gpu, NULL, NULL)) < 0)
+			ret--;
+		}
+		if (outfd < 0 || (ret > 0 && FD_ISSET(outfd, &wfds)) || (ret > 0 && FD_ISSET(outfd, &rfds)))
+		{
+			int index = 0;
+			if ((index = output->ops->dequeue(output->dev, NULL, NULL)) < 0)
 			{
-				err("display buffer dequeuing error %m");
 				if (errno == EAGAIN)
 					continue;
+				if (errno)
+					err("output buffer dequeuing error %m");
 				run = 0;
 				break;
 			}
-			if (sv4l2_queue(cam, index, 0) < 0)
+			if (input->ops->queue(input->dev, index, 0) < 0)
 			{
-				err("camera buffer queuing error %m");
 				if (errno == EAGAIN)
 					continue;
+				if (errno)
+					err("input buffer queuing error %m");
 				run = 0;
 				break;
 			}
 			ret--;
 		}
 	}
-	sv4l2_stop(cam);
-	segl_stop(gpu);
+	input->ops->stop(input->dev);
+	output->ops->stop(output->dev);
 	return 0;
 }
 
@@ -89,15 +242,13 @@ int main(int argc, char * const argv[])
 	const char *configfile = NULL;
 	const char *input = "cam";
 	const char *output = "gpu";
-
-	CameraConfig_t CAMERACONFIG(configcam, "/dev/video0");
-
-	EGLConfig_t EGLCONFIG(configgpu, unknown);
+	int width = 640;
+	int height = 480;
 
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:j:Iw:h:");
+		opt = getopt(argc, argv, "i:o:j:w:h:");
 		switch (opt)
 		{
 			case 'i':
@@ -109,65 +260,60 @@ int main(int argc, char * const argv[])
 			case 'j':
 				configfile = optarg;
 			break;
-			case 'I':
-				configcam.mode |= MODE_INTERACTIVE;
-			break;
 			case 'w':
-				configcam.parent.width = strtol(optarg, NULL, 10);
+				width = strtol(optarg, NULL, 10);
 			break;
 			case 'h':
-				configcam.parent.height = strtol(optarg, NULL, 10);
+				height = strtol(optarg, NULL, 10);
 			break;
 		}
 	} while(opt != -1);
 
-	if (configfile)
+	FastVideoDevice_ops_t *fastVideoDevice_ops[] =
 	{
-		config_parseconfigfile(input, configfile, &configcam.parent);
-		config_parseconfigfile(output, configfile, &configgpu.parent);
-	}
+		&sv4l2_ops,
+#ifdef HAVE_EGL
+		&segl_ops,
+#endif
+#ifdef HAVE_LIBDRM
+		&sdrm_ops,
+#endif
+		&sfile_ops,
+		NULL
+	};
 
-	V4L2_t *cam = sv4l2_create(configcam.device, &configcam);
-	if (!cam)
+	FastVideoDevice_t *indev = NULL;
+	indev = config_createdevice(input, configfile, fastVideoDevice_ops);
+	if (!indev->dev)
 	{
-		err("camera not available");
+		err("input not available");
 		return -1;
 	}
 
-	configgpu.texture.name = "vTexture";
-	configgpu.parent.width = configcam.parent.width;
-	configgpu.parent.height = configcam.parent.height;
-	configgpu.parent.stride = configcam.parent.stride;
-	configgpu.parent.fourcc = configcam.parent.fourcc;
-	EGL_t *gpu = segl_create(NULL, &configgpu);
-	if (!gpu)
+	FastVideoDevice_t *outdev = NULL;
+	outdev = config_createdevice(output, configfile, fastVideoDevice_ops);
+	if (!outdev->dev)
 	{
-		err("gpu not available");
+		err("output not available");
 		return -1;
-	}
-
-	if (configfile)
-	{
-		config_parseconfigfile(input, configfile, &configcam.parent);
-		config_parseconfigfile(output, configfile, &configgpu.parent);
 	}
 
 	int *dma_bufs = {0};
 	size_t size = 0;
 	int nbbufs = 0;
-	if (sv4l2_requestbuffer(cam, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
+	if (indev->ops->requestbuffer(indev->dev, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
 	{
-		err("drm dma buffer not allowed");
+		err("input dma buffer not allowed");
 		return -1;
 	}
-	if (segl_requestbuffer(gpu, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
+	if (outdev->ops->requestbuffer(outdev->dev, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
 	{
-		err("segl dma buffers not linked");
+		err("output dma buffers not linked");
 		return -1;
 	}
-	main_loop(cam, gpu);
+	main_loop(indev, outdev);
 
-	sv4l2_destroy(cam);
-	segl_destroy(gpu);
+	indev->ops->destroy(indev->dev);
+	outdev->ops->destroy(outdev->dev);
 	return 0;
 }

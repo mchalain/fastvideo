@@ -23,6 +23,8 @@ struct FileConfig_s
 
 typedef struct File_s File_t;
 
+DeviceConf_t * sfile_createconfig();
+
 File_t * sfile_create(const char *name, FileConfig_t *config);
 int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...);
 int sfile_fd(File_t *dev);

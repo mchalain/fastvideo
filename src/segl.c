@@ -616,6 +616,14 @@ void segl_destroy(EGL_t *dev)
 	free(dev);
 }
 
+DeviceConf_t * segl_createconfig()
+{
+	EGLConfig_t *devconfig = NULL;
+	devconfig = calloc(1, sizeof(EGLConfig_t));
+	devconfig->parent.ops.loadconfiguration = segl_loadjsonconfiguration;
+	return (DeviceConf_t *)devconfig;
+}
+
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 

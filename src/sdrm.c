@@ -729,3 +729,11 @@ void sdrm_destroy(Display_t *disp)
 	close(disp->fd);
 	free(disp);
 }
+
+DeviceConf_t * sdrm_createconfig()
+{
+	DisplayConf_t *devconfig = NULL;
+	devconfig = calloc(1, sizeof(DisplayConf_t));
+	devconfig->parent.ops.loadconfiguration = sdrm_loadjsonconfiguration;
+	return (DeviceConf_t *)devconfig;
+}

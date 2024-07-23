@@ -38,6 +38,8 @@
 #define dbg_buffer(v4l2) if (v4l2->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE || v4l2->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) \
 		{dbg_buffer_mplane(v4l2);}else{dbg_buffer_splane(v4l2);}
 
+const char sv4l2_defaultdevice[20] = "/dev/video0";
+
 DeviceConf_t formats[] = {
 	{.fourcc = FOURCC('Y','U','Y','V')},
 	{.fourcc = 0, },
@@ -1473,6 +1475,15 @@ static int sv4l2_subdev_open(CameraConfig_t *config)
 	return -1;
 }
 #endif
+
+DeviceConf_t * sv4l2_createconfig()
+{
+	CameraConfig_t *devconfig = NULL;
+	devconfig = calloc(1, sizeof(CameraConfig_t));
+	devconfig->device = sv4l2_defaultdevice;
+	devconfig->parent.ops.loadconfiguration = sv4l2_loadjsonconfiguration;
+	return (DeviceConf_t *)devconfig;
+}
 
 #ifdef HAVE_JANSSON
 
