@@ -52,7 +52,7 @@ struct EGL_s
 	EGLSurface eglsurface;
 	EGLNativeDisplayType native_display;
 	EGLNativeWindowType native_window;
-	GLuint programID;
+	GLuint programIDs[MAX_PROGRANS];
 	GLuint framebufferID;
 	GLuint vertexArrayID;
 	GLuint vertexBufferObject[3];
@@ -120,13 +120,21 @@ static void display_log(GLuint instance)
 	GLchar* log = NULL;
 
 	glGetProgramiv(instance, GL_INFO_LOG_LENGTH, &logSize);
+	if (!logSize)
+	{
+		err("no log");
+		return;
+	}
 	log = (GLchar*)malloc(logSize);
 	if ( log == NULL )
 	{
 		err("segl: Log memory allocation error %m");
 		return;
 	}
-	glGetProgramInfoLog(instance, logSize, &logSize, log);
+	if (glIsShader(instance))
+		glGetShaderInfoLog(instance, logSize, NULL, log);
+	else
+		glGetProgramInfoLog(instance, logSize, NULL, log);
 	err("%s",log);
 	free(log);
 }
@@ -202,16 +210,18 @@ static GLuint loadShader(EGL_t *dev, GLenum shadertype, const char *shaderfile, 
 	if (shaderfile)
 	{
 		shaderSize = readFile(shaderfile, &shaderSource);
+		if (shaderSource == NULL)
+			return -1;
 		warn("load dynamic shader:\n%s<=", shaderSource);
 	}
 	else
 	{
 		shaderSource = defaultshader;
 		shaderSize = strlen(shaderSource);
+		if (shaderSource == NULL)
+			return -1;
 		warn("load default shader:\n%s", shaderSource);
 	}
-	if (shaderSource == NULL)
-		return -1;
 	glShaderSource(shaderID, 1, (const GLchar**)(&shaderSource), &shaderSize);
 	glCompileShader(shaderID);
 	GLint compilationStatus = 0;
@@ -226,7 +236,39 @@ static GLuint loadShader(EGL_t *dev, GLenum shadertype, const char *shaderfile, 
 	return shaderID;
 }
 
-static GLuint loadShaders(EGL_t *dev, const char *vertex, const char *fragment)
+static GLuint loadShaders(EGL_t *dev, GLenum shadertype, const char *shaderfiles[MAX_SHADERS])
+{
+	GLuint shaderID = glCreateShader(shadertype);
+
+	GLint nbShaderSources = 0;
+	GLchar* shaderSources[4] = {0};
+	GLuint shaderSizes[4] = {0};
+
+	for (int i = 0; i < MAX_SHADERS; i++)
+	{
+		if (shaderfiles[i])
+		{
+			shaderSizes[i] = readFile(shaderfiles[i], &shaderSources[i]);
+			if (shaderSources[i] == NULL)
+				return -1;
+			warn("load dynamic shader:\n%s<=", shaderSources[i]);
+			nbShaderSources++;
+		}
+	}
+	glShaderSource(shaderID, nbShaderSources, (const char *const*)shaderSources, shaderSizes);
+	glCompileShader(shaderID);
+	GLint compilationStatus = 0;
+
+	glGetShaderiv(shaderID, GL_COMPILE_STATUS, &compilationStatus);
+	if ( compilationStatus != GL_TRUE )
+	{
+		display_log(shaderID);
+		return -1;
+	}
+	return shaderID;
+}
+
+static GLuint buildProgramm(EGL_t *dev, const char *vertex, const char *fragments[MAX_SHADERS])
 {
 	GLchar* vertexSource = NULL;
 	GLchar* fragmentSource = NULL;
@@ -236,14 +278,19 @@ static GLuint loadShaders(EGL_t *dev, const char *vertex, const char *fragment)
 	if ( vertexID == -1)
 	{
 		err("segl: vertex shader compilation error");
-		return GL_FALSE;
+		return -1;
 	}
-	GLuint fragmentID = loadShader(dev, GL_FRAGMENT_SHADER, fragment, defaultfragment);
+
+	GLuint fragmentID = 0;
+	if (fragments[1] == NULL)
+		fragmentID = loadShader(dev, GL_FRAGMENT_SHADER, fragments[0], defaultfragment);
+	else
+		fragmentID = loadShaders(dev, GL_FRAGMENT_SHADER, fragments);
 	if ( fragmentID == -1)
 	{
 		err("segl: fragment shader compilation error");
 		deleteShader(0, vertexID, 0);
-		return GL_FALSE;
+		return -1;
 	}
 
 	GLuint programID = glCreateProgram();
@@ -367,8 +414,17 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	dev->eglcontext = eglContext;
 	dev->eglsurface = eglSurface;
 
-	dev->programID = loadShaders(dev, config->vertex, config->fragment);
-	if (dev->programID == 0)
+	for (int i = 0; i < MAX_PROGRANS; i++)
+	{
+		EGLConfig_Program_t *prconfig = &config->programs[i];
+		if (i < 1 || (prconfig->vertex && prconfig->fragments[0]))
+		{
+			dev->programIDs[i] = buildProgramm(dev, prconfig->vertex, prconfig->fragments);
+			if (dev->programIDs[i] == -1)
+				err("segl: program %d loading error", i);
+		}
+	}
+	if (dev->programIDs[0] == -1)
 	{
 		err("segl: shader loading error");
 		free(dev);
@@ -433,7 +489,7 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	};
 	glBindBuffer(GL_ARRAY_BUFFER, dev->vertexBufferObject[0]);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-	GLint pos = glGetAttribLocation(dev->programID, "vPosition");
+	GLint pos = glGetAttribLocation(dev->programIDs[0], "vPosition");
 	glEnableVertexAttribArray(pos);
 	glVertexAttribPointer(pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
@@ -445,7 +501,7 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	};
 	glBindBuffer(GL_ARRAY_BUFFER, dev->vertexBufferObject[1]);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(uves), uves, GL_STATIC_DRAW);
-	GLint UV = glGetAttribLocation(dev->programID, "vUV");
+	GLint UV = glGetAttribLocation(dev->programIDs[0], "vUV");
 	glEnableVertexAttribArray(UV);
 	glVertexAttribPointer(UV, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
@@ -459,7 +515,7 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	if (config->texture.name == NULL)
 		config->texture.name = defaulttexturename;
 	GLuint texid;
-	GLint texMap = glGetUniformLocation(dev->programID, config->texture.name);
+	GLint texMap = glGetUniformLocation(dev->programIDs[0], config->texture.name);
 	glUniform1i(texMap, 0); // GL_TEXTURE0
 	glActiveTexture(GL_TEXTURE0);
 
@@ -574,7 +630,7 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 		return -1;
 	}
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glUseProgram(dev->programID);
+	glUseProgram(dev->programIDs[0]);
 #ifdef USE_VERTEXARRAY
 	glBindVertexArrayOES(dev->vertexArrayID);
 #else
@@ -627,11 +683,8 @@ DeviceConf_t * segl_createconfig()
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 
-int segl_loadjsonconfiguration(void *arg, void *entry)
+static int _segl_loadjsonprogram(json_t *jconfig, EGLConfig_Program_t *config)
 {
-	json_t *jconfig = entry;
-
-	EGLConfig_t *config = (EGLConfig_t *)arg;
 	json_t *vertex = json_object_get(jconfig, "vertex");
 	if (vertex && json_is_string(vertex))
 	{
@@ -642,8 +695,42 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	if (fragment && json_is_string(fragment))
 	{
 		const char *value = json_string_value(fragment);
-		config->fragment = value;
+		config->fragments[0] = value;
 	}
+	if (fragment && json_is_array(fragment))
+	{
+		int index = 0;
+		json_t *string;
+		json_array_foreach(fragment, index, string)
+		{
+			if (json_is_string(string))
+			{
+				const char *value = json_string_value(string);
+				config->fragments[index] = value;
+			}
+		}
+	}
+	return 0;
+}
+int segl_loadjsonconfiguration(void *arg, void *entry)
+{
+	json_t *jconfig = entry;
+
+	EGLConfig_t *config = (EGLConfig_t *)arg;
+	EGLConfig_Program_t *prgconfig = &config->programs[0];
+	json_t *programs = json_object_get(jconfig, "programs");
+	if (programs && json_is_array(programs))
+	{
+		json_t *jfield = NULL;
+		int i = 0;
+		json_array_foreach(programs, i, jfield)
+		{
+			prgconfig = &config->programs[i];
+			_segl_loadjsonprogram(jfield, prgconfig);
+		}
+	}
+	else
+		_segl_loadjsonprogram(jconfig, prgconfig);
 	json_t *native = json_object_get(jconfig, "native");
 	if (native && json_is_string(native))
 	{

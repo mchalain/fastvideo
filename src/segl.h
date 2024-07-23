@@ -10,13 +10,22 @@
 	.native = #_native \
 	}
 
+#define MAX_SHADERS 4
+#define MAX_PROGRANS 4
+
+typedef struct EGLConfig_Program_s EGLConfig_Program_t;
+struct EGLConfig_Program_s
+{
+	const char *vertex;
+	const char *fragments[MAX_SHADERS];
+};
+
 typedef struct EGLConfig_s EGLConfig_t;
 struct EGLConfig_s
 {
 	DeviceConf_t parent;
 	const char *native;
-	const char *vertex;
-	const char *fragment;
+	EGLConfig_Program_t programs[MAX_PROGRANS];
 	struct
 	{
 		char *name;
