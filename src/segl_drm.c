@@ -27,13 +27,13 @@ static struct drm_s {
 	drmModeModeInfo *mode;
 	uint32_t crtc_id;
 	uint32_t connector_id;
+	int waiting_for_flip;
 } drm;
 
 struct drm_fb {
 	struct drm_s *drm;
 	struct gbm_bo *bo;
 	uint32_t fb_id;
-	int waiting_for_flip;
 };
 
 static uint32_t find_crtc_for_encoder(const drmModeRes *resources,
@@ -87,13 +87,13 @@ static int init_drm(void)
 	drm.fd = open("/dev/dri/card0", O_RDWR);
 	
 	if (drm.fd < 0) {
-		err("glmotor: could not open drm device");
+		err("segl: could not open drm device");
 		return -1;
 	}
 
 	resources = drmModeGetResources(drm.fd);
 	if (!resources) {
-		err("glmotor: drmModeGetResources failed: %m");
+		err("segl: drmModeGetResources failed: %m");
 		return -1;
 	}
 
@@ -112,7 +112,7 @@ static int init_drm(void)
 		/* we could be fancy and listen for hotplug events and wait for
 		 * a connector..
 		 */
-		err("glmotor: no connected connector!");
+		err("segl: no connected connector!");
 		return -1;
 	}
 
@@ -132,7 +132,7 @@ static int init_drm(void)
 	}
 
 	if (!drm.mode) {
-		err("glmotor: could not find mode!");
+		err("segl: could not find mode!");
 		return -1;
 	}
 
@@ -150,7 +150,7 @@ static int init_drm(void)
 	} else {
 		uint32_t crtc_id = find_crtc_for_connector(resources, connector);
 		if (crtc_id == 0) {
-			err("glmotor: no crtc found!");
+			err("segl: no crtc found!");
 			return -1;
 		}
 
@@ -194,7 +194,7 @@ static struct drm_fb * drm_fb_get_from_bo(struct gbm_bo *bo)
 
 	ret = drmModeAddFB(drm.fd, width, height, 24, 32, stride, handle, &fb->fb_id);
 	if (ret) {
-		err("glmotor: failed to create fb: %m");
+		err("segl: failed to create fb: %m");
 		free(fb);
 		return NULL;
 	}
@@ -234,7 +234,7 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 			GBM_FORMAT_XRGB8888,
 			GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 	if (!gbm.surface) {
-		err("glmotor: failed to create gbm surface");
+		err("segl: failed to create gbm surface");
 		return -1;
 	}
 
@@ -243,7 +243,11 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 
 static int native_fd(EGLNativeWindowType native_win)
 {
+#if 0
 	return drm.fd;
+#else
+	return -1;
+#endif
 }
 
 static struct gbm_bo *old_bo = NULL;
@@ -261,7 +265,7 @@ static int native_flush(EGLNativeWindowType native_win)
 		int ret = drmModeSetCrtc(drm.fd, drm.crtc_id, fb->fb_id, 0, 0,
 				&drm.connector_id, 1, drm.mode);
 		if (ret) {
-			err("glmotor: failed to set mode: %m");
+			err("segl: failed to set mode: %m");
 			return -1;
 		}
 		return 0;
@@ -271,14 +275,18 @@ static int native_flush(EGLNativeWindowType native_win)
 	struct drm_fb *fb;
 	fb = drm_fb_get_from_bo(bo);
 
-	fb->waiting_for_flip = 1;
+	drm.waiting_for_flip = 1;
 	int ret = drmModePageFlip(fb->drm->fd, fb->drm->crtc_id, fb->fb_id,
-			DRM_MODE_PAGE_FLIP_EVENT, &fb->waiting_for_flip);
+			DRM_MODE_PAGE_FLIP_EVENT, &drm.waiting_for_flip);
 	if (ret)
 	{
-		err("glmotor: failed to queue page flip: %m");
+		err("segl: failed to queue page flip: %m");
 		return -1;
 	}
+	/* release last buffer to render on again: */
+	if (old_bo)
+		gbm_surface_release_buffer(surface, old_bo);
+	old_bo = bo;
 
 	return 0;
 }
@@ -286,25 +294,33 @@ static int native_flush(EGLNativeWindowType native_win)
 static int native_sync(EGLNativeWindowType native_win)
 {
 	struct gbm_surface *surface = (struct gbm_surface *)native_win;
-	struct gbm_bo *bo;
-	bo = gbm_surface_lock_front_buffer(surface);
-	struct drm_fb *fb;
-	fb = drm_fb_get_from_bo(bo);
-
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
 			.page_flip_handler = page_flip_handler,
 	};
-	drmHandleEvent(fb->drm->fd, &evctx);
-	if (fb->waiting_for_flip)
+#if 0
+	drmHandleEvent(drm.fd, &evctx);
+	if (drm.waiting_for_flip)
 	{
 		errno = EAGAIN;
 		return -1;
 	}
-	/* release last buffer to render on again: */
-	if (old_bo)
-		gbm_surface_release_buffer(surface, old_bo);
-	old_bo = bo;
+#else
+	fd_set fds;
+	FD_ZERO(&fds);
+	FD_SET(drm.fd, &fds);
+	while (drm.waiting_for_flip) {
+		int ret = select(drm.fd + 1, &fds, NULL, NULL, NULL);
+		if (ret < 0) {
+			err("glmotor: select err: %m");
+			return ret;
+		} else if (ret == 0) {
+			warn("select timeout!");
+			return -1;
+		}
+		drmHandleEvent(drm.fd, &evctx);
+	}
+#endif
 	return 0;
 }
 
