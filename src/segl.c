@@ -41,6 +41,17 @@ struct GLBuffer_s
 	uint32_t size;
 };
 
+typedef struct GLProgram_s GLProgram_t;
+struct GLProgram_s
+{
+	GLuint ID;
+	GLuint vertexArrayID;
+	GLuint vertexBufferObject[3];
+	GLuint in_texture[MAX_BUFFERS];
+	GLuint out_texture[MAX_BUFFERS];
+	GLuint fbID;
+};
+
 typedef struct EGL_s EGL_t;
 struct EGL_s
 {
@@ -52,10 +63,7 @@ struct EGL_s
 	EGLSurface eglsurface;
 	EGLNativeDisplayType native_display;
 	EGLNativeWindowType native_window;
-	GLuint programIDs[MAX_PROGRANS];
-	GLuint framebufferID;
-	GLuint vertexArrayID;
-	GLuint vertexBufferObject[3];
+	GLProgram_t programs[MAX_PROGRANS];
 	GLBuffer_t buffers[MAX_BUFFERS];
 	int curbufferid;
 	int nbuffers;
@@ -315,9 +323,62 @@ static GLuint buildProgramm(EGL_t *dev, const char *vertex, const char *fragment
 	glDeleteShader(vertexID);
 	glDeleteShader(fragmentID);
 
-	glUseProgram(programID);
-
 	return programID;
+}
+
+static int glprog_setup(GLProgram_t *program, EGLConfig_t *config)
+{
+	glUseProgram(program->ID);
+	glClearColor(0.5, 0.5, 0.5, 1.0);
+	glViewport(0, 0, config->parent.width,config->parent.height);
+	glClearDepthf(1.0);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LESS);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glGenVertexArraysOES(1, &program->vertexArrayID);
+	glBindVertexArrayOES(program->vertexArrayID);
+
+	glGenBuffers(1, program->vertexBufferObject);
+
+	GLfloat vertices[] = {
+		-1.0f,  1.0f,  0.0f, // top left
+		-1.0f, -1.0f,  0.0f, // bottom left
+		 1.0f, -1.0f,  0.0f, // bottom right
+		-1.0f,  1.0f,  0.0f, // top left
+		 1.0f, -1.0f,  0.0f, // bottom right
+		 1.0f,  1.0f,  0.0f, // top right
+	};
+	glBindBuffer(GL_ARRAY_BUFFER, program->vertexBufferObject[0]);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	GLint pos = glGetAttribLocation(program->ID, "vPosition");
+	glEnableVertexAttribArray(pos);
+	glVertexAttribPointer(pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+	if (config->texture.name == NULL)
+		config->texture.name = defaulttexturename;
+	GLuint texid;
+	GLint texMap = glGetUniformLocation(program->ID, config->texture.name);
+	glUniform1i(texMap, 0); // GL_TEXTURE0
+	glActiveTexture(GL_TEXTURE0);
+
+	GLuint resolutionID = glGetUniformLocation(program->ID, "vResolution");
+	glUniform2f(resolutionID, (float)config->parent.width, (float)config->parent.height);
+
+	glBindVertexArrayOES(0);
+	return 0;
+}
+
+static int glprog_run(GLProgram_t *program, int bufid)
+{
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glUseProgram(program->ID);
+	glBindVertexArrayOES(program->vertexArrayID);
+
+	glBindTexture(GL_TEXTURE_EXTERNAL_OES, program->in_texture[bufid]);
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
+	return 0;
 }
 
 EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
@@ -421,12 +482,12 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 		EGLConfig_Program_t *prconfig = &config->programs[i];
 		if (i < 1 || (prconfig->vertex && prconfig->fragments[0]))
 		{
-			dev->programIDs[i] = buildProgramm(dev, prconfig->vertex, prconfig->fragments);
-			if (dev->programIDs[i] == -1)
+			dev->programs[i].ID = buildProgramm(dev, prconfig->vertex, prconfig->fragments);
+			if (dev->programs[i].ID == -1)
 				err("segl: program %d loading error", i);
 		}
 	}
-	if (dev->programIDs[0] == -1)
+	if (dev->programs[0].ID == -1)
 	{
 		err("segl: shader loading error");
 		free(dev);
@@ -470,48 +531,11 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	}
 #endif
 
-	glClearColor(0.5, 0.5, 0.5, 1.0);
-	glViewport(0, 0, config->parent.width,config->parent.height);
-	glClearDepthf(1.0);
-	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_LESS);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	glGenVertexArraysOES(1, &dev->vertexArrayID);
-	glBindVertexArrayOES(dev->vertexArrayID);
-
-	glGenBuffers(1, dev->vertexBufferObject);
-
-	GLfloat vertices[] = {
-		-1.0f,  1.0f,  0.0f, // top left
-		-1.0f, -1.0f,  0.0f, // bottom left
-		 1.0f, -1.0f,  0.0f, // bottom right
-		-1.0f,  1.0f,  0.0f, // top left
-		 1.0f, -1.0f,  0.0f, // bottom right
-		 1.0f,  1.0f,  0.0f, // top right
-	};
-	glBindBuffer(GL_ARRAY_BUFFER, dev->vertexBufferObject[0]);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-	GLint pos = glGetAttribLocation(dev->programIDs[0], "vPosition");
-	glEnableVertexAttribArray(pos);
-	glVertexAttribPointer(pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
-	if (config->texture.name == NULL)
-		config->texture.name = defaulttexturename;
-	GLuint texid;
-	GLint texMap = glGetUniformLocation(dev->programIDs[0], config->texture.name);
-	glUniform1i(texMap, 0); // GL_TEXTURE0
-	glActiveTexture(GL_TEXTURE0);
-
-	GLuint resolutionID = glGetUniformLocation(dev->programIDs[0], "vResolution");
-	glUniform2f(resolutionID, (float)config->parent.width, (float)config->parent.height);
+	glprog_setup(&dev->programs[0], config);
 
 	dev->native_window = nwindow;
 	dev->native_display = ndisplay;
 	dev->curbufferid = -1;
-#ifdef USE_VERTEXARRAY
-	glBindVertexArrayOES(0);
-#endif
 	return dev;
 }
 
@@ -556,6 +580,7 @@ static int link_texturedma(EGL_t *dev, int dma_fd, size_t size)
 	dev->buffers[dev->nbuffers].dma_texture = dma_texture;
 	dev->buffers[dev->nbuffers].dma_image = NULL;
 	dev->nbuffers++;
+
 	return 0;
 }
 
@@ -590,6 +615,11 @@ int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 
 int segl_start(EGL_t *dev)
 {
+	// initialize the first program with the input stream
+	for (int i = 0; i < dev->nbuffers; i++)
+	{
+		dev->programs[0].in_texture[i] = dev->buffers[i].dma_texture;
+	}
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
 	dev->curbufferid = -1;
 	return 0;
@@ -617,13 +647,7 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 		err("segl: device not ready %d", dev->curbufferid);
 		return -1;
 	}
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glUseProgram(dev->programIDs[0]);
-	glBindVertexArrayOES(dev->vertexArrayID);
-
-	glBindTexture(GL_TEXTURE_EXTERNAL_OES, dev->buffers[(int)id].dma_texture);
-
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
+	glprog_run(&dev->programs[0], (int)id);
 	dev->curbufferid = (int)id;
 	
 	return dev->native->flush(dev->native_window);
