@@ -214,13 +214,15 @@ static GLuint loadShader(EGL_t *dev, GLenum shadertype, const char *shaderfile, 
 {
 	GLchar* shaderSource = NULL;
 	GLuint shaderID = glCreateShader(shadertype);
+	if (shaderID == 0)
+		return 0;
 
 	GLuint shaderSize = 0;
 	if (shaderfile)
 	{
 		shaderSize = readFile(shaderfile, &shaderSource);
 		if (shaderSource == NULL)
-			return -1;
+			return 0;
 		warn("load dynamic shader:\n%s<=", shaderSource);
 	}
 	else
@@ -228,7 +230,7 @@ static GLuint loadShader(EGL_t *dev, GLenum shadertype, const char *shaderfile, 
 		shaderSource = defaultshader;
 		shaderSize = strlen(shaderSource);
 		if (shaderSource == NULL)
-			return -1;
+			return 0;
 		warn("load default shader:\n%s", shaderSource);
 	}
 	glShaderSource(shaderID, 1, (const GLchar**)(&shaderSource), &shaderSize);
@@ -239,7 +241,7 @@ static GLuint loadShader(EGL_t *dev, GLenum shadertype, const char *shaderfile, 
 	if ( compilationStatus != GL_TRUE )
 	{
 		display_log(shaderID);
-		return -1;
+		return 0;
 	}
 
 	return shaderID;
@@ -248,6 +250,8 @@ static GLuint loadShader(EGL_t *dev, GLenum shadertype, const char *shaderfile, 
 static GLuint loadShaders(EGL_t *dev, GLenum shadertype, const char *shaderfiles[MAX_SHADERS])
 {
 	GLuint shaderID = glCreateShader(shadertype);
+	if (shaderID == 0)
+		return 0;
 
 	GLint nbShaderSources = 0;
 	GLchar* shaderSources[4] = {0};
@@ -259,7 +263,7 @@ static GLuint loadShaders(EGL_t *dev, GLenum shadertype, const char *shaderfiles
 		{
 			shaderSizes[i] = readFile(shaderfiles[i], &shaderSources[i]);
 			if (shaderSources[i] == NULL)
-				return -1;
+				return 0;
 			warn("load dynamic shader:\n%s<=", shaderSources[i]);
 			nbShaderSources++;
 		}
@@ -272,7 +276,7 @@ static GLuint loadShaders(EGL_t *dev, GLenum shadertype, const char *shaderfiles
 	if ( compilationStatus != GL_TRUE )
 	{
 		display_log(shaderID);
-		return -1;
+		return 0;
 	}
 	return shaderID;
 }
@@ -284,10 +288,10 @@ static GLuint buildProgramm(EGL_t *dev, const char *vertex, const char *fragment
 	GLint programState = 0;
 
 	GLuint vertexID = loadShader(dev, GL_VERTEX_SHADER, vertex, defaultvertex);
-	if ( vertexID == -1)
+	if ( vertexID == 0)
 	{
 		err("segl: vertex shader compilation error");
-		return -1;
+		return 0;
 	}
 
 	GLuint fragmentID = 0;
@@ -295,14 +299,19 @@ static GLuint buildProgramm(EGL_t *dev, const char *vertex, const char *fragment
 		fragmentID = loadShader(dev, GL_FRAGMENT_SHADER, fragments[0], defaultfragment);
 	else
 		fragmentID = loadShaders(dev, GL_FRAGMENT_SHADER, fragments);
-	if ( fragmentID == -1)
+	if (fragmentID == 0)
 	{
 		err("segl: fragment shader compilation error");
 		deleteShader(0, vertexID, 0);
-		return -1;
+		return 0;
 	}
 
 	GLuint programID = glCreateProgram();
+	if (programID == 0)
+	{
+		err("");
+		return 0;
+	}
 
 	glAttachShader(programID, vertexID);
 	glAttachShader(programID, fragmentID);
@@ -314,7 +323,7 @@ static GLuint buildProgramm(EGL_t *dev, const char *vertex, const char *fragment
 	{
 		display_log(programID);
 		deleteShader(programID, fragmentID, vertexID);
-		return -1;
+		return 0;
 	}
 
     glDetachShader(programID, vertexID);
@@ -483,11 +492,11 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 		if (i < 1 || (prconfig->vertex && prconfig->fragments[0]))
 		{
 			dev->programs[i].ID = buildProgramm(dev, prconfig->vertex, prconfig->fragments);
-			if (dev->programs[i].ID == -1)
+			if (dev->programs[i].ID == 0)
 				err("segl: program %d loading error", i);
 		}
 	}
-	if (dev->programs[0].ID == -1)
+	if (dev->programs[0].ID == 0)
 	{
 		err("segl: shader loading error");
 		free(dev);
@@ -691,6 +700,11 @@ DeviceConf_t * segl_createconfig()
 
 static int _segl_loadjsonprogram(json_t *jconfig, EGLConfig_Program_t *config)
 {
+	json_t *disable = json_object_get(jconfig, "disable");
+	if (disable && json_is_boolean(disable) && json_is_true(disable))
+	{
+		return -1;
+	}
 	json_t *vertex = json_object_get(jconfig, "vertex");
 	if (vertex && json_is_string(vertex))
 	{
