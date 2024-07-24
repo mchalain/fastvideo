@@ -338,12 +338,6 @@ static GLuint buildProgramm(EGL_t *dev, const char *vertex, const char *fragment
 static int glprog_setup(GLProgram_t *program, EGLConfig_t *config)
 {
 	glUseProgram(program->ID);
-	glClearColor(0.5, 0.5, 0.5, 1.0);
-	glViewport(0, 0, config->parent.width,config->parent.height);
-	glClearDepthf(1.0);
-	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_LESS);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glGenVertexArraysOES(1, &program->vertexArrayID);
 	glBindVertexArrayOES(program->vertexArrayID);
@@ -442,7 +436,7 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 		EGL_GREEN_SIZE, 8,
 		EGL_BLUE_SIZE, 8,
 		EGL_ALPHA_SIZE, 8,
-		EGL_DEPTH_SIZE, 16,
+		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
 		EGL_NONE
 	};
@@ -625,6 +619,8 @@ int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 
 int segl_start(EGL_t *dev)
 {
+	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
+
 	// initialize the first program with the input stream
 	for (int i = 0; i < dev->nbuffers; i++)
 	{
@@ -657,7 +653,11 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 		err("segl: device not ready %d", dev->curbufferid);
 		return -1;
 	}
+	glClearColor(0.5, 0.5, 0.5, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
+
 	glprog_run(&dev->programs[0], (int)id);
+
 	dev->curbufferid = (int)id;
 	
 	return dev->native->flush(dev->native_window);
