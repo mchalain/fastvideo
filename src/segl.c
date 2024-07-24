@@ -486,21 +486,22 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	dev->eglcontext = eglContext;
 	dev->eglsurface = eglSurface;
 
-	for (int i = 0; i < MAX_PROGRANS; i++)
+	for (int i = 0, prg = 0; i < MAX_PROGRANS; i++)
 	{
 		EGLConfig_Program_t *prconfig = &config->programs[i];
-		if (i < 1 || (prconfig->vertex && prconfig->fragments[0]))
+		if (prconfig->vertex && prconfig->fragments[0])
 		{
-			dev->programs[i].ID = buildProgramm(dev, prconfig->vertex, prconfig->fragments);
-			if (dev->programs[i].ID == 0)
+			dev->programs[prg].ID = buildProgramm(dev, prconfig->vertex, prconfig->fragments);
+			if (dev->programs[prg].ID == 0)
 				err("segl: program %d loading error", i);
+			else
+				prg++;
 		}
 	}
 	if (dev->programs[0].ID == 0)
 	{
-		err("segl: shader loading error");
-		free(dev);
-		return NULL;
+		// The first program may use the default shaders
+		dev->programs[0].ID = buildProgramm(dev, NULL, NULL);
 	}
 	eglCreateImageKHR = (void *) eglGetProcAddress("eglCreateImageKHR");
 	if(eglCreateImageKHR == NULL)
