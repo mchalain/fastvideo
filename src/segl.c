@@ -33,6 +33,7 @@ struct GLBuffer_s
 	uint32_t fb_id;
 	int dma_fd;
 	int egl_fd;
+	GLenum textype;
 	GLuint dma_texture;
 	EGLImageKHR dma_image;
 	uint32_t *memory;
@@ -47,9 +48,13 @@ struct GLProgram_s
 	GLuint ID;
 	GLuint vertexArrayID;
 	GLuint vertexBufferObject[3];
+	char *in_texturename;
+	GLenum in_textype;
 	GLuint in_texture[MAX_BUFFERS];
 	GLuint out_texture[MAX_BUFFERS];
 	GLuint fbID;
+	GLfloat width;
+	GLfloat height;
 };
 
 typedef struct EGL_s EGL_t;
@@ -78,24 +83,27 @@ PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorag
 PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = NULL;
 PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = NULL;
 
-#ifdef GLESV3
+//#define GLSLV300
+
+#ifdef GLSLV300
 static GLchar defaultvertex[] = "#version 300 es \n\
 layout(location = 0) in vec3 vPosition;\n\
-layout(location = 1) in vec2 vUV;\n\
-varying vec2 texUV;\n\
+out vec2 texUV;\n\
 \n\
 void main (void)\n\
 {\n\
 	gl_Position = vec4(vPosition, 1);\n\
-	texUV = vUV;\n\
+	texUV = (vec2(0.5, 0.5) - vPosition.xy / 2.0);\n\
 }\n\
 ";
 static GLchar defaultfragment[] = "#version 300 es\n\
 precision mediump float;\n\
 uniform sampler2D vTexture;\n\
-varying vec2 texUV;\n\
+in vec2 texUV;\n\
+out vec4 fragColor;\n\
+\n\
 void main() {\n\
-	gl_FragColor = texture((vTexture, texUV);\n\
+	fragColor = texture(vTexture, texUV);\n\
 }\n\
 ";
 #else
@@ -105,7 +113,7 @@ static GLchar defaultvertex[] = ""
 "\n"
 "\n""void main (void)"
 "\n""{"
-"\n""	texUV = (vec2(0.5, 0.5) - vPosition.xy / 2.0);"
+"\n""	texUV = vec2(0.5 + vPosition.x / 2.0, 0.5 - vPosition.y / 2.0);"
 "\n""	gl_Position = vec4(vPosition,1.);"
 "\n""}"
 "\n";
@@ -295,7 +303,9 @@ static GLuint buildProgramm(EGL_t *dev, const char *vertex, const char *fragment
 	}
 
 	GLuint fragmentID = 0;
-	if (fragments[1] == NULL)
+	if (fragments == NULL)
+		fragmentID = loadShader(dev, GL_FRAGMENT_SHADER, NULL, defaultfragment);
+	else if (fragments[1] == NULL)
 		fragmentID = loadShader(dev, GL_FRAGMENT_SHADER, fragments[0], defaultfragment);
 	else
 		fragmentID = loadShaders(dev, GL_FRAGMENT_SHADER, fragments);
@@ -337,6 +347,9 @@ static GLuint buildProgramm(EGL_t *dev, const char *vertex, const char *fragment
 
 static int glprog_setup(GLProgram_t *program, EGLConfig_t *config)
 {
+	program->width = config->parent.width;
+	program->height = config->parent.height;
+
 	glUseProgram(program->ID);
 
 	glGenVertexArraysOES(1, &program->vertexArrayID);
@@ -366,22 +379,86 @@ static int glprog_setup(GLProgram_t *program, EGLConfig_t *config)
 	glActiveTexture(GL_TEXTURE0);
 
 	GLuint resolutionID = glGetUniformLocation(program->ID, "vResolution");
-	glUniform2f(resolutionID, (float)config->parent.width, (float)config->parent.height);
+	glUniform2f(resolutionID, program->width, program->height);
 
 	glBindVertexArrayOES(0);
 	return 0;
 }
 
+static GLuint *glprog_getouttexture(GLProgram_t *program, GLuint nbtex)
+{
+	if (program->out_texture[0])
+	{
+		return program->out_texture;
+	}
+	glGenFramebuffers(1, &program->fbID);
+	glBindFramebuffer(GL_FRAMEBUFFER, program->fbID);
+	glEnable(GL_TEXTURE_2D);
+	for (int i = 0; i < nbtex; i++)
+	{
+		glGenTextures(1, &program->out_texture[i]);
+		glBindTexture(GL_TEXTURE_2D, program->out_texture[i]);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, program->width, program->height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
+	return program->out_texture;
+}
+
+static int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLuint *in_texture)
+{
+	for (int i = 0; i < nbtex; i++)
+	{
+		program->in_texture[i] = in_texture[i];
+	}
+	program->in_textype = type;
+}
+
 static int glprog_run(GLProgram_t *program, int bufid)
 {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glUseProgram(program->ID);
-	glBindVertexArrayOES(program->vertexArrayID);
+	if (program->fbID)
+	{
+		glBindFramebuffer(GL_FRAMEBUFFER, program->fbID);
+		glBindTexture(GL_TEXTURE_2D, program->out_texture[bufid]);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+					program->out_texture[bufid], 0);
+	}
 
-	glBindTexture(GL_TEXTURE_EXTERNAL_OES, program->in_texture[bufid]);
+	glBindVertexArrayOES(program->vertexArrayID);
+	glUseProgram(program->ID);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(program->in_textype, program->in_texture[bufid]);
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
+
+	if (program->fbID != -1)
+	{
+		GLint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		if (status != GL_FRAMEBUFFER_COMPLETE)
+		{
+			err("framebuffer incomplet");
+			//return -1;
+		}
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 0, 0, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+
 	return 0;
+}
+
+static void glprog_destroy(GLProgram_t *program)
+{
+	if (program->fbID)
+	{
+		glDeleteFramebuffers(1, &program->fbID);
+		for (int i = 0; i < MAX_BUFFERS; i++)
+		{
+			glDeleteTextures(1, &program->out_texture[i]);
+		}
+	}
 }
 
 EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
@@ -427,7 +504,9 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 		err("segl: failed to bind api EGL_OPENGL_ES_API");
 		return NULL;
 	}
+#ifndef GLSLV300
 	glEnable(GL_TEXTURE_EXTERNAL_OES);
+#endif
 	EGLint num_config;
 	eglGetConfigs(eglDisplay, NULL, 0, &num_config);
 
@@ -480,22 +559,21 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	dev->eglcontext = eglContext;
 	dev->eglsurface = eglSurface;
 
-	for (int i = 0, prg = 0; i < MAX_PROGRANS; i++)
+	int nbprg = 1;
+	// The first program MUST use the default shaders
+	// The texture is EXTERNAL_OES which is incompatible with FRAMEBUFFERS
+	dev->programs[0].ID = buildProgramm(dev, NULL, NULL);
+	for (int i = 0; i < MAX_PROGRANS; i++)
 	{
 		EGLConfig_Program_t *prconfig = &config->programs[i];
 		if (prconfig->vertex && prconfig->fragments[0])
 		{
-			dev->programs[prg].ID = buildProgramm(dev, prconfig->vertex, prconfig->fragments);
-			if (dev->programs[prg].ID == 0)
+			dev->programs[nbprg].ID = buildProgramm(dev, prconfig->vertex, prconfig->fragments);
+			if (dev->programs[nbprg].ID == 0)
 				err("segl: program %d loading error", i);
 			else
-				prg++;
+				nbprg++;
 		}
-	}
-	if (dev->programs[0].ID == 0)
-	{
-		// The first program may use the default shaders
-		dev->programs[0].ID = buildProgramm(dev, NULL, NULL);
 	}
 	eglCreateImageKHR = (void *) eglGetProcAddress("eglCreateImageKHR");
 	if(eglCreateImageKHR == NULL)
@@ -535,7 +613,11 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	}
 #endif
 
-	glprog_setup(&dev->programs[0], config);
+	for (int i = 0; i < nbprg; i++)
+	{
+		GLProgram_t *program = &dev->programs[i];
+		glprog_setup(program, config);
+	}
 
 	dev->native_window = nwindow;
 	dev->native_display = ndisplay;
@@ -572,10 +654,15 @@ static int link_texturedma(EGL_t *dev, int dma_fd, size_t size)
 	GLuint dma_texture;
 	glGenTextures(1, &dma_texture);
 
-	glBindTexture(GL_TEXTURE_EXTERNAL_OES, dma_texture);
-	glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, dma_image);
+#ifdef GLSLV300
+	GLenum textype = GL_TEXTURE_2D;
+#else
+	GLenum textype = GL_TEXTURE_EXTERNAL_OES;
+#endif
+	glBindTexture(textype, dma_texture);
+	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glEGLImageTargetTexture2DOES(textype, dma_image);
 	eglDestroyImageKHR(dev->egldisplay, dma_image);
 
 	dev->buffers[dev->nbuffers].size = size;
@@ -583,6 +670,7 @@ static int link_texturedma(EGL_t *dev, int dma_fd, size_t size)
 	dev->buffers[dev->nbuffers].dma_fd = dma_fd;
 	dev->buffers[dev->nbuffers].dma_texture = dma_texture;
 	dev->buffers[dev->nbuffers].dma_image = NULL;
+	dev->buffers[dev->nbuffers].textype = textype;
 	dev->nbuffers++;
 
 	return 0;
@@ -622,10 +710,19 @@ int segl_start(EGL_t *dev)
 	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
 
 	// initialize the first program with the input stream
+	GLuint textures[MAX_BUFFERS] = {0};
 	for (int i = 0; i < dev->nbuffers; i++)
 	{
-		dev->programs[0].in_texture[i] = dev->buffers[i].dma_texture;
+		textures[i] = dev->buffers[i].dma_texture;
 	}
+	glprog_setintexture(&dev->programs[0], dev->buffers[0].textype, dev->nbuffers, textures);
+	for (int i = 1; dev->programs[i].ID; i++)
+	{
+		GLuint *textures;
+		textures = glprog_getouttexture(&dev->programs[i - 1], dev->nbuffers);
+		glprog_setintexture(&dev->programs[i], GL_TEXTURE_2D, dev->nbuffers, textures);
+	}
+
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
 	dev->curbufferid = -1;
 	return 0;
@@ -653,10 +750,14 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 		err("segl: device not ready %d", dev->curbufferid);
 		return -1;
 	}
+
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glprog_run(&dev->programs[0], (int)id);
+	for (int i = 0; i < MAX_PROGRANS && dev->programs[i].ID; i++)
+	{
+		glprog_run(&dev->programs[i], (int)id);
+	}
 
 	dev->curbufferid = (int)id;
 	
@@ -668,7 +769,8 @@ int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
 	int id = dev->curbufferid;
 	dev->curbufferid = -1;
 	glUseProgram(0);
-	glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+	glBindTexture(dev->buffers[0].textype, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
 	if (dev->native->sync(dev->native_window) < 0)
 		return -1;
 	
