@@ -50,8 +50,8 @@ struct GLProgram_s
 	GLuint vertexBufferObject[3];
 	char *in_texturename;
 	GLenum in_textype;
-	GLuint in_texture[MAX_BUFFERS];
-	GLuint out_texture[MAX_BUFFERS];
+	GLBuffer_t *in_textures;
+	GLBuffer_t out_textures[MAX_BUFFERS];
 	GLuint fbID;
 	GLfloat width;
 	GLfloat height;
@@ -385,34 +385,33 @@ static int glprog_setup(GLProgram_t *program, EGLConfig_t *config)
 	return 0;
 }
 
-static GLuint *glprog_getouttexture(GLProgram_t *program, GLuint nbtex)
+static GLBuffer_t *glprog_getouttexture(GLProgram_t *program, GLuint nbtex)
 {
-	if (program->out_texture[0])
+	if (program->out_textures[0].dma_texture)
 	{
-		return program->out_texture;
+		return program->out_textures;
 	}
 	glGenFramebuffers(1, &program->fbID);
 	glBindFramebuffer(GL_FRAMEBUFFER, program->fbID);
 	glEnable(GL_TEXTURE_2D);
+	GLuint texture = 0;
 	for (int i = 0; i < nbtex; i++)
 	{
-		glGenTextures(1, &program->out_texture[i]);
-		glBindTexture(GL_TEXTURE_2D, program->out_texture[i]);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, program->width, program->height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, program->width, program->height, 0, GL_RGBA,  GL_UNSIGNED_BYTE, NULL);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		program->out_textures[i].dma_texture = texture;
 	}
-	return program->out_texture;
+	return program->out_textures;
 }
 
-static int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLuint *in_texture)
+static int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffer_t *in_textures)
 {
-	for (int i = 0; i < nbtex; i++)
-	{
-		program->in_texture[i] = in_texture[i];
-	}
+	program->in_textures = in_textures;
 	program->in_textype = type;
 }
 
@@ -421,16 +420,16 @@ static int glprog_run(GLProgram_t *program, int bufid)
 	if (program->fbID)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, program->fbID);
-		glBindTexture(GL_TEXTURE_2D, program->out_texture[bufid]);
+		glBindTexture(GL_TEXTURE_2D, program->out_textures[bufid].dma_texture);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-					program->out_texture[bufid], 0);
+					program->out_textures[bufid].dma_texture, 0);
 	}
 
 	glBindVertexArrayOES(program->vertexArrayID);
 	glUseProgram(program->ID);
 
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(program->in_textype, program->in_texture[bufid]);
+	glBindTexture(program->in_textype, program->in_textures[bufid].dma_texture);
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
 
@@ -456,7 +455,7 @@ static void glprog_destroy(GLProgram_t *program)
 		glDeleteFramebuffers(1, &program->fbID);
 		for (int i = 0; i < MAX_BUFFERS; i++)
 		{
-			glDeleteTextures(1, &program->out_texture[i]);
+			glDeleteTextures(1, &program->out_textures[i].dma_texture);
 		}
 	}
 }
@@ -710,15 +709,10 @@ int segl_start(EGL_t *dev)
 	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
 
 	// initialize the first program with the input stream
-	GLuint textures[MAX_BUFFERS] = {0};
-	for (int i = 0; i < dev->nbuffers; i++)
-	{
-		textures[i] = dev->buffers[i].dma_texture;
-	}
-	glprog_setintexture(&dev->programs[0], dev->buffers[0].textype, dev->nbuffers, textures);
+	glprog_setintexture(&dev->programs[0], dev->buffers[0].textype, dev->nbuffers, dev->buffers);
 	for (int i = 1; dev->programs[i].ID; i++)
 	{
-		GLuint *textures;
+		GLBuffer_t *textures;
 		textures = glprog_getouttexture(&dev->programs[i - 1], dev->nbuffers);
 		glprog_setintexture(&dev->programs[i], GL_TEXTURE_2D, dev->nbuffers, textures);
 	}
