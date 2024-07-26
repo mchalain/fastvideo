@@ -38,6 +38,7 @@ struct EGLConfig_Program_s
 	const char *vertex;
 	const char *fragments[MAX_SHADERS];
 	const char *tex_name;
+	EGLConfig_Program_t *next;
 };
 
 typedef struct GLProgram_s GLProgram_t;
@@ -47,7 +48,7 @@ struct EGLConfig_s
 {
 	DeviceConf_t parent;
 	const char *native;
-	EGLConfig_Program_t programs[MAX_PROGRANS];
+	EGLConfig_Program_t *programs;
 };
 
 typedef struct EGL_s EGL_t;

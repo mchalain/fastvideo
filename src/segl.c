@@ -145,17 +145,15 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	// The first program MUST use the default shaders
 	// The texture is EXTERNAL_OES which is incompatible with FRAMEBUFFERS
 	dev->programs[0] = glprog_create(NULL);
-	for (int i = 0; i < MAX_PROGRANS - 1; i++)
+	EGLConfig_Program_t *prgconfig = config->programs;
+	while (prgconfig)
 	{
-		EGLConfig_Program_t *prconfig = &config->programs[i];
-		if (prconfig->vertex && prconfig->fragments[0])
-		{
-			dev->programs[nbprg] = glprog_create(prconfig);
-			if (dev->programs[nbprg] == NULL)
-				err("segl: program %d loading error", i);
-			else
-				nbprg++;
-		}
+		dev->programs[nbprg] = glprog_create(prgconfig);
+		if (dev->programs[nbprg] == NULL)
+			err("segl: program loading error");
+		else
+			nbprg++;
+		prgconfig = prgconfig->next;
 	}
 	eglCreateImageKHR = (void *) eglGetProcAddress("eglCreateImageKHR");
 	if(eglCreateImageKHR == NULL)
@@ -375,20 +373,8 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	json_t *jconfig = entry;
 	EGLConfig_t *config = (EGLConfig_t *)arg;
 
-	void *prgconfig = &config->programs[0];
-	json_t *programs = json_object_get(jconfig, "programs");
-	if (programs && json_is_array(programs))
-	{
-		json_t *jfield = NULL;
-		int i = 0;
-		json_array_foreach(programs, i, jfield)
-		{
-			prgconfig = &config->programs[i];
-			glprog_loadjsonconfiguration(prgconfig, jfield);
-		}
-	}
-	else
-		glprog_loadjsonconfiguration(prgconfig, jconfig);
+	json_t *jprograms = json_object_get(jconfig, "programs");
+	glprog_loadjsonconfiguration(&config->programs, jprograms);
 	json_t *native = json_object_get(jconfig, "native");
 	if (native && json_is_string(native))
 	{

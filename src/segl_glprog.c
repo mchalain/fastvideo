@@ -11,6 +11,7 @@
 typedef struct GLProgram_s GLProgram_t;
 struct GLProgram_s
 {
+	EGLConfig_Program_t *config;
 	GLuint ID;
 	GLuint vertexArrayID;
 	GLuint vertexBufferObject[3];
@@ -304,6 +305,7 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config)
 	GLProgram_t *program = calloc(1, sizeof(*program));
 	program->ID = programID;
 	program->in_texturename = defaulttexturename;
+	program->config = config;
 	if (config && config->tex_name)
 		program->in_texturename = config->tex_name;
 
@@ -432,17 +434,15 @@ void glprog_destroy(GLProgram_t *program)
 			glDeleteTextures(1, &program->out_textures[i].dma_texture);
 		}
 	}
+	free(program->config);
 	free(program);
 }
 
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 
-int glprog_loadjsonconfiguration(void *arg, void *entry)
+int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jconfig)
 {
-	json_t *jconfig = entry;
-	EGLConfig_Program_t *config = (EGLConfig_Program_t *)arg;
-
 	json_t *disable = json_object_get(jconfig, "disable");
 	if (disable && json_is_boolean(disable) && json_is_true(disable))
 	{
@@ -472,6 +472,40 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 				config->fragments[index] = value;
 			}
 		}
+	}
+	return 0;
+}
+
+int glprog_loadjsonconfiguration(void *arg, void *entry)
+{
+	// This will inverse the list of programs before usage
+	EGLConfig_Program_t *first = NULL;
+	EGLConfig_Program_t *previous = NULL;
+	json_t *jconfig = entry;
+	if (jconfig && json_is_array(jconfig))
+	{
+		json_t *jfield = NULL;
+		int i = 0;
+		json_array_foreach(jconfig, i, jfield)
+		{
+			EGLConfig_Program_t *config = calloc(1, sizeof(*config));
+			if (first == NULL)
+				first = config;
+			if (previous)
+				previous->next = config;
+			previous = config;
+			_glprog_loadjsonconfiguration(config, jfield);
+		}
+	}
+	else if (jconfig && json_is_object(jconfig))
+	{
+		first = calloc(1, sizeof(*first));
+		_glprog_loadjsonconfiguration(first, jconfig);
+	}
+	if (arg != NULL)
+	{
+		EGLConfig_Program_t **prgconfig = arg;
+		*prgconfig = first;
 	}
 	return 0;
 }
