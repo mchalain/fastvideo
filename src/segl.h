@@ -11,13 +11,14 @@
 	}
 
 #define MAX_SHADERS 4
-#define MAX_PROGRANS 4
+#define MAX_PROGRANS 5
 
 typedef struct EGLConfig_Program_s EGLConfig_Program_t;
 struct EGLConfig_Program_s
 {
 	const char *vertex;
 	const char *fragments[MAX_SHADERS];
+	const char *tex_name;
 };
 
 typedef struct EGLConfig_s EGLConfig_t;
@@ -26,10 +27,6 @@ struct EGLConfig_s
 	DeviceConf_t parent;
 	const char *native;
 	EGLConfig_Program_t programs[MAX_PROGRANS];
-	struct
-	{
-		char *name;
-	} texture;
 };
 
 typedef struct EGL_s EGL_t;

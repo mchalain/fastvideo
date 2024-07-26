@@ -19,8 +19,6 @@ extern EGLNative_t *eglnative_drm;
 extern EGLNative_t *eglnative_x11;
 #endif
 
-#define USE_VERTEXARRAY
-
 #define MAX_BUFFERS 4
 
 #ifndef FOURCC
@@ -48,7 +46,7 @@ struct GLProgram_s
 	GLuint ID;
 	GLuint vertexArrayID;
 	GLuint vertexBufferObject[3];
-	char *in_texturename;
+	const char *in_texturename;
 	GLenum in_textype;
 	GLBuffer_t *in_textures;
 	GLBuffer_t out_textures[MAX_BUFFERS];
@@ -68,7 +66,7 @@ struct EGL_s
 	EGLSurface eglsurface;
 	EGLNativeDisplayType native_display;
 	EGLNativeWindowType native_window;
-	GLProgram_t programs[MAX_PROGRANS];
+	GLProgram_t *programs[MAX_PROGRANS];
 	GLBuffer_t buffers[MAX_BUFFERS];
 	int curbufferid;
 	int nbuffers;
@@ -218,7 +216,7 @@ static void deleteShader(GLuint programID, GLuint fragmentID, GLuint vertexID)
 		glDeleteShader(vertexID);
 }
 
-static GLuint loadShader(EGL_t *dev, GLenum shadertype, const char *shaderfile, const char *defaultshader)
+static GLuint loadShader(GLenum shadertype, const char *shaderfile, const char *defaultshader)
 {
 	GLchar* shaderSource = NULL;
 	GLuint shaderID = glCreateShader(shadertype);
@@ -255,7 +253,7 @@ static GLuint loadShader(EGL_t *dev, GLenum shadertype, const char *shaderfile, 
 	return shaderID;
 }
 
-static GLuint loadShaders(EGL_t *dev, GLenum shadertype, const char *shaderfiles[MAX_SHADERS])
+static GLuint loadShaders(GLenum shadertype, const char *shaderfiles[MAX_SHADERS])
 {
 	GLuint shaderID = glCreateShader(shadertype);
 	if (shaderID == 0)
@@ -289,13 +287,13 @@ static GLuint loadShaders(EGL_t *dev, GLenum shadertype, const char *shaderfiles
 	return shaderID;
 }
 
-static GLuint buildProgramm(EGL_t *dev, const char *vertex, const char *fragments[MAX_SHADERS])
+static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADERS])
 {
 	GLchar* vertexSource = NULL;
 	GLchar* fragmentSource = NULL;
 	GLint programState = 0;
 
-	GLuint vertexID = loadShader(dev, GL_VERTEX_SHADER, vertex, defaultvertex);
+	GLuint vertexID = loadShader(GL_VERTEX_SHADER, vertex, defaultvertex);
 	if ( vertexID == 0)
 	{
 		err("segl: vertex shader compilation error");
@@ -304,11 +302,11 @@ static GLuint buildProgramm(EGL_t *dev, const char *vertex, const char *fragment
 
 	GLuint fragmentID = 0;
 	if (fragments == NULL)
-		fragmentID = loadShader(dev, GL_FRAGMENT_SHADER, NULL, defaultfragment);
+		fragmentID = loadShader(GL_FRAGMENT_SHADER, NULL, defaultfragment);
 	else if (fragments[1] == NULL)
-		fragmentID = loadShader(dev, GL_FRAGMENT_SHADER, fragments[0], defaultfragment);
+		fragmentID = loadShader(GL_FRAGMENT_SHADER, fragments[0], defaultfragment);
 	else
-		fragmentID = loadShaders(dev, GL_FRAGMENT_SHADER, fragments);
+		fragmentID = loadShaders(GL_FRAGMENT_SHADER, fragments);
 	if (fragmentID == 0)
 	{
 		err("segl: fragment shader compilation error");
@@ -345,10 +343,41 @@ static GLuint buildProgramm(EGL_t *dev, const char *vertex, const char *fragment
 	return programID;
 }
 
-static int glprog_setup(GLProgram_t *program, EGLConfig_t *config)
+GLProgram_t *glprog_create(EGLConfig_Program_t *config)
 {
-	program->width = config->parent.width;
-	program->height = config->parent.height;
+	GLuint programID = 0;
+	if (config)
+		programID = buildProgramm(config->vertex, config->fragments);
+	else
+		programID = buildProgramm(NULL, NULL);
+	if (!programID)
+	{
+		return NULL;
+	}
+	GLProgram_t *program = calloc(1, sizeof(*program));
+	program->ID = programID;
+	program->in_texturename = defaulttexturename;
+	if (config && config->tex_name)
+		program->in_texturename = config->tex_name;
+
+	glGenVertexArraysOES = (void *) eglGetProcAddress("glGenVertexArraysOES");
+	if(glGenVertexArraysOES == NULL)
+	{
+		return NULL;
+	}
+	glBindVertexArrayOES = (void *) eglGetProcAddress("glBindVertexArrayOES");
+	if(glBindVertexArrayOES == NULL)
+	{
+		return NULL;
+	}
+
+	return program;
+}
+
+static int glprog_setup(GLProgram_t *program, GLuint width, GLuint height)
+{
+	program->width = width;
+	program->height = height;
 
 	glUseProgram(program->ID);
 
@@ -371,10 +400,8 @@ static int glprog_setup(GLProgram_t *program, EGLConfig_t *config)
 	glEnableVertexAttribArray(pos);
 	glVertexAttribPointer(pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
-	if (config->texture.name == NULL)
-		config->texture.name = defaulttexturename;
 	GLuint texid;
-	GLint texMap = glGetUniformLocation(program->ID, config->texture.name);
+	GLint texMap = glGetUniformLocation(program->ID, program->in_texturename);
 	glUniform1i(texMap, 0); // GL_TEXTURE0
 	glActiveTexture(GL_TEXTURE0);
 
@@ -438,7 +465,7 @@ static int glprog_run(GLProgram_t *program, int bufid)
 		GLint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 		if (status != GL_FRAMEBUFFER_COMPLETE)
 		{
-			err("framebuffer incomplet");
+			err("framebuffer %u incomplet %#x", program->fbID, status);
 			//return -1;
 		}
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 0, 0, 0);
@@ -458,6 +485,7 @@ static void glprog_destroy(GLProgram_t *program)
 			glDeleteTextures(1, &program->out_textures[i].dma_texture);
 		}
 	}
+	free(program);
 }
 
 EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
@@ -561,14 +589,14 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	int nbprg = 1;
 	// The first program MUST use the default shaders
 	// The texture is EXTERNAL_OES which is incompatible with FRAMEBUFFERS
-	dev->programs[0].ID = buildProgramm(dev, NULL, NULL);
-	for (int i = 0; i < MAX_PROGRANS; i++)
+	dev->programs[0] = glprog_create(NULL);
+	for (int i = 0; i < MAX_PROGRANS - 1; i++)
 	{
 		EGLConfig_Program_t *prconfig = &config->programs[i];
 		if (prconfig->vertex && prconfig->fragments[0])
 		{
-			dev->programs[nbprg].ID = buildProgramm(dev, prconfig->vertex, prconfig->fragments);
-			if (dev->programs[nbprg].ID == 0)
+			dev->programs[nbprg] = glprog_create(prconfig);
+			if (dev->programs[nbprg] == NULL)
 				err("segl: program %d loading error", i);
 			else
 				nbprg++;
@@ -599,23 +627,11 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	{
 		return NULL;
 	}
-#ifdef USE_VERTEXARRAY
-	glGenVertexArraysOES = (void *) eglGetProcAddress("glGenVertexArraysOES");
-	if(glGenVertexArraysOES == NULL)
-	{
-		return NULL;
-	}
-	glBindVertexArrayOES = (void *) eglGetProcAddress("glBindVertexArrayOES");
-	if(glBindVertexArrayOES == NULL)
-	{
-		return NULL;
-	}
-#endif
 
-	for (int i = 0; i < nbprg; i++)
+	for (int i = 0; dev->programs[i]; i++)
 	{
-		GLProgram_t *program = &dev->programs[i];
-		glprog_setup(program, config);
+		GLProgram_t *program = dev->programs[i];
+		glprog_setup(program, config->parent.width, config->parent.height);
 	}
 
 	dev->native_window = nwindow;
@@ -709,12 +725,12 @@ int segl_start(EGL_t *dev)
 	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
 
 	// initialize the first program with the input stream
-	glprog_setintexture(&dev->programs[0], dev->buffers[0].textype, dev->nbuffers, dev->buffers);
-	for (int i = 1; dev->programs[i].ID; i++)
+	glprog_setintexture(dev->programs[0], dev->buffers[0].textype, dev->nbuffers, dev->buffers);
+	for (int i = 1; dev->programs[i]; i++)
 	{
 		GLBuffer_t *textures;
-		textures = glprog_getouttexture(&dev->programs[i - 1], dev->nbuffers);
-		glprog_setintexture(&dev->programs[i], GL_TEXTURE_2D, dev->nbuffers, textures);
+		textures = glprog_getouttexture(dev->programs[i - 1], dev->nbuffers);
+		glprog_setintexture(dev->programs[i], GL_TEXTURE_2D, dev->nbuffers, textures);
 	}
 
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
@@ -748,9 +764,9 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	for (int i = 0; i < MAX_PROGRANS && dev->programs[i].ID; i++)
+	for (int i = 0; dev->programs[i]; i++)
 	{
-		glprog_run(&dev->programs[i], (int)id);
+		glprog_run(dev->programs[i], (int)id);
 	}
 
 	dev->curbufferid = (int)id;
@@ -778,6 +794,10 @@ int segl_fd(EGL_t *dev)
 
 void segl_destroy(EGL_t *dev)
 {
+	for (int i = 0; dev->programs[i]; i++)
+	{
+		glprog_destroy(dev->programs[i]);
+	}
 	eglDestroySurface(dev->egldisplay, dev->eglsurface);
 	eglDestroyContext(dev->egldisplay, dev->eglcontext);
 	dev->native->destroy(dev->native_display);
