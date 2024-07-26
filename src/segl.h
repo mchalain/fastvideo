@@ -33,6 +33,7 @@ struct GLBuffer_s
 	uint32_t size;
 };
 
+typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
 typedef struct EGLConfig_Program_s EGLConfig_Program_t;
 struct EGLConfig_Program_s
 {
@@ -40,6 +41,7 @@ struct EGLConfig_Program_s
 	const char *fragments[MAX_SHADERS];
 	const char *tex_name;
 	EGLConfig_Program_t *next;
+	GLProgram_Uniform_t *controls;
 };
 
 typedef struct GLProgram_s GLProgram_t;
@@ -83,17 +85,22 @@ int glprog_setup(GLProgram_t *program, GLuint width, GLuint height);
 GLBuffer_t *glprog_getouttexture(GLProgram_t *program, GLuint nbtex);
 int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffer_t *in_textures);
 int glprog_run(GLProgram_t *program, int bufid);
+int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
 void glprog_destroy(GLProgram_t *program);
 
 DeviceConf_t * segl_createconfig();
 
 #ifdef HAVE_JANSSON
+int segl_loadjsonsettings(EGL_t *dev, void *jconfig);
 int segl_loadjsonconfiguration(void *arg, void *entry);
 
+#define segl_loadsettings segl_loadjsonsettings
 #define segl_loadconfiguration segl_loadjsonconfiguration
 
+int glprog_loadjsonsetting(GLProgram_t *program, void *entry);
 int glprog_loadjsonconfiguration(void *arg, void *entry);
 #else
+#define segl_loadsettings NULL
 #define segl_loadconfiguration NULL
 #endif
 

@@ -339,6 +339,11 @@ DeviceConf_t * segl_createconfig()
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 
+int segl_loadjsonsettings(EGL_t *dev, void *jconfig)
+{
+	return glprog_loadjsonsetting(dev->programs, jconfig);
+}
+
 int segl_loadjsonconfiguration(void *arg, void *entry)
 {
 	json_t *jconfig = entry;
