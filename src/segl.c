@@ -30,7 +30,7 @@ struct EGL_s
 	EGLSurface eglsurface;
 	EGLNativeDisplayType native_display;
 	EGLNativeWindowType native_window;
-	GLProgram_t *programs[MAX_PROGRANS];
+	GLProgram_t *programs;
 	GLBuffer_t buffers[MAX_BUFFERS];
 	int curbufferid;
 	int nbuffers;
@@ -141,20 +141,7 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 	dev->eglcontext = eglContext;
 	dev->eglsurface = eglSurface;
 
-	int nbprg = 1;
-	// The first program MUST use the default shaders
-	// The texture is EXTERNAL_OES which is incompatible with FRAMEBUFFERS
-	dev->programs[0] = glprog_create(NULL);
-	EGLConfig_Program_t *prgconfig = config->programs;
-	while (prgconfig)
-	{
-		dev->programs[nbprg] = glprog_create(prgconfig);
-		if (dev->programs[nbprg] == NULL)
-			err("segl: program loading error");
-		else
-			nbprg++;
-		prgconfig = prgconfig->next;
-	}
+	dev->programs = glprog_create(config->programs);
 	eglCreateImageKHR = (void *) eglGetProcAddress("eglCreateImageKHR");
 	if(eglCreateImageKHR == NULL)
 	{
@@ -181,11 +168,7 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 		return NULL;
 	}
 
-	for (int i = 0; dev->programs[i]; i++)
-	{
-		GLProgram_t *program = dev->programs[i];
-		glprog_setup(program, config->parent.width, config->parent.height);
-	}
+	glprog_setup(dev->programs, config->parent.width, config->parent.height);
 
 	dev->native_window = nwindow;
 	dev->native_display = ndisplay;
@@ -278,13 +261,7 @@ int segl_start(EGL_t *dev)
 	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
 
 	// initialize the first program with the input stream
-	glprog_setintexture(dev->programs[0], dev->buffers[0].textype, dev->nbuffers, dev->buffers);
-	for (int i = 1; dev->programs[i]; i++)
-	{
-		GLBuffer_t *textures;
-		textures = glprog_getouttexture(dev->programs[i - 1], dev->nbuffers);
-		glprog_setintexture(dev->programs[i], GL_TEXTURE_2D, dev->nbuffers, textures);
-	}
+	glprog_setintexture(dev->programs, dev->buffers[0].textype, dev->nbuffers, dev->buffers);
 
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
 	dev->curbufferid = -1;
@@ -317,10 +294,7 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	for (int i = 0; dev->programs[i]; i++)
-	{
-		glprog_run(dev->programs[i], (int)id);
-	}
+	glprog_run(dev->programs, (int)id);
 
 	dev->curbufferid = (int)id;
 	
@@ -347,10 +321,7 @@ int segl_fd(EGL_t *dev)
 
 void segl_destroy(EGL_t *dev)
 {
-	for (int i = 0; dev->programs[i]; i++)
-	{
-		glprog_destroy(dev->programs[i]);
-	}
+	glprog_destroy(dev->programs);
 	eglDestroySurface(dev->egldisplay, dev->eglsurface);
 	eglDestroyContext(dev->egldisplay, dev->eglcontext);
 	dev->native->destroy(dev->native_display);

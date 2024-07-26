@@ -21,11 +21,12 @@ typedef struct GLBuffer_s GLBuffer_t;
 struct GLBuffer_s
 {
 	uint32_t fb_id;
-	int dma_fd;
 	int egl_fd;
 	GLenum textype;
 	GLuint dma_texture;
 	EGLImageKHR dma_image;
+	uint32_t fourcc;
+	int dma_fd;
 	uint32_t *memory;
 	GLuint pitch;
 	GLuint offset;

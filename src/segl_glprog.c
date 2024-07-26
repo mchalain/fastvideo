@@ -11,6 +11,7 @@
 typedef struct GLProgram_s GLProgram_t;
 struct GLProgram_s
 {
+	GLProgram_t *next;
 	EGLConfig_Program_t *config;
 	GLuint ID;
 	GLuint vertexArrayID;
@@ -320,6 +321,10 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config)
 		return NULL;
 	}
 
+	if (config && config->next)
+	{
+		program->next = glprog_create(config->next);
+	}
 	return program;
 }
 
@@ -358,6 +363,9 @@ int glprog_setup(GLProgram_t *program, GLuint width, GLuint height)
 	glUniform2f(resolutionID, program->width, program->height);
 
 	glBindVertexArrayOES(0);
+	if (program->next)
+		return glprog_setup(program->next, width, height);
+
 	return 0;
 }
 
@@ -389,6 +397,13 @@ int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffe
 {
 	program->in_textures = in_textures;
 	program->in_textype = type;
+	if (program->next)
+	{
+		GLBuffer_t *textures;
+		textures = glprog_getouttexture(program, nbtex);
+		return glprog_setintexture(program->next, GL_TEXTURE_2D, nbtex, textures);
+	}
+	return 0;
 }
 
 int glprog_run(GLProgram_t *program, int bufid)
@@ -420,12 +435,15 @@ int glprog_run(GLProgram_t *program, int bufid)
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 0, 0, 0);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
-
+	if (program->next)
+		return glprog_run(program->next, bufid);
 	return 0;
 }
 
 void glprog_destroy(GLProgram_t *program)
 {
+	if (program->next)
+		return glprog_destroy(program->next);
 	if (program->fbID)
 	{
 		glDeleteFramebuffers(1, &program->fbID);
