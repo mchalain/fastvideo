@@ -7,6 +7,7 @@
 # include <GL/gl.h>
 #endif
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 
 #include "log.h"
 #include "segl.h"

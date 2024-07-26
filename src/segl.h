@@ -12,6 +12,25 @@
 
 #define MAX_SHADERS 4
 #define MAX_PROGRANS 5
+#define MAX_BUFFERS 4
+
+/**
+ * structure shared by segl and segl_glprog
+ */
+typedef struct GLBuffer_s GLBuffer_t;
+struct GLBuffer_s
+{
+	uint32_t fb_id;
+	int dma_fd;
+	int egl_fd;
+	GLenum textype;
+	GLuint dma_texture;
+	EGLImageKHR dma_image;
+	uint32_t *memory;
+	GLuint pitch;
+	GLuint offset;
+	uint32_t size;
+};
 
 typedef struct EGLConfig_Program_s EGLConfig_Program_t;
 struct EGLConfig_Program_s
@@ -20,6 +39,8 @@ struct EGLConfig_Program_s
 	const char *fragments[MAX_SHADERS];
 	const char *tex_name;
 };
+
+typedef struct GLProgram_s GLProgram_t;
 
 typedef struct EGLConfig_s EGLConfig_t;
 struct EGLConfig_s
@@ -53,12 +74,23 @@ struct EGLNative_s
 	void (*destroy)(EGLNativeDisplayType native_display);
 };
 
+extern const GLchar *defaulttexturename;
+
+GLProgram_t *glprog_create(EGLConfig_Program_t *config);
+int glprog_setup(GLProgram_t *program, GLuint width, GLuint height);
+GLBuffer_t *glprog_getouttexture(GLProgram_t *program, GLuint nbtex);
+int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffer_t *in_textures);
+int glprog_run(GLProgram_t *program, int bufid);
+void glprog_destroy(GLProgram_t *program);
+
 DeviceConf_t * segl_createconfig();
 
 #ifdef HAVE_JANSSON
-int segl_loadjsonconfiguration(void *arg, void *jconfig);
+int segl_loadjsonconfiguration(void *arg, void *entry);
 
 #define segl_loadconfiguration segl_loadjsonconfiguration
+
+int glprog_loadjsonconfiguration(void *arg, void *entry);
 #else
 #define segl_loadconfiguration NULL
 #endif
