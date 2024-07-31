@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/timerfd.h>
 
 #include "log.h"
 #include "sv4l2.h"
@@ -154,7 +155,15 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 		outfd = output->ops->eventfd(output->dev);
 		maxfd = (outfd > maxfd)?outfd:maxfd;
 	}
+	int timerfd = timerfd_create(CLOCK_REALTIME, 0);
+	struct itimerspec timeout = {
+		.it_interval = {.tv_sec = 1, .tv_nsec = 0},
+		.it_value = {.tv_sec = 1, .tv_nsec = 0},
+	};
+	timerfd_settime(timerfd, TFD_TIMER_CANCEL_ON_SET, &timeout, NULL);
+	maxfd = (outfd > timerfd)?outfd:timerfd;
 
+	unsigned int count = 0;
 	int run = 1;
 	while (run)
 	{
@@ -169,18 +178,26 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 			FD_SET(outfd, &rfds);
 			FD_SET(outfd, &wfds);
 		}
-		struct timeval timeout = {
-			.tv_sec = 2,
-			.tv_usec = 0,
-		};
+		if (timerfd > 0)
+			FD_SET(timerfd, &rfds);
 
 		int ret;
-		ret = select(maxfd + 1, &rfds, &wfds, NULL, &timeout);
+		ret = select(maxfd + 1, &rfds, &wfds, NULL, NULL);
 		if (ret == -1 && errno == EINTR)
 			continue;
+		if (ret > 0 && FD_ISSET(timerfd, &rfds))
+		{
+			uint64_t exp = 0;
+			int nread = read(timerfd, &exp, sizeof(uint64_t));
+			if (nread == sizeof(uint64_t))
+			{
+				warn("fps: %d", count);
+				count = 0;
+			}
+			ret--;
+		}
 		if (ret == 0)
 		{
-			err("device timeout");
 			continue;
 		}
 		if (infd < 0 || (ret > 0 && FD_ISSET(infd, &rfds)))
@@ -229,6 +246,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 				run = 0;
 				break;
 			}
+			count++;
 			ret--;
 		}
 	}
