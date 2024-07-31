@@ -21,20 +21,6 @@
 
 #define MAX_BUFFERS 4
 
-typedef struct DisplayFormat_s DisplayFormat_t;
-struct DisplayFormat_s
-{
-	uint32_t	fourcc;
-	int		depth;
-} g_formats[] =
-{
-	{
-		.fourcc = DRM_FORMAT_ARGB8888,
-		.depth = 4,
-	},
-	{0}
-};
-
 typedef struct DisplayBuffer_s DisplayBuffer_t;
 struct DisplayBuffer_s
 {
@@ -61,7 +47,7 @@ struct Display_s
 	uint32_t crtc_id;
 	uint32_t plane_id;
 	drmModeCrtc *crtc;
-	DisplayFormat_t *format;
+	uint32_t fourcc;
 	int type;
 	int fd;
 	drmModeModeInfo mode;
@@ -245,7 +231,7 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 		{
 			uint32_t fourcc = plane->formats[j];
 			dbg("sdrm: Plane[%d] %u: 4cc %.4s", i, plane->plane_id, (char *)&fourcc);
-			if (plane->formats[j] == disp->format->fourcc)
+			if (plane->formats[j] == disp->fourcc)
 			{
 				ret = 0;
 			}
@@ -431,11 +417,13 @@ Display_t *sdrm_create(const char *name, DisplayConf_t *config)
 
 	Display_t *disp = calloc(1, sizeof(*disp));
 	disp->fd = fd;
-	disp->format = &g_formats[0];
+	disp->fourcc = FOURCC('A','R','2','4');
 	disp->type = DRM_PLANE_TYPE_PRIMARY;
 
 	disp->mode.hdisplay = config->parent.width;
 	disp->mode.vdisplay = config->parent.height;
+	if (config->parent.fourcc)
+		disp->fourcc = config->parent.fourcc;
 	if (sdrm_ids(disp, &disp->connector_id, &disp->encoder_id, &disp->crtc_id, &disp->mode) == -1)
 	{
 		free(disp);
@@ -472,7 +460,7 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 				for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 				{
 					if (sdrm_buffer_mmap(disp,  disp->mode.hdisplay, disp->mode.vdisplay,
-						disp->format->fourcc, &disp->buffers[i]) == -1)
+						disp->fourcc, &disp->buffers[i]) == -1)
 					{
 						err("sdrm: buffer %d allocation error", i);
 						break;
@@ -514,7 +502,7 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 				for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 				{
 					if (sdrm_buffer_dma(disp,  disp->mode.hdisplay, disp->mode.vdisplay,
-						disp->format->fourcc, &disp->buffers[i]) == -1)
+						disp->fourcc, &disp->buffers[i]) == -1)
 					{
 						err("sdrm: buffer %d allocation error", i);
 						break;
