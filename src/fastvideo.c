@@ -100,6 +100,7 @@ FastVideoDevice_ops_t sfile_ops = {
 typedef struct FastVideoDevice_s FastVideoDevice_t;
 struct FastVideoDevice_s
 {
+	DeviceConf_t *config;
 	void *dev;
 	FastVideoDevice_ops_t *ops;
 };
@@ -125,17 +126,39 @@ FastVideoDevice_t *config_createdevice(const char *name, const char *configfile,
 			config->name = name;
 			config_parseconfigfile(name, configfile, config);
 			device = calloc(1, sizeof(*device));
+			device->config = config;
 			device->ops = ops[i];
-			device->dev = device->ops->create(name, config);
-			if (device->ops->loadsettings && config->entry)
-			{
-				dbg("loadsettings");
-				device->ops->loadsettings(device->dev, config->entry);
-			}
 			break;
 		}
 	}
 	return device;
+}
+
+int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
+{
+	if (inconfig->width)
+		outconfig->width = inconfig->width;
+	else if (outconfig->width)
+		inconfig->width = outconfig->width;
+	else
+	{
+		inconfig->width = outconfig->width = 640;
+	}
+	if (inconfig->height)
+		outconfig->height = inconfig->height;
+	else if (outconfig->height)
+		inconfig->height = outconfig->height;
+	else
+	{
+		inconfig->height = outconfig->height = 480;
+	}
+	if (inconfig->fourcc)
+		outconfig->fourcc = inconfig->fourcc;
+	else if (outconfig->fourcc)
+		inconfig->fourcc = outconfig->fourcc;
+	else
+		inconfig->fourcc = outconfig->fourcc = FOURCC('A','B','2','4');
+	return 0;
 }
 
 int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
@@ -302,7 +325,7 @@ int main(int argc, char * const argv[])
 
 	FastVideoDevice_t *indev = NULL;
 	indev = config_createdevice(input, configfile, fastVideoDevice_ops);
-	if (!indev->dev)
+	if (!indev->ops)
 	{
 		err("input not available");
 		return -1;
@@ -310,10 +333,26 @@ int main(int argc, char * const argv[])
 
 	FastVideoDevice_t *outdev = NULL;
 	outdev = config_createdevice(output, configfile, fastVideoDevice_ops);
-	if (!outdev->dev)
+	if (!outdev->ops)
 	{
 		err("output not available");
 		return -1;
+	}
+
+	choice_config(indev->config, outdev->config);
+
+	indev->dev = indev->ops->create(input, indev->config);
+	if (indev->ops->loadsettings && indev->config->entry)
+	{
+		dbg("loadsettings");
+		indev->ops->loadsettings(indev->dev, indev->config->entry);
+	}
+
+	outdev->dev = outdev->ops->create(output, outdev->config);
+	if (outdev->ops->loadsettings && outdev->config->entry)
+	{
+		dbg("loadsettings");
+		outdev->ops->loadsettings(outdev->dev, outdev->config->entry);
 	}
 
 	int *dma_bufs = {0};
