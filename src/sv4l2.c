@@ -1084,6 +1084,7 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused)
 	ret = ioctl(dev->fd, VIDIOC_DQBUF, &buf);
 	if (ret)
 	{
+		err("sv4l2: %s dequeueing error %m", dev->config->parent.name);
 		dbg_buffer((&buf));
 		return -1;
 	}
@@ -1109,7 +1110,7 @@ int sv4l2_queue(V4L2_t *dev, int index, size_t bytesused)
 	if (ret)
 	{
 		dbg_buffer((&dev->buffers[index].v4l2));
-		err("sv4l2: queueing error %m");
+		err("sv4l2: %s queueing error %m", dev->config->parent.name);
 	}
 	return ret;
 }
