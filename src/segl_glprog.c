@@ -85,7 +85,7 @@ static const GLchar defaultvertex[] = ""
 "\n"
 "\n""void main (void)"
 "\n""{"
-"\n""	texUV = vec2(0.5 + vPosition.x / 2.0, 0.5 - vPosition.y / 2.0);"
+"\n""	texUV = vec2(0.5 - vPosition.x / 2.0, 0.5 - vPosition.y / 2.0);"
 "\n""	gl_Position = vec4(vPosition,1.);"
 "\n""}"
 "\n";
@@ -418,6 +418,11 @@ GLBuffer_t *glprog_getouttexture(GLProgram_t *program, GLuint nbtex)
 		return program->out_textures;
 	}
 	glGenFramebuffers(1, &program->fbID);
+	if (program->fbID == 0)
+	{
+		err("segl: framebuffer unsupported");
+		return NULL;
+	}
 	glBindFramebuffer(GL_FRAMEBUFFER, program->fbID);
 	glEnable(GL_TEXTURE_2D);
 	GLuint texture = 0;
@@ -443,6 +448,8 @@ int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffe
 	{
 		GLBuffer_t *textures;
 		textures = glprog_getouttexture(program, nbtex);
+		if (textures == NULL)
+			return -1;
 		return glprog_setintexture(program->next, GL_TEXTURE_2D, nbtex, textures);
 	}
 	return 0;
@@ -450,13 +457,21 @@ int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffe
 
 int glprog_run(GLProgram_t *program, int bufid)
 {
+	GLenum err = 0;
 	if (program->fbID)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, program->fbID);
 		glBindTexture(GL_TEXTURE_2D, program->out_textures[bufid].dma_texture);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
 					program->out_textures[bufid].dma_texture, 0);
+		err = glGetError();
+		if (err != GL_NO_ERROR)
+		{
+			err("segl: Framebuffer access error %#X %#X", err, GL_INVALID_FRAMEBUFFER_OPERATION);
+		}
 	}
+	else
+		glClear(GL_COLOR_BUFFER_BIT);
 
 	glBindVertexArrayOES(program->vertexArrayID);
 	glUseProgram(program->ID);
