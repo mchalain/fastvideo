@@ -14,6 +14,7 @@
 #include <dlfcn.h>
 
 #include <linux/videodev2.h>
+#include <linux/v4l2-subdev.h>
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 #endif
@@ -884,7 +885,8 @@ static int _sv4l2_treecontrols(int ctrlfd, V4L2_t *dev, int (*cb)(void *arg, str
 	int nbctrls = 0;
 	struct v4l2_queryctrl qctrl = {0};
 	qctrl.id = V4L2_CTRL_FLAG_NEXT_CTRL;
-	for (nbctrls = 0; ioctl(ctrlfd, VIDIOC_QUERYCTRL, &qctrl) == 0; nbctrls++)
+	int ret;
+	for (nbctrls = 0; (ret = ioctl(ctrlfd, VIDIOC_QUERYCTRL, &qctrl)) == 0; nbctrls++)
 	{
 		if (qctrl.flags & V4L2_CTRL_FLAG_DISABLED)
 		{
@@ -896,6 +898,10 @@ static int _sv4l2_treecontrols(int ctrlfd, V4L2_t *dev, int (*cb)(void *arg, str
 		if (cb)
 			cb(arg, &qctrl, dev);
 		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
+	}
+	if (ret)
+	{
+		err("sv4l2: %s query controls error %m", dev->config->parent.name);
 	}
 	return nbctrls;
 }
@@ -998,7 +1004,9 @@ V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
 
 	if (mode & MODE_MEDIACTL)
 	{
-		ctrlfd = sv4l2_subdev_open(config);
+		int fd = sv4l2_subdev_open(config);
+		if (fd > 0)
+			ctrlfd = fd;
 	}
 
 	V4L2_t *dev = calloc(1, sizeof(*dev));
@@ -1473,6 +1481,7 @@ static int sv4l2_subdev_open(CameraConfig_t *config)
 #else
 static int sv4l2_subdev_open(CameraConfig_t *config)
 {
+	err("sv4l2: subdev is not supported");
 	return -1;
 }
 #endif
