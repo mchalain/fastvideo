@@ -5,6 +5,7 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include "config.h"
+#include "log.h"
 
 #define EGLCONFIG(name, _native) name = { \
 	.DEVICECONFIG(parent, name, segl_loadconfiguration), \
@@ -14,6 +15,15 @@
 #define MAX_SHADERS 4
 #define MAX_PROGRANS 5
 #define MAX_BUFFERS 4
+
+#define segl_checkerror(...) \
+{ \
+	GLenum err = glGetError(); \
+	if (err != GL_NO_ERROR) \
+	{ \
+		err("segl: %s %d %#X", __FILE__, __LINE__, err); \
+	} \
+} \
 
 /**
  * structure shared by segl and segl_glprog

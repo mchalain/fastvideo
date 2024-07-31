@@ -430,7 +430,8 @@ GLBuffer_t *glprog_getouttexture(GLProgram_t *program, GLuint nbtex)
 	{
 		glGenTextures(1, &texture);
 		glBindTexture(GL_TEXTURE_2D, texture);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, program->width, program->height, 0, GL_RGBA,  GL_UNSIGNED_BYTE, NULL);
+		// The format must be RGB. RGBA generate error during the texture attachment to the frambuffer (glprog_run)
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, program->width, program->height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -457,6 +458,7 @@ int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffe
 
 int glprog_run(GLProgram_t *program, int bufid)
 {
+	static int programid = 0;
 	GLenum err = 0;
 	if (program->fbID)
 	{
@@ -467,7 +469,7 @@ int glprog_run(GLProgram_t *program, int bufid)
 		err = glGetError();
 		if (err != GL_NO_ERROR)
 		{
-			err("segl: Framebuffer access error %#X %#X", err, GL_INVALID_FRAMEBUFFER_OPERATION);
+			err("segl: program[%d] Framebuffer access error %#X %#X", programid, err, GL_INVALID_FRAMEBUFFER_OPERATION);
 		}
 	}
 	else
@@ -500,11 +502,13 @@ int glprog_run(GLProgram_t *program, int bufid)
 			err("framebuffer %u incomplet %#x", program->fbID, status);
 			//return -1;
 		}
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 0, 0, 0);
+		//glFramebufferTexture2D to disable the texture is an invalid operation
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
+	programid++;
 	if (program->next)
 		return glprog_run(program->next, bufid);
+	programid = 0;
 	return 0;
 }
 
