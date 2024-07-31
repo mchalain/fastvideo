@@ -54,7 +54,6 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 #ifdef HAVE_X11
 		eglnative_x11,
 #endif
-		NULL,
 	};
 	EGLNative_t *native = natives[0];
 
