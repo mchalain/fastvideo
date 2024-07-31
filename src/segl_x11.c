@@ -24,7 +24,7 @@
 // X11 related local variables
 static Display *display = NULL;
 
-static EGLNativeDisplayType native_display()
+static EGLNativeDisplayType native_display(const char *device)
 {
 	if (display == NULL)
 		/** environment management */
@@ -85,6 +85,11 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 				CopyFromParent, CWEventMask,
 				&swa );
 
+	if (win == 0)
+	{
+		err("segl: X11 windows creation error %m");
+		return 0;
+	}
 	XSetWindowAttributes  xattr;
 	xattr.override_redirect = FALSE;
 	XChangeWindowAttributes(display, win, CWOverrideRedirect, &xattr );

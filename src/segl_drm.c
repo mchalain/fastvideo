@@ -77,17 +77,18 @@ static uint32_t find_crtc_for_connector(const drmModeRes *resources,
 	return -1;
 }
 
-static int init_drm(void)
+static int init_drm(const char *device)
 {
 	drmModeRes *resources;
 	drmModeConnector *connector = NULL;
 	drmModeEncoder *encoder = NULL;
 	int i, area;
 
-	drm.fd = open("/dev/dri/card0", O_RDWR);
+	drm.fd = open(device, O_RDWR);
+	dbg("segl: open %s",device);
 	
 	if (drm.fd < 0) {
-		err("segl: could not open drm device");
+		err("segl: could not open drm device %s", device);
 		return -1;
 	}
 
@@ -211,12 +212,11 @@ static void page_flip_handler(int fd, unsigned int frame,
 	*waiting_for_flip = 0;
 }
 
-static EGLNativeDisplayType native_display()
+static EGLNativeDisplayType native_display(const char *device)
 {
-	GLuint width = 640;
-	GLuint height = 480;
-
-	if (init_drm())
+	if (device == NULL)
+		device = "/dev/dri/card0";
+	if (init_drm(device))
 	{
 		return NULL;
 	}

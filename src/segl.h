@@ -3,6 +3,7 @@
 
 #include <GLES2/gl2.h>
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include "config.h"
 
 #define EGLCONFIG(name, _native) name = { \
@@ -51,6 +52,7 @@ struct EGLConfig_s
 {
 	DeviceConf_t parent;
 	const char *native;
+	const char *device;
 	EGLConfig_Program_t *programs;
 };
 
@@ -69,7 +71,7 @@ typedef struct EGLNative_s EGLNative_t;
 struct EGLNative_s
 {
 	const char *name;
-	EGLNativeDisplayType (*display)();
+	EGLNativeDisplayType (*display)(const char *device);
 	EGLNativeWindowType (*createwindow)(EGLNativeDisplayType native_display,
 							GLuint width, GLuint height, const GLchar *name);
 	int (*fd)(EGLNativeWindowType native_win);

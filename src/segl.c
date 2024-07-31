@@ -68,7 +68,7 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 			}
 		}
 	}
-	ndisplay = native->display();
+	ndisplay = native->display(config->device);
 	EGLNativeWindowType nwindow = native->createwindow(ndisplay, config->parent.width, config->parent.height, "segl");
 
 	EGLDisplay eglDisplay = eglGetDisplay(ndisplay);
@@ -291,7 +291,6 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 	}
 
 	glClearColor(0.5, 0.5, 0.5, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT);
 
 	glprog_run(dev->programs, (int)id);
 
@@ -355,6 +354,12 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	{
 		const char *value = json_string_value(native);
 		config->native = value;
+	}
+	json_t *device = json_object_get(jconfig, "device");
+	if (device && json_is_string(device))
+	{
+		const char *value = json_string_value(device);
+		config->device = value;
 	}
 library_end:
 	return 0;
