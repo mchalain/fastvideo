@@ -228,6 +228,7 @@ static uint64_t sdrm_properties(Display_t *disp, uint32_t plane_id, const char *
 
 static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 {
+	int ret = -1;
 	drmModePlaneResPtr planes;
 
 	planes = drmModeGetPlaneResources(disp->fd);
@@ -235,7 +236,6 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	drmModePlanePtr plane;
 	for (int i = 0; i < planes->count_planes; ++i)
 	{
-		int found = 0;
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
 		int type = (int)sdrm_properties(disp, plane->plane_id, "type");
 		if (type != disp->type)
@@ -247,17 +247,16 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 			dbg("sdrm: Plane[%d] %u: 4cc %.4s", i, plane->plane_id, (char *)&fourcc);
 			if (plane->formats[j] == disp->format->fourcc)
 			{
-				found = 1;
-				break;
+				ret = 0;
 			}
 		}
 		*plane_id = plane->plane_id;
 		drmModeFreePlane(plane);
-		if (found)
+		if (ret == 0)
 			break;
 	}
 	drmModeFreePlaneResources(planes);
-	return 0;
+	return ret;
 }
 
 static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height, uint32_t size, uint32_t fourcc, DisplayBuffer_t *buffer)
@@ -431,7 +430,10 @@ Display_t *sdrm_create(const char *name, DisplayConf_t *config)
 		return NULL;
 	}
 	if (drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1))
+	{
 		err("sdrm: Universal plane not supported %m");
+		return NULL;
+	}
 
 	Display_t *disp = calloc(1, sizeof(*disp));
 	disp->fd = fd;
@@ -503,6 +505,7 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 					break;
 				}
 			}
+			disp->nbuffers = ntargets;
 		}
 		break;
 		case buf_type_dmabuf | buf_type_master:
@@ -562,11 +565,11 @@ int sdrm_queue(Display_t *disp, int id)
 	if (disp->buffers[id].queued)
 		return -1;
 	drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[(int)id].fb_id, DRM_MODE_PAGE_FLIP_EVENT, disp);
-	disp->buffers[(int)id].queued = 1;
+	disp->buffers[id].queued = 1;
 	return 0;
 }
 
-int sdrm_dequeue(Display_t *disp)
+int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused)
 {
 	drmEventContext evctx = {
 				.version = DRM_EVENT_CONTEXT_VERSION,
@@ -577,6 +580,10 @@ int sdrm_dequeue(Display_t *disp)
 	if (disp->buffers[id].queued)
 		return -1;
 	disp->queueid = (disp->queueid + 1) % disp->nbuffers;
+	if (mem)
+		*mem = disp->buffers[id].memory;
+	if (bytesused)
+		*bytesused = disp->buffers[id].size;
 	return id;
 }
 
