@@ -259,7 +259,7 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	return ret;
 }
 
-static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height, uint32_t size, uint32_t fourcc, DisplayBuffer_t *buffer)
+static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, DisplayBuffer_t *buffer)
 {
 #ifdef HAVE_LIBKMS
 	unsigned attr[] = {
@@ -285,11 +285,10 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 		return -1;
 	}
 #else
-	dbg("sdrm: buffer for width %u height %u size %u", width, height, size);
+	dbg("sdrm: buffer for width %u height %u ", width, height);
 	struct drm_mode_create_dumb gem = {
 		.width = width,
 		.height = height,
-		.size = size,
 		.bpp = 32,
 	};
 	if (drmIoctl(disp->fd, DRM_IOCTL_MODE_CREATE_DUMB, &gem) == -1)
@@ -306,12 +305,9 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 	return 0;
 }
 
-static int sdrm_buffer_mmap(Display_t *disp, uint32_t width, uint32_t height, uint32_t size, uint32_t fourcc, DisplayBuffer_t *buffer)
+static int sdrm_buffer_mmap(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, DisplayBuffer_t *buffer)
 {
-	buffer->size = size;
-	buffer->pitch = size / height;
-
-	sdrm_buffer_generic(disp, width, height, size, fourcc, buffer);
+	sdrm_buffer_generic(disp, width, height, fourcc, buffer);
 #ifdef HAVE_LIBKMS
 	if (kms_bo_map(buffer->bo, &buffer->memory))
 	{
@@ -327,12 +323,12 @@ static int sdrm_buffer_mmap(Display_t *disp, uint32_t width, uint32_t height, ui
 		err("sdrm: dumb map error %m");
 		return -1;
 	}
-	buffer->memory = (uint32_t *)mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
+	buffer->memory = (uint32_t *)mmap(NULL, buffer->size, PROT_READ | PROT_WRITE, MAP_SHARED,
 		disp->fd, map.offset);
 #endif
 
 	if (drmModeAddFB(disp->fd, width, height, 24, 32, buffer->pitch,
-		buffer->bo_handle, &buffer->fb_id) == -1)
+		buffer->bo_handle, &buffer->fb_id))
 	{
 		err("sdrm: Frame buffer unavailable %m");
 		return -1;
@@ -340,12 +336,10 @@ static int sdrm_buffer_mmap(Display_t *disp, uint32_t width, uint32_t height, ui
 	return 0;
 }
 
-static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uint32_t size, uint32_t fourcc, DisplayBuffer_t *buffer)
+static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, DisplayBuffer_t *buffer)
 {
-	buffer->size = size;
-	buffer->pitch = size / height;
 
-	sdrm_buffer_generic(disp, width, height, size, fourcc, buffer);
+	sdrm_buffer_generic(disp, width, height, fourcc, buffer);
 
 	uint32_t offsets[4] = { 0 };
 	uint32_t pitches[4] = { buffer->pitch };
@@ -367,8 +361,8 @@ static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uin
 	}
 #endif
 	
-	if (drmModeAddFB2(disp->fd, width, height, disp->format->fourcc, bo_handles,
-		pitches, offsets, &buffer->fb_id, 0) == -1)
+	if (drmModeAddFB2(disp->fd, width, height, disp->fourcc, bo_handles,
+		pitches, offsets, &buffer->fb_id, 0))
 	{
 		err("sdrm: Frame buffer unavailable %m");
 		return -1;
@@ -393,8 +387,8 @@ static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, DisplayBuf
 	buffer->bo_handle = handle;
 	uint32_t bo_handles[4] = { buffer->bo_handle };
 
-	if (drmModeAddFB2(disp->fd, disp->mode.hdisplay, disp->mode.vdisplay, disp->format->fourcc, bo_handles,
-		pitches, offsets, &buffer->fb_id, 0) == -1)
+	if (drmModeAddFB2(disp->fd, disp->mode.hdisplay, disp->mode.vdisplay, disp->fourcc,
+		bo_handles, pitches, offsets, &buffer->fb_id, 0))
 	{
 		err("sdrm: Frame buffer unavailable %m");
 		return -1;
@@ -465,7 +459,6 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 {
 	va_list ap;
 	va_start(ap, t);
-	size_t size = disp->mode.hdisplay * disp->mode.vdisplay * disp->format->depth;
 	switch (t)
 	{
 		case (buf_type_memory | buf_type_master):
@@ -478,7 +471,8 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 				*targets = calloc(disp->nbuffers, sizeof(void*));
 				for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 				{
-					if (sdrm_buffer_mmap(disp,  disp->mode.hdisplay, disp->mode.vdisplay, size, disp->format->fourcc, &disp->buffers[i]) == -1)
+					if (sdrm_buffer_mmap(disp,  disp->mode.hdisplay, disp->mode.vdisplay,
+						disp->format->fourcc, &disp->buffers[i]) == -1)
 					{
 						err("sdrm: buffer %d allocation error", i);
 						break;
@@ -519,7 +513,8 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 				*targets = calloc(disp->nbuffers, sizeof(int));
 				for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 				{
-					if (sdrm_buffer_dma(disp,  disp->mode.hdisplay, disp->mode.vdisplay, size, disp->format->fourcc, &disp->buffers[i]) == -1)
+					if (sdrm_buffer_dma(disp,  disp->mode.hdisplay, disp->mode.vdisplay,
+						disp->format->fourcc, &disp->buffers[i]) == -1)
 					{
 						err("sdrm: buffer %d allocation error", i);
 						break;
