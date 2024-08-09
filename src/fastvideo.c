@@ -347,6 +347,8 @@ int main(int argc, char * const argv[])
 		dbg("loadsettings");
 		indev->ops->loadsettings(indev->dev, indev->config->entry);
 	}
+	if (indev->dev == NULL)
+		return -1;
 
 	outdev->dev = outdev->ops->create(output, outdev->config);
 	if (outdev->ops->loadsettings && outdev->config->entry)
@@ -354,6 +356,8 @@ int main(int argc, char * const argv[])
 		dbg("loadsettings");
 		outdev->ops->loadsettings(outdev->dev, outdev->config->entry);
 	}
+	if (outdev->dev == NULL)
+		return -1;
 
 	int *dma_bufs = {0};
 	size_t size = 0;
