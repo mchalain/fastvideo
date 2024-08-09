@@ -178,6 +178,7 @@ int sfile_start(File_t *dev)
 			case FOURCC('M','J','P','G'):
 			break;
 			default:
+			break;
 		}
 
 	}

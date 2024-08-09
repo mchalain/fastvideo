@@ -2042,6 +2042,7 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev)
 		json_object_set(control, "value", json_string(value));
 	break;
 	case V4L2_CTRL_TYPE_CTRL_CLASS:
+	{
 		json_t *clas_ = json_array();
 		json_object_set(control, "items", clas_);
 		if (json_is_object(controls))
@@ -2049,6 +2050,7 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev)
 		else if (json_is_array(controls))
 			json_array_append(controls, control);
 		return 0;
+	}
 	break;
 	}
 
