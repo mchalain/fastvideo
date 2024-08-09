@@ -69,6 +69,8 @@ EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
 		}
 	}
 	ndisplay = native->display(config->device);
+	if (ndisplay == NULL)
+		return NULL;
 	EGLNativeWindowType nwindow = native->createwindow(ndisplay, config->parent.width, config->parent.height, "segl");
 
 	EGLDisplay eglDisplay = eglGetDisplay(ndisplay);

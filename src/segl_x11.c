@@ -29,6 +29,8 @@ static EGLNativeDisplayType native_display(const char *device)
 	if (display == NULL)
 		/** environment management */
 		display = XOpenDisplay(NULL);
+	if (display == NULL)
+		err("segl: no connection to X11");
 	return (EGLNativeDisplayType)display;
 }
 
