@@ -1,0 +1,177 @@
+{
+	"devices":
+	[{
+		"name":"cam-ov5647",
+		"type":"cam",
+		"device":"/dev/video0",
+		"subdevice":"/dev/v4l-subdev0",
+		"definition": {
+			"fourcc~":"BA10",
+			"fourcc":"GB10",
+			"width":640,
+			"height":480,
+			"fps":30,
+			"end":true
+		},
+		"controls":[{
+			"name":"White Balance, Automatic",
+			"value":true
+		},{
+			"name":"Gain, Automatic",
+			"value":true
+		},{
+			"name":"~Analogue Gain",
+			"value":1020
+		},{
+			"name":"Auto Exposure",
+			"value":true
+		},{
+			"name":"~Exposure",
+			"value":1000
+		},{
+			"name":"Vertical Flip",
+			"value":true
+		},{
+			"name":"Horizontal Flip",
+			"value":true
+		},{
+			"name":"Vertical Blanking",
+			"value":-1
+		}],
+		"end":true
+	},{
+		"name":"cam-imx477",
+		"type":"cam",
+		"device":"/dev/video0",
+		"subdevice":"/dev/v4l-subdev0",
+		"definition": {
+			"fourcc":"RG12",
+			"width":2028,
+			"height":1080,
+			"fps":30,
+			"end":true
+		},
+		"controls":[{
+			"name":"Auto Exposure",
+			"value":true
+		},{
+			"name":"White Balance, Automatic",
+			"value":true
+		}],
+		"end":true
+	},{
+		"name":"cam-imx708",
+		"type":"cam",
+		"device":"/dev/video0",
+		"subdevice":"/dev/v4l-subdev0",
+		"definition": {
+			"fourcc":"RG10",
+			"width":1536,
+			"height":864,
+			"fps":30,
+			"end":true
+		},
+		"controls":[{
+			"name":"Auto Exposure",
+			"value":true
+		},{
+			"name":"White Balance, Automatic",
+			"value":true
+		}],
+		"end":true
+	},{
+		"name":"cam-imx296",
+		"type":"cam",
+		"device":"/dev/video0",
+		"subdevice":"/dev/v4l-subdev0",
+		"definition": {
+			"fourcc":"BG10",
+			"width":1456,
+			"height":1088,
+			"fps":30,
+			"end":true
+		},
+		"controls":[{
+			"name":"Auto Exposure",
+			"value":true
+		},{
+			"name":"White Balance, Automatic",
+			"value":true
+		}],
+		"end":true
+	},{
+		"name":"isp-in",
+		"type":"cam",
+		"device":"/dev/video13",
+		"definition": {
+			"end":true
+		},
+		"controls":[],
+		"end":true
+	},{
+		"name":"isp-meta",
+		"type":"cam",
+		"device":"/dev/video16",
+		"definition":{
+			"fourcc":"BSTA",
+			"end":true
+		},
+		"controls":[],
+		"end":true
+	},{
+		"name":"isp-out",
+		"type":"cam",
+		"description":"high resolution output",
+		"device":"/dev/video14",
+		"definition": {
+			"width":1920,
+			"height":1080,
+			"fourcc":"XB24",
+			"end":true
+		},
+		"controls":[],
+		"end":true
+	},{
+		"name":"isp-out2",
+		"type":"cam",
+		"description":"low resolution output, needs that video14 running",
+		"device":"/dev/video15",
+		"definition": {
+			"width":640,
+			"height":480,
+			"fourcc":"YUYV",
+			"end":true
+		},
+		"controls":[],
+		"end":true
+	},{
+		"name":"screen",
+		"type":"screen",
+		"device":"/dev/dri/card0",
+		"definition":{
+			"end":true
+		},
+		"end":true
+	},{
+		"name":"enc-h264",
+		"type":"cam",
+		"device":"/dev/video11",
+		"controls":[],
+		"end":true
+	},{
+		"name":"enc-jpeg",
+		"device":"/dev/video31",
+		"controls":[],
+		"end":true
+	},{
+		"name":"gpu",
+		"type":"gpu",
+		"device":"/dev/dri/card0",
+		"native":"drm",
+		"definition":{
+			"end":true
+		},
+		"end":true
+	}],
+	"end":true
+}

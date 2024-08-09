@@ -1,0 +1,21 @@
+[{
+	"name":"uvc",
+	"type":"cam",
+	"device":"/dev/video0",
+	"width":640,
+	"height":480,
+	"fourcc":"YUYV",
+	"end":true
+},{
+	"name":"file",
+	"type":"file",
+	"end":true
+},{
+	"name":"gpu",
+	"type":"gpu",
+	"native":"x11",
+	"width":640,
+	"height":480,
+	"fourcc":"YUYV",
+	"end":true
+}]
