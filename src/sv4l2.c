@@ -757,11 +757,13 @@ int sv4l2_crop(V4L2_t *dev, struct v4l2_rect *r)
 		sel.target = V4L2_SEL_TGT_CROP;
 		memcpy(&sel.r, r, sizeof(sel.r));
 	}
+	sel.flags = V4L2_SEL_FLAG_GE | V4L2_SEL_FLAG_LE;
 	if (ioctl(dev->fd, VIDIOC_S_SELECTION, &sel))
 	{
 		err("cropping error %m");
 		return -1;
 	}
+	dbg("sv4l2: croping requested (%d %d %d %d)", sel.r.left, sel.r.top, sel.r.width, sel.r.height);
 	return 0;
 }
 
@@ -1599,11 +1601,7 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t
 int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 {
 	json_t *jconfig = entry;
-	json_t *jcontrols = json_object_get(jconfig,"controls");
-	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
-		jconfig = jcontrols;
 
-#if 1
 	json_t *crop = json_object_get(jconfig, "crop");
 	if (crop && json_is_object(crop))
 	{
@@ -1632,6 +1630,11 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 	}
 	if (crop && json_is_boolean(crop) && !json_is_true(crop))
 		sv4l2_crop(dev, NULL);
+
+	json_t *jcontrols = json_object_get(jconfig,"controls");
+	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
+		jconfig = jcontrols;
+#if 1
 	return sv4l2_treecontrols(dev, _sv4l2_loadjsonsetting, jconfig);
 #else
 	json_t *brightness = json_object_get(jconfig, "brightness");
