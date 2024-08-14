@@ -58,6 +58,8 @@ File_t * sfile_create(const char *filename, FileConfig_t *config)
 		rootfd = fd;
 	}
 
+	if (config->filename != NULL)
+		filename = config->filename;
 	size_t fsize = 0;
 	int mode = 0;
 	if (config->direction & File_Output_e)
@@ -209,6 +211,7 @@ int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
 	if (mem && buffer->mem)
 		*mem = buffer->mem;
 	dev->lastbufferid++;
+	dev->lastbufferid %= dev->nbuffers;
 	return ret;
 }
 
@@ -225,7 +228,7 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 		bytesused = buffer->size;
 	if (bytesused > buffer->size)
 	{
-		warn("buffer too small %lu %lu", buffer->size, bytesused);
+		warn("sfile: buffer too small %lu %lu", buffer->size, bytesused);
 	}
 	if (config->direction & File_Input_e)
 	{
@@ -245,7 +248,7 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 		}
 		if (ret < 0)
 		{
-			err("write to file \"%s\" error: %m", dev->path);
+			err("sfile: write to file \"%s\" error: %m", dev->path);
 			return -1;
 		}
 		buffer->bytesused = ret;
@@ -268,7 +271,7 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 		}
 		if (ret < 0)
 		{
-			err("read from file \"%s\" error: %m", dev->path);
+			err("sfile: read from file \"%s\" error: %m", dev->path);
 			return -1;
 		}
 		buffer->bytesused = ret;
@@ -296,7 +299,10 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 		const char *filepath = strchr(config->parent.name, ':');
 		if (filepath)
 		{
-			config->filename = filepath + 1;
+			filepath++;
+			/// the filepath may be an URL
+			if (filepath[0] == '/' && filepath[1] == '/') filepath += 2;
+			config->filename = filepath;
 		}
 	}
 	json_t *path = json_object_get(jconfig, "path");
