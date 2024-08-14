@@ -7,11 +7,14 @@
 #include <sys/timerfd.h>
 
 #include "log.h"
+#include "daemonize.h"
 #include "sv4l2.h"
 #include "sdrm.h"
 #include "segl.h"
 #include "sfile.h"
 #include "config.h"
+
+#define MODE_DAEMONIZE 0x01
 
 typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
 typedef void *(*FastVideoDevice_create_t)(const char *devicename, DeviceConf_t *config);
@@ -187,8 +190,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 	maxfd = (outfd > timerfd)?outfd:timerfd;
 
 	unsigned int count = 0;
-	int run = 1;
-	while (run)
+	while (isrunning())
 	{
 		fd_set rfds;
 		fd_set wfds;
@@ -214,7 +216,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 			int nread = read(timerfd, &exp, sizeof(uint64_t));
 			if (nread == sizeof(uint64_t))
 			{
-				warn("fps: %d", count);
+				warn("fastvideo(%d): %d fps", getpid(), count);
 				count = 0;
 			}
 			ret--;
@@ -233,7 +235,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 					continue;
 				if (errno)
 					err("input buffer dequeuing error %m");
-				run = 0;
+				killdaemon(NULL);
 				break;
 			}
 
@@ -243,7 +245,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 					continue;
 				if (errno)
 					err("output buffer queuing error %m");
-				run = 0;
+				killdaemon(NULL);
 				break;
 			}
 			ret--;
@@ -257,7 +259,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 					continue;
 				if (errno)
 					err("output buffer dequeuing error %m");
-				run = 0;
+				killdaemon(NULL);
 				break;
 			}
 			if (input->ops->queue(input->dev, index, 0) < 0)
@@ -266,7 +268,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 					continue;
 				if (errno)
 					err("input buffer queuing error %m");
-				run = 0;
+				killdaemon(NULL);
 				break;
 			}
 			count++;
@@ -280,16 +282,19 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 
 int main(int argc, char * const argv[])
 {
+	const char *owner = NULL;
+	const char *pidfile= NULL;
 	const char *configfile = NULL;
 	const char *input = "cam";
 	const char *output = "gpu";
 	int width = 640;
 	int height = 480;
+	unsigned int mode = 0;
 
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:j:w:h:");
+		opt = getopt(argc, argv, "i:o:j:w:h:D");
 		switch (opt)
 		{
 			case 'i':
@@ -306,6 +311,9 @@ int main(int argc, char * const argv[])
 			break;
 			case 'h':
 				height = strtol(optarg, NULL, 10);
+			break;
+			case 'D':
+				mode |= MODE_DAEMONIZE;
 			break;
 		}
 	} while(opt != -1);
@@ -359,6 +367,8 @@ int main(int argc, char * const argv[])
 	if (outdev->dev == NULL)
 		return -1;
 
+	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
+
 	int *dma_bufs = {0};
 	size_t size = 0;
 	int nbbufs = 0;
@@ -374,6 +384,7 @@ int main(int argc, char * const argv[])
 	}
 	main_loop(indev, outdev);
 
+	killdaemon(pidfile);
 	indev->ops->destroy(indev->dev);
 	outdev->ops->destroy(outdev->dev);
 	return 0;
