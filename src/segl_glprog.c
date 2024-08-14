@@ -390,7 +390,7 @@ int glprog_setup(GLProgram_t *program, GLuint width, GLuint height)
 	glActiveTexture(GL_TEXTURE0);
 
 	GLuint resolutionID = glGetUniformLocation(program->ID, "vResolution");
-	glUniform2f(resolutionID, program->width, program->height);
+	glUniform4f(resolutionID, program->width, program->height, 1 / program->width, 1 / program->height);
 
 	GLProgram_Uniform_t *uniform = program->controls;
 	while (uniform)
