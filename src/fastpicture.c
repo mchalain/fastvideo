@@ -144,8 +144,9 @@ int main(int argc, char * const argv[])
 		return -1;
 	}
 
-	if (sv4l2_loadsettings && inconfig.parent.entry)
-		sv4l2_loadsettings(cam, inconfig.parent.entry);
+	int (*_sv4l2_loadsettings)(V4L2_t *dev, void *jconfig) = sv4l2_loadsettings;
+	if (_sv4l2_loadsettings && inconfig.parent.entry)
+		_sv4l2_loadsettings(cam, inconfig.parent.entry);
 
 	int *dma_bufs = {0};
 	size_t size = 0;

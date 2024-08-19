@@ -153,10 +153,12 @@ FastVideoDevice_t *config_createdevice(const char *name, const char *configfile,
 {
 	FastVideoDevice_t *device = NULL;
 	DeviceConf_t devconfig = {0};
+#ifdef HAVE_JANSSON
 	if (configfile != NULL)
 	{
 		config_parseconfigfile(name, configfile, &devconfig);
 	}
+#endif
 	if (devconfig.type == NULL)
 	{
 		devconfig.type = name;
