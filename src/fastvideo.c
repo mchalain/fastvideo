@@ -9,6 +9,7 @@
 #include "log.h"
 #include "daemonize.h"
 #include "sv4l2.h"
+#include "spassthrough.h"
 #include "sdrm.h"
 #include "segl.h"
 #include "sfile.h"
@@ -18,6 +19,7 @@
 
 typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
 typedef void *(*FastVideoDevice_create_t)(const char *devicename, DeviceConf_t *config);
+typedef void *(*FastVideoDevice_duplicate_t)(void *dev);
 typedef int (*FastVideoDevice_loadsettings_t)(void *dev, void *configentry);
 typedef int (*FastVideoDevice_requestbuffer_t)(void *dev, enum buf_type_e t, ...);
 typedef int (*FastVideoDevice_eventfd_t)(void *dev);
@@ -33,6 +35,7 @@ struct FastVideoDevice_ops_s
 	const char *name;
 	FastVideoDevice_createconfig_t createconfig;
 	FastVideoDevice_create_t create;
+	FastVideoDevice_duplicate_t duplicate;
 	FastVideoDevice_loadsettings_t loadsettings;
 	FastVideoDevice_requestbuffer_t requestbuffer;
 	FastVideoDevice_eventfd_t eventfd;
@@ -47,6 +50,7 @@ FastVideoDevice_ops_t sv4l2_ops = {
 	.name = "cam",
 	.createconfig = sv4l2_createconfig,
 	.create = (FastVideoDevice_create_t)sv4l2_create,
+	.duplicate = (FastVideoDevice_duplicate_t)NULL,
 	.loadsettings = (FastVideoDevice_loadsettings_t)sv4l2_loadsettings,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)sv4l2_requestbuffer,
 	.eventfd = (FastVideoDevice_eventfd_t)sv4l2_fd,
@@ -56,11 +60,26 @@ FastVideoDevice_ops_t sv4l2_ops = {
 	.queue = (FastVideoDevice_queue_t)sv4l2_queue,
 	.destroy = (FastVideoDevice_destroy_t)sv4l2_destroy,
 };
+FastVideoDevice_ops_t spassthrough_ops = {
+	.name = "passthrough",
+	.createconfig = spassthrough_createconfig,
+	.create = (FastVideoDevice_create_t)spassthrough_create,
+	.duplicate = (FastVideoDevice_duplicate_t)spassthrough_duplicate,
+	.loadsettings = (FastVideoDevice_loadsettings_t)spassthrough_loadsettings,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)spassthrough_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)spassthrough_fd,
+	.start = (FastVideoDevice_start_t)spassthrough_start,
+	.stop = (FastVideoDevice_stop_t)spassthrough_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)spassthrough_dequeue,
+	.queue = (FastVideoDevice_queue_t)spassthrough_queue,
+	.destroy = (FastVideoDevice_destroy_t)spassthrough_destroy,
+};
 #ifdef HAVE_EGL
 FastVideoDevice_ops_t segl_ops = {
 	.name = "gpu",
 	.createconfig = segl_createconfig,
 	.create = (FastVideoDevice_create_t)segl_create,
+	.duplicate = (FastVideoDevice_duplicate_t)NULL,
 	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)segl_requestbuffer,
 	.eventfd = (FastVideoDevice_eventfd_t)segl_fd,
@@ -76,6 +95,7 @@ FastVideoDevice_ops_t sdrm_ops = {
 	.name = "screen",
 	.createconfig = sdrm_createconfig,
 	.create = (FastVideoDevice_create_t)sdrm_create,
+	.duplicate = (FastVideoDevice_duplicate_t)NULL,
 	.loadsettings = (FastVideoDevice_loadsettings_t)sdrm_loadsettings,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)sdrm_requestbuffer,
 	.eventfd = (FastVideoDevice_eventfd_t)NULL,
@@ -90,6 +110,7 @@ FastVideoDevice_ops_t sfile_ops = {
 	.name = "file",
 	.createconfig = sfile_createconfig,
 	.create = (FastVideoDevice_create_t)sfile_create,
+	.duplicate = (FastVideoDevice_duplicate_t)NULL,
 	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)sfile_requestbuffer,
 	.eventfd = (FastVideoDevice_eventfd_t)NULL,
@@ -107,6 +128,26 @@ struct FastVideoDevice_s
 	void *dev;
 	FastVideoDevice_ops_t *ops;
 };
+
+FastVideoDevice_t *device_duplicate(FastVideoDevice_t *dev)
+{
+	FastVideoDevice_t *device = NULL;
+	if (dev->ops->duplicate == NULL)
+	{
+		err("fastvideo: device may not be duplicated");
+		return NULL;
+	}
+	void *ndev = NULL;
+	ndev = dev->ops->duplicate(dev->dev);
+	if (ndev)
+	{
+		device = calloc(1, sizeof(*device));
+		device->config = dev->config;
+		device->ops = dev->ops;
+		device->dev = ndev;
+	}
+	return device;
+}
 
 FastVideoDevice_t *config_createdevice(const char *name, const char *configfile, FastVideoDevice_ops_t *ops[])
 {
@@ -164,9 +205,12 @@ int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 	return 0;
 }
 
-int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
+int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
+			FastVideoDevice_t *outtr, FastVideoDevice_t *output)
 {
 	output->ops->start(output->dev);
+	outtr->ops->start(outtr->dev);
+	intr->ops->start(intr->dev);
 	input->ops->start(input->dev);
 	int maxfd = 0;
 	int infd = -1;
@@ -174,6 +218,18 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 	{
 		infd = input->ops->eventfd(input->dev);
 		maxfd = (infd > maxfd)?infd:maxfd;
+	}
+	int intrfd = -1;
+	if (intr->ops->eventfd)
+	{
+		intrfd = intr->ops->eventfd(intr->dev);
+		maxfd = (intrfd > maxfd)?intrfd:maxfd;
+	}
+	int outtrfd = -1;
+	if (outtr->ops->eventfd)
+	{
+		outtrfd = outtr->ops->eventfd(outtr->dev);
+		maxfd = (outtrfd > maxfd)?outtrfd:maxfd;
 	}
 	int outfd = -1;
 	if (output->ops->eventfd)
@@ -187,7 +243,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 		.it_value = {.tv_sec = 1, .tv_nsec = 0},
 	};
 	timerfd_settime(timerfd, TFD_TIMER_CANCEL_ON_SET, &timeout, NULL);
-	maxfd = (outfd > timerfd)?outfd:timerfd;
+	maxfd = (maxfd > timerfd)?maxfd:timerfd;
 
 	unsigned int count = 0;
 	while (isrunning())
@@ -198,6 +254,10 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 		FD_ZERO(&wfds);
 		if (infd > 0)
 			FD_SET(infd, &rfds);
+		if (intrfd > 0)
+			FD_SET(intrfd, &wfds);
+		if (outtrfd > 0)
+			FD_SET(outtrfd, &rfds);
 		if (outfd > 0)
 		{
 			FD_SET(outfd, &rfds);
@@ -239,6 +299,31 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 				break;
 			}
 
+			if (intr->ops->queue(intr->dev, index, bytesused) < 0)
+			{
+				if (errno == EAGAIN)
+					continue;
+				if (errno)
+					err("output buffer queuing error %m");
+				killdaemon(NULL);
+				break;
+			}
+			ret--;
+		}
+		if (outtrfd < 0 || (ret > 0 && FD_ISSET(outtrfd, &rfds)))
+		{
+			int index = 0;
+			size_t bytesused = 0;
+			if ((index = outtr->ops->dequeue(outtr->dev, NULL, &bytesused)) < 0)
+			{
+				if (errno == EAGAIN)
+					continue;
+				if (errno)
+					err("input buffer dequeuing error %m");
+				killdaemon(NULL);
+				break;
+			}
+
 			if (output->ops->queue(output->dev, index, bytesused) < 0)
 			{
 				if (errno == EAGAIN)
@@ -262,7 +347,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 				killdaemon(NULL);
 				break;
 			}
-			if (input->ops->queue(input->dev, index, 0) < 0)
+			if (outtr->ops->queue(outtr->dev, index, 0) < 0)
 			{
 				if (errno == EAGAIN)
 					continue;
@@ -274,8 +359,35 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 			count++;
 			ret--;
 		}
+		if (intrfd < 0 || (ret > 0 && FD_ISSET(intrfd, &wfds)))
+		{
+			int index = 0;
+			size_t bytesused = 0;
+			if ((index = intr->ops->dequeue(intr->dev, NULL, &bytesused)) < 0)
+			{
+				if (errno == EAGAIN)
+					continue;
+				if (errno)
+					err("input buffer dequeuing error %m");
+				killdaemon(NULL);
+				break;
+			}
+
+			if (input->ops->queue(input->dev, index, bytesused) < 0)
+			{
+				if (errno == EAGAIN)
+					continue;
+				if (errno)
+					err("output buffer queuing error %m");
+				killdaemon(NULL);
+				break;
+			}
+			ret--;
+		}
 	}
 	input->ops->stop(input->dev);
+	intr->ops->stop(intr->dev);
+	outtr->ops->stop(outtr->dev);
 	output->ops->stop(output->dev);
 	return 0;
 }
@@ -287,6 +399,7 @@ int main(int argc, char * const argv[])
 	const char *configfile = NULL;
 	const char *input = "cam";
 	const char *output = "gpu";
+	const char *transfer = "passthrough";
 	int width = 640;
 	int height = 480;
 	unsigned int mode = 0;
@@ -328,6 +441,7 @@ int main(int argc, char * const argv[])
 		&sdrm_ops,
 #endif
 		&sfile_ops,
+		&spassthrough_ops,
 		NULL
 	};
 
@@ -339,6 +453,14 @@ int main(int argc, char * const argv[])
 		return -1;
 	}
 
+	FastVideoDevice_t *transferdev = NULL;
+	transferdev = config_createdevice(transfer, configfile, fastVideoDevice_ops);
+	if (!transferdev->ops)
+	{
+		err("transfer not available");
+		return -1;
+	}
+
 	FastVideoDevice_t *outdev = NULL;
 	outdev = config_createdevice(output, configfile, fastVideoDevice_ops);
 	if (!outdev->ops)
@@ -347,7 +469,8 @@ int main(int argc, char * const argv[])
 		return -1;
 	}
 
-	choice_config(indev->config, outdev->config);
+	choice_config(indev->config, transferdev->config);
+	choice_config(transferdev->config, outdev->config);
 
 	indev->dev = indev->ops->create(input, indev->config);
 	if (indev->ops->loadsettings && indev->config->entry)
@@ -357,6 +480,18 @@ int main(int argc, char * const argv[])
 	}
 	if (indev->dev == NULL)
 		return -1;
+
+	transferdev->dev = transferdev->ops->create(transfer, transferdev->config);
+	if (transferdev->ops->loadsettings && transferdev->config->entry)
+	{
+		dbg("loadsettings");
+		transferdev->ops->loadsettings(transferdev->dev, transferdev->config->entry);
+	}
+	if (transferdev->dev == NULL)
+		return -1;
+
+	FastVideoDevice_t *transferdevD = NULL;
+	transferdevD = device_duplicate(transferdev);
 
 	outdev->dev = outdev->ops->create(output, outdev->config);
 	if (outdev->ops->loadsettings && outdev->config->entry)
@@ -377,12 +512,22 @@ int main(int argc, char * const argv[])
 		err("input dma buffer not allowed");
 		return -1;
 	}
+	if (transferdev->ops->requestbuffer(transferdev->dev, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
+	{
+		err("output dma buffers not linked");
+		return -1;
+	}
+	if (transferdevD->ops->requestbuffer(transferdevD->dev, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
+	{
+		err("input dma buffer not allowed");
+		return -1;
+	}
 	if (outdev->ops->requestbuffer(outdev->dev, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
 	{
 		err("output dma buffers not linked");
 		return -1;
 	}
-	main_loop(indev, outdev);
+	main_loop(indev, transferdev, transferdevD, outdev);
 
 	killdaemon(pidfile);
 	indev->ops->destroy(indev->dev);
