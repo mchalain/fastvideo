@@ -18,7 +18,7 @@
 
 typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
 typedef void *(*FastVideoDevice_create_t)(const char *devicename, DeviceConf_t *config);
-typedef void *(*FastVideoDevice_loadsettings_t)(void *dev, void *configentry);
+typedef int (*FastVideoDevice_loadsettings_t)(void *dev, void *configentry);
 typedef int (*FastVideoDevice_requestbuffer_t)(void *dev, enum buf_type_e t, ...);
 typedef int (*FastVideoDevice_eventfd_t)(void *dev);
 typedef int (*FastVideoDevice_start_t)(void *dev);
