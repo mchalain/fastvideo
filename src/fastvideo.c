@@ -409,7 +409,7 @@ int main(int argc, char * const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:j:w:h:D");
+		opt = getopt(argc, argv, "i:o:t:j:w:h:D");
 		switch (opt)
 		{
 			case 'i':
@@ -417,6 +417,9 @@ int main(int argc, char * const argv[])
 			break;
 			case 'o':
 				output = optarg;
+			break;
+			case 't':
+				transfer = optarg;
 			break;
 			case 'j':
 				configfile = optarg;

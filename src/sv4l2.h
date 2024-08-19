@@ -53,6 +53,17 @@ typedef struct V4L2_s V4L2_t;
  * @return V4L2_t object.
  */
 V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config);
+
+/**
+ * @brief create a new object with a previous one
+ * The new object may be used to M2M device
+ *
+ * @param dev the object to duplicate;
+ *
+ * @return V4L2_t object.
+ */
+V4L2_t *sv4l2_duplicate(V4L2_t *dev);
+
 /**
  * @brief select and create a type of buffers.
  *
