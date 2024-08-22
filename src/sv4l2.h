@@ -233,6 +233,15 @@ void sv4l2_destroy(V4L2_t *dev);
 DeviceConf_t * sv4l2_createconfig();
 
 /**
+ * @brief opens a video subdevice and check capabilities
+ *
+ * @param the path to the device
+ *
+ * @return the filedescriptor otherwise -1
+ */
+int sv4l2_subdev_open(const char *subdevice);
+
+/**
  * @brief returns information about subdevice definition
  * The function calls the callback with the subdevice format
  *
