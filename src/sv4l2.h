@@ -186,13 +186,13 @@ int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *
  * it calls the cb function for each entry of the menu.
  *
  * @param dev the V4L2_t object.
- * @param id the menu control id.
+ * @param ctrl the control
  * @param cb the called function.
  * @param arg the first argument of cb.
  *
  * @return -1 on error, 0 otherwise.
  */
-int sv4l2_treecontrolmenu(V4L2_t *dev, int id, int (*cb)(void *arg, struct v4l2_querymenu *ctrl, V4L2_t *dev), void * arg);
+int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_queryctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl, V4L2_t *dev), void * arg);
 #ifdef HAVE_JANSSON
 /**
  * @brief callback for sv4l2_treecontrols.
