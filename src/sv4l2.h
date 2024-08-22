@@ -232,6 +232,20 @@ void sv4l2_destroy(V4L2_t *dev);
  */
 DeviceConf_t * sv4l2_createconfig();
 
+/**
+ * @brief returns information about subdevice definition
+ * The function calls the callback with the subdevice format
+ *
+ * @param ctrlfd the file descriptor of the subdevice
+ * @param buformat the callback
+ * @param cbarg the first argument of the callback
+ *
+ * @return the pixmap code (not the fourcc)
+ */
+struct v4l2_subdev_format;
+uint32_t sv4l2_subdev_getpixformat(int ctrlfd, int (*pixformat)(void *arg, struct v4l2_subdev_format *ffs), void *cbarg);
+int sv4l2_subdev_setpixformat(int ctrlfd, uint32_t fourcc, uint32_t width, uint32_t height);
+
 #ifdef HAVE_JANSSON
 int sv4l2_loadjsonsettings(V4L2_t *dev, void *jconfig);
 int sv4l2_loadjsonconfiguration(void *config, void *jconfig);
