@@ -15,14 +15,17 @@
 	.device = defaultdevice, \
 	}
 
+typedef struct SubDevConfig_s  SubDevConfig_t;
+struct SubDevConfig_s
+{
+	const char *device;
+};
+
 /**
  * @param device the device path as "/dev/video0".
  * @param transfer the callback may be used with sv4l2_loop function.
  * @param fd the file descriptor from another V4L2_t object.
- * @param fourcc the graphic code formated on 32 bits as "XRGB" or "YUYV".
  * @param mode a bits field build with MODE_VERBOSE, MODE_INTERACTIVE...
- * @param width the width of the image.
- * @param height the height of the image.
  * @param fps the number of frames per second, positive value for more than 1 fps,
  * negative value if one frame in more than 1 second
  */
@@ -31,7 +34,7 @@ struct CameraConfig_s
 {
 	DeviceConf_t parent;
 	const char *device;
-	const char *subdevice;
+	SubDevConfig_t *subdevices;
 	int (*transfer)(void *, int id, const char *mem, size_t size);
 	int fd;
 	int mode;
@@ -235,11 +238,11 @@ DeviceConf_t * sv4l2_createconfig();
 /**
  * @brief opens a video subdevice and check capabilities
  *
- * @param the path to the device
+ * @param config the configuration object
  *
  * @return the filedescriptor otherwise -1
  */
-int sv4l2_subdev_open(const char *subdevice);
+int sv4l2_subdev_open(SubDevConfig_t *config);
 
 /**
  * @brief returns information about subdevice definition
