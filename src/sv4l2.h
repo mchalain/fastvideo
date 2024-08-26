@@ -42,6 +42,7 @@ struct CameraConfig_s
 };
 
 typedef struct V4L2_s V4L2_t;
+typedef struct V4L2Subdev_s V4L2Subdev_t;
 
 /**
  * @brief create v4l2 device
@@ -223,13 +224,14 @@ void sv4l2_destroy(V4L2_t *dev);
 DeviceConf_t * sv4l2_createconfig();
 
 /**
- * @brief opens a video subdevice and check capabilities
+ * @brief create a video subdevice and check capabilities
  *
  * @param config the configuration object
  *
- * @return the filedescriptor otherwise -1
+ * @return the new obejct or NULL
  */
-int sv4l2_subdev_open(SubDevConfig_t *config);
+V4L2Subdev_t *sv4l2_subdev_create(SubDevConfig_t *config);
+V4L2Subdev_t *sv4l2_subdev_create2(int ctrlfd, SubDevConfig_t *config);
 
 /**
  * @brief returns information about subdevice definition
