@@ -1543,7 +1543,7 @@ static int _v4l2_subdev_fmtbus(void *arg, struct v4l2_subdev_mbus_code_enum *mbu
 	return -1;
 }
 
-uint32_t _sv4l2_subdev_getfmtbus(int ctrlfd, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
+uint32_t _v4l2_subdev_getfmtbus(int ctrlfd, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
 {
 	uint32_t ret = 0;
 	for (int i = 0; ; i++)
