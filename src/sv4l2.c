@@ -1648,17 +1648,23 @@ static int _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs)
 	uint32_t fourcc = 0xFFFFFFFF;
 	switch (ffs->format.code)
 	{
-	case V4L2_MBUS_FMT_SGBRG10_1X10:
-		fourcc = V4L2_PIX_FMT_SGBRG10;
+	case MEDIA_BUS_FMT_SGBRG10_1X10:
+		fourcc = V4L2_PIX_FMT_SGBRG10; // GB10
 	break;
-	case V4L2_MBUS_FMT_SBGGR10_1X10:
-		fourcc = V4L2_PIX_FMT_SBGGR10;
+	case MEDIA_BUS_FMT_SBGGR10_1X10:
+		fourcc = V4L2_PIX_FMT_SBGGR10; // BG10
+	break;
+	case MEDIA_BUS_FMT_SGRBG10_1X10:
+		fourcc = V4L2_PIX_FMT_SGRBG10; // BA10
 	break;
 	case MEDIA_BUS_FMT_SRGGB10_1X10:
-		fourcc = V4L2_PIX_FMT_SRGGB10;
+		fourcc = V4L2_PIX_FMT_SRGGB10; // RG10
 	break;
-	case V4L2_MBUS_FMT_SRGGB12_1X12:
-		fourcc = V4L2_PIX_FMT_SRGGB12;
+	case MEDIA_BUS_FMT_SRGGB12_1X12:
+		fourcc = V4L2_PIX_FMT_SRGGB12; // RG12
+	break;
+	case MEDIA_BUS_FMT_SBGGR16_1X16:
+		fourcc = V4L2_PIX_FMT_SRGGB16; // RG16
 	break;
 	default:
 		warn("sv4l2: subdev format %#x not supported", ffs->format.code);
