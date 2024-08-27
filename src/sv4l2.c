@@ -1668,6 +1668,7 @@ static int _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs)
 	break;
 	default:
 		warn("sv4l2: subdev format %#x not supported", ffs->format.code);
+		fourcc = 0;
 	break;
 	};
 	config->fourcc = fourcc;
