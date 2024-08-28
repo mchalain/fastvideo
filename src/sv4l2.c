@@ -2004,6 +2004,8 @@ static const char *CTRLTYPE(enum v4l2_ctrl_type type)
 		return "boolean";
 	case V4L2_CTRL_TYPE_MENU:
 		return "menu";
+	case V4L2_CTRL_TYPE_INTEGER_MENU:
+		return "menu";
 	case V4L2_CTRL_TYPE_BUTTON:
 		return "button";
 	case V4L2_CTRL_TYPE_INTEGER64:
@@ -2116,7 +2118,7 @@ static int menuprint(void *arg, struct v4l2_querymenu *querymenu)
 	json_t *control = (json_t *)arg;
 	json_t *value = json_object_get(control, "value");
 	if (value && querymenu->index == json_integer_value(value))
-		json_object_set_new(control, "value_str", json_string(querymenu->name));
+		json_object_set_new(control, "value_show", json_string(querymenu->name));
 	return 0;
 }
 
@@ -2126,6 +2128,23 @@ static int menuprintall(void *arg, struct v4l2_querymenu *querymenu)
 	json_t *items = json_object_get(control, "items");
 	json_array_append_new(items, json_string(querymenu->name));
 	return menuprint(arg, querymenu);
+}
+
+static int intmenuprint(void *arg, struct v4l2_querymenu *querymenu)
+{
+	json_t *control = (json_t *)arg;
+	json_t *value = json_object_get(control, "value");
+	if (value && querymenu->index == json_integer_value(value))
+		json_object_set_new(control, "value_show", json_integer(querymenu->value));
+	return 0;
+}
+
+static int intmenuprintall(void *arg, struct v4l2_querymenu *querymenu)
+{
+	json_t *control = (json_t *)arg;
+	json_t *items = json_object_get(control, "items");
+	json_array_append_new(items, json_integer(querymenu->value));
+	return intmenuprint(arg, querymenu);
 }
 
 typedef struct _JSONControl_Arg_s _JSONControl_Arg_t;
@@ -2209,6 +2228,23 @@ static int _sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl)
 		}
 		else
 			_sv4l2_treecontrolmenu(ctrlfd, ctrl, menuprint, control);
+		json_decref(jvalue);
+	}
+	break;
+	case V4L2_CTRL_TYPE_INTEGER_MENU:
+	{
+		json_t *jvalue = json_integer((int) value);
+		json_object_set(control, "value", jvalue);
+		if (jsoncontrol_arg->all)
+		{
+			json_t *items = json_array();
+			json_object_set(control, "items", items);
+			_sv4l2_treecontrolmenu(ctrlfd, ctrl, intmenuprintall, control);
+			json_decref(items);
+			json_object_set_new(control, "default_value", json_integer(ctrl->default_value));
+		}
+		else
+			_sv4l2_treecontrolmenu(ctrlfd, ctrl, intmenuprint, control);
 		json_decref(jvalue);
 	}
 	break;
