@@ -873,7 +873,7 @@ int sv4l2_crop(V4L2_t *dev, struct v4l2_rect *r)
 	return 0;
 }
 
-static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_queryctrl queryctrl)
+static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_queryctrl *queryctrl)
 {
 #if 1
 	if (V4L2_CTRL_ID2CLASS(id) == V4L2_CTRL_CLASS_USER)
@@ -888,7 +888,7 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_queryc
 			return (void *)-1;
 		}
 		control.value = 0;
-		if (queryctrl.type != V4L2_CTRL_TYPE_CTRL_CLASS &&
+		if (queryctrl->type != V4L2_CTRL_TYPE_CTRL_CLASS &&
 			ioctl(ctrlfd, VIDIOC_G_CTRL, &control))
 		{
 			err("sv4l2: device doesn't support control %#x %m", id);
@@ -899,22 +899,22 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_queryc
 	}
 	else
 #endif
-	if (queryctrl.type != V4L2_CTRL_TYPE_CTRL_CLASS)
+	if (queryctrl->type != V4L2_CTRL_TYPE_CTRL_CLASS)
 	{
 		struct v4l2_ext_control control = {0};
 		char string[256] = {0};
 		control.id = id;
-		if (queryctrl.type == V4L2_CTRL_TYPE_INTEGER)
+		if (queryctrl->type == V4L2_CTRL_TYPE_INTEGER)
 			control.size = sizeof(uint32_t);
-		else if (queryctrl.type == V4L2_CTRL_TYPE_BOOLEAN)
+		else if (queryctrl->type == V4L2_CTRL_TYPE_BOOLEAN)
 			control.size = 1;
-		else if (queryctrl.type == V4L2_CTRL_TYPE_MENU)
+		else if (queryctrl->type == V4L2_CTRL_TYPE_MENU)
 			control.size = sizeof(uint32_t);
-		else if (queryctrl.type == V4L2_CTRL_TYPE_BUTTON)
+		else if (queryctrl->type == V4L2_CTRL_TYPE_BUTTON)
 			control.size = 0;
-		else if (queryctrl.type == V4L2_CTRL_TYPE_INTEGER64)
+		else if (queryctrl->type == V4L2_CTRL_TYPE_INTEGER64)
 			control.size = sizeof(uint64_t);
-		else if (queryctrl.type == V4L2_CTRL_TYPE_STRING && value != NULL)
+		else if (queryctrl->type == V4L2_CTRL_TYPE_STRING && value != NULL)
 		{
 			if (value != (void*)-1)
 				control.size = strlen(value) + 1;
@@ -943,8 +943,8 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_queryc
 		 * Syscall param ioctl(VKI_V4L2_G_EXT_CTRLS).controls[].ptr[] points to unaddressable byte(s)
 		 */
 		control.ptr = string;
-		if ((queryctrl.type != V4L2_CTRL_TYPE_BUTTON) &&
-			(queryctrl.type != V4L2_CTRL_TYPE_CTRL_CLASS) &&
+		if ((queryctrl->type != V4L2_CTRL_TYPE_BUTTON) &&
+			(queryctrl->type != V4L2_CTRL_TYPE_CTRL_CLASS) &&
 			ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls))
 		{
 			err("sv4l2: control %#x getting error %m", id);
@@ -988,7 +988,7 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 		err("sv4l2: control %#x with payload unsupported", id);
 		return 0;
 	}
-	return _sv4l2_control(ctrlfd, id, value, queryctrl);
+	return _sv4l2_control(ctrlfd, id, value, &queryctrl);
 }
 
 static int _sv4l2_treecontrols(int ctrlfd, V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev), void * arg)
@@ -2128,7 +2128,7 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev)
 			}
 		}
 	}
-	void *value = sv4l2_control(dev, ctrl->id, (void*)-1);
+	void *value = _sv4l2_control(dev->ctrlfd, ctrl->id, (void*)-1, ctrl);
 	json_t *control = json_object();
 	json_object_set_new(control, "name", json_string(ctrl->name));
 	if (jsoncontrol_arg->all)
