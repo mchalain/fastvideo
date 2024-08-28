@@ -1142,7 +1142,7 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 
 	if (mode & MODE_MEDIACTL && config)
 	{
-		int fd = sv4l2_subdev_open(config->subdevice);
+		int fd = sv4l2_subdev_open(&config->subdevices[0]);
 		if (fd > 0)
 		{
 			ctrlfd = fd;
@@ -1630,12 +1630,12 @@ static uint32_t _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ff
 }
 #endif
 
-int sv4l2_subdev_open(const char *subdevice)
+int sv4l2_subdev_open(SubDevConfig_t *config)
 {
-	int ctrlfd = open(subdevice, O_RDWR, 0);
+	int ctrlfd = open(config->device, O_RDWR, 0);
 	if (ctrlfd < 0)
 	{
-		err("smedia: subdevice %s not exist", subdevice);
+		err("smedia: subdevice %s not exist", config->device);
 		return -1;
 	}
 	struct v4l2_subdev_capability caps;
@@ -1670,7 +1670,7 @@ int sv4l2_subdev_open(const char *subdevice)
 }
 
 #else
-static int sv4l2_subdev_open(const char *subdevice)
+static int sv4l2_subdev_open(SubDevConfig_t *config)
 {
 	err("sv4l2: subdev is not supported");
 	return -1;
@@ -1836,6 +1836,25 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 	return sv4l2_treecontrols(dev, _sv4l2_loadjsonsetting, jconfig);
 }
 
+int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
+{
+	int ret = 0;
+	json_t *subdevice = entry;
+	SubDevConfig_t *config = (SubDevConfig_t *)arg;
+
+	if (subdevice && json_is_object(subdevice))
+	{
+		subdevice = json_object_get(subdevice, "device");
+	}
+	if (subdevice && json_is_string(subdevice))
+	{
+		const char *value = json_string_value(subdevice);
+		config->device = value;
+		ret = 0;
+	}
+	return ret;
+}
+
 int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 {
 	json_t *jconfig = entry;
@@ -1847,20 +1866,24 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 		const char *value = json_string_value(device);
 		config->device = value;
 	}
-	json_t *subdevice = json_object_get(jconfig, "subdevice");
-	if (subdevice && json_is_array(subdevice))
+	json_t *subdevices = json_object_get(jconfig, "subdevice");
+	if (subdevices && json_is_array(subdevices))
 	{
-		subdevice = json_array_get(subdevice, 0);
+		config->subdevices = calloc(json_array_size(subdevices), sizeof(*config->subdevices));
+		int index;
+		json_t *subdevice;
+		json_array_foreach(subdevices, index, subdevice)
+		{
+			sv4l2_subdev_loadjsonconfiguration(&config->subdevices[index], subdevice);
+		}
 	}
-	if (subdevice && json_is_object(subdevice))
+	else if (subdevices)
 	{
-		subdevice = json_object_get(subdevice, "device");
+		config->subdevices = calloc(1, sizeof(*config->subdevices));
+		sv4l2_subdev_loadjsonconfiguration(&config->subdevices[0], subdevices);
+		config->nsubdevices = 1;
 	}
-	if (subdevice && json_is_string(subdevice))
-	{
-		const char *value = json_string_value(subdevice);
-		config->subdevice = value;
-	}
+
 	json_t *fps = NULL;
 	json_t *mode = NULL;
 	json_t *definition = json_object_get(jconfig, "definition");
