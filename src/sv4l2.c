@@ -1853,6 +1853,18 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 		_v4l2_loadjsontransformation(dev, transformation);
 	}
 
+	json_t *subdevice = json_object_get(jconfig, "subdevice");
+	if (subdevice && json_is_array(subdevice))
+	{
+		int index;
+		json_t *subdevice;
+		json_array_foreach(subdevice, index, subdevice)
+		{
+			json_t *jcontrols = json_object_get(jconfig,"controls");
+			if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
+				_v4l2_loadjsoncontrols(dev,jcontrols);
+		}
+	}
 	json_t *jcontrols = json_object_get(jconfig,"controls");
 	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
 		jconfig = jcontrols;
