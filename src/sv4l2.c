@@ -250,24 +250,12 @@ static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 	return -1;
 }
 
-static int _v4l2_open(const char *interface, int *mode)
-{
-	int fd = open(interface, O_RDWR | O_NONBLOCK, 0);
-	if (fd < 0)
-	{
-		err("open %s failed %m", interface);
-		return -1;
-	}
-	return fd;
-}
-
 static int _v4l2_devicecapabilities(int fd, const char *interface, int *mode)
 {
 	struct v4l2_capability cap;
 	if (ioctl(fd, VIDIOC_QUERYCAP, &cap) != 0)
 	{
 		err("device %s not video %m", interface);
-		close(fd);
 		return -1;
 	}
 #ifdef DEBUG
@@ -985,37 +973,29 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, CameraConf
 	return 0;
 }
 
-V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
+V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 {
 	enum v4l2_buf_type type = 0;
 	int mode = 0;
 	if (config && config->mode)
 		mode = config->mode;
-	const char *device = devicename;
-	if (config && config->device)
-		device = config->device;
-	int fd = _v4l2_open(device, &mode);
-	if (fd == -1)
+	if (_v4l2_devicecapabilities(fd, devicename, &mode))
+	{
 		return NULL;
-	if (_v4l2_devicecapabilities(fd, device, &mode))
-		return NULL;
+	}
 	int ctrlfd = fd;
 
-	if (config->mode & MODE_VERBOSE)
-		warn("SV4l2 create %s", devicename);
 	if (_sv4l2_prepare(fd, &type, mode, config))
 	{
-		close(fd);
 		return NULL;
 	}
 
-	struct v4l2_format fmt;
+	struct v4l2_format fmt = {0};
 	fmt.type = type;
 	fmt.fmt.pix.field = V4L2_FIELD_ANY;
 	if (ioctl(fd, VIDIOC_G_FMT, &fmt) != 0)
 	{
 		err("FMT not found %m");
-		close(fd);
 		return NULL;
 	}
 	uint32_t bytesperline = 0;
@@ -1058,6 +1038,8 @@ V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
 	dev->mode = mode;
 	dev->transfer = config->transfer;
 
+	if (mode & MODE_VERBOSE)
+		warn("sv4l2: create %s", devicename);
 	dev->ops.createbuffers = createbuffers_splane;
 	dev->nplanes = 1;
 	if (mode & MODE_MPLANE)
@@ -1065,12 +1047,27 @@ V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
 		dev->ops.createbuffers = createbuffers_mplane;
 		dev->nplanes = fmt.fmt.pix_mp.num_planes;
 	}
-	if (config->mode & MODE_INTERACTIVE && pipe(dev->ifd))
+	dbg("V4l2 settings: %dx%d, %.4s", dev->width, dev->height, (char*)&dev->fourcc);
+	if (config)
+		config->parent.dev = dev;
+	return dev;
+}
+
+V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
+{
+	const char *device = devicename;
+	if (config && config->device)
+		device = config->device;
+	int fd = open(device, O_RDWR | O_NONBLOCK, 0);
+	if (fd < 0)
 	{
-		err("interactive is disabled %m");
+		err("sv4l2: open %s failed %m", device);
+		return NULL;
 	}
-	dbg("V4l2 settings: %dx%d, %.4s", config->parent.width, config->parent.height, (char*)&config->parent.fourcc);
-	config->parent.dev = dev;
+
+	V4L2_t *dev = sv4l2_create2(fd, devicename, type, config);
+	if (dev == NULL)
+		close(fd);
 	return dev;
 }
 
