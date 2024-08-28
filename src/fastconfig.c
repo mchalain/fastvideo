@@ -286,6 +286,7 @@ static int _media_device(void *arg, const char *name, int fd)
 	int sink = -1;
 	int index;
 	json_t *device;
+	json_t *definition = NULL;
 	json_array_foreach(mediadevices, index, device)
 	{
 		dbg("device found %s", json_string_value(json_object_get(device, "name")));
@@ -296,10 +297,18 @@ static int _media_device(void *arg, const char *name, int fd)
 				subdevices = json_array();
 			}
 			json_array_append_new(subdevices, device);
+			if (definition == NULL)
+				definition = json_object_get(device, "definition");
 			continue;
 		}
 		json_object_set_new(device,"subdevice", subdevices);
 		subdevices = NULL;
+		/**
+		 * replace the device's definition by the subdevice's definition if it exists
+		 */
+		if (definition)
+			json_object_set(device,"definition", definition);
+		definition = NULL;
 		_devices_append(devices, device);
 	}
 	return 0;
