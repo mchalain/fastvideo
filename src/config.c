@@ -23,6 +23,11 @@ static int main_parseconfigdevice(json_t *jconfig, DeviceConf_t *devconfig)
 
 	devconfig->entry = jconfig;
 
+	type = json_object_get(jconfig, "type");
+	if (type && json_is_string(type))
+	{
+		devconfig->type = json_string_value(type);
+	}
 	json_t *definition = json_object_get(jconfig, "definition");
 	if (definition && json_is_array(definition))
 	{
@@ -58,7 +63,6 @@ static int main_parseconfigdevice(json_t *jconfig, DeviceConf_t *devconfig)
 	}
 	else if (definition && json_is_object(definition))
 	{
-		type = json_object_get(jconfig, "type");
 		width = json_object_get(definition, "width");
 		height = json_object_get(definition, "height");
 		fourcc = json_object_get(definition, "fourcc");
@@ -66,15 +70,10 @@ static int main_parseconfigdevice(json_t *jconfig, DeviceConf_t *devconfig)
 	}
 	else
 	{
-		type = json_object_get(jconfig, "type");
 		width = json_object_get(jconfig, "width");
 		height = json_object_get(jconfig, "height");
 		fourcc = json_object_get(jconfig, "fourcc");
 		stride = json_object_get(jconfig, "stride");
-	}
-	if (type && json_is_string(type))
-	{
-		devconfig->type = json_string_value(type);
 	}
 	if (width && json_is_integer(width))
 	{
