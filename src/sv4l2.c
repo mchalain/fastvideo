@@ -306,18 +306,47 @@ static int _v4l2_devicecapabilities(int fd, const char *interface, int *mode)
 	if (!(cap.device_caps & V4L2_CAP_STREAMING))
 	{
 		err("device %s not camera", interface);
-		close(fd);
 		return -1;
 	}
 	dbg("%s streaming available (%#x)", interface, *mode);
 	return 0;
 }
 
-static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, CameraConfig_t *config)
+uint32_t sv4l2_getpixformat(V4L2_t *dev, int (*pixformat)(void *arg, struct v4l2_fmtdesc *fmtdesc, int isset), void *cbarg)
 {
 	uint32_t pixelformat = 0;
 
 	struct v4l2_format fmt;
+	fmt.type = dev->type;
+	if (ioctl(dev->fd, VIDIOC_G_FMT, &fmt) != 0)
+	{
+		err("FMT not found %m");
+		return -1;
+	}
+	if (dev->type == V4L2_BUF_TYPE_META_CAPTURE || dev->type == V4L2_BUF_TYPE_META_OUTPUT)
+		pixelformat = fmt.fmt.meta.dataformat;
+	else
+		pixelformat = fmt.fmt.pix.pixelformat;
+
+	struct v4l2_fmtdesc fmtdesc = {0};
+	fmtdesc.type = dev->type;
+	dbg("Formats:");
+	while (ioctl(dev->fd, VIDIOC_ENUM_FMT, &fmtdesc) == 0)
+	{
+		dbg("\t%.4s => %s", (char*)&fmtdesc.pixelformat,
+				fmtdesc.description);
+		fmtdesc.index++;
+		if (pixformat)
+			pixformat(cbarg, &fmtdesc, (fmtdesc.pixelformat == pixelformat));
+	}
+	return pixelformat;
+}
+
+static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fourcc)
+{
+	uint32_t pixelformat = 0;
+
+	struct v4l2_format fmt = {0};
 	fmt.type = type;
 	if (ioctl(fd, VIDIOC_G_FMT, &fmt) != 0)
 	{
@@ -337,9 +366,9 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, CameraConfig
 		dbg("\t%.4s => %s", (char*)&fmtdesc.pixelformat,
 				fmtdesc.description);
 		fmtdesc.index++;
-		if (config->parent.fourcc != 0)
+		if (fourcc != 0)
 		{
-			if (fmtdesc.pixelformat != config->parent.fourcc)
+			if (fmtdesc.pixelformat != fourcc)
 				continue;
 			pixelformat = fmtdesc.pixelformat;
 		}
@@ -359,63 +388,119 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, CameraConfig
 		return -1;
 	}
 	dbg("V4l2 settings: %.4s", (char*)&fmt.fmt.pix.pixelformat);
-	config->parent.fourcc = fmt.fmt.pix.pixelformat;
-	return pixelformat;
+	return fmt.fmt.pix.pixelformat;
 }
 
-static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, CameraConfig_t *config)
+static uint32_t _v4l2_checkframesize(int fd, uint32_t fourcc, uint32_t *width, uint32_t *height)
 {
-	uint32_t framesize = 0;
 	struct v4l2_frmsizeenum video_cap = {0};
-	video_cap.pixel_format = config->parent.fourcc;
+	video_cap.pixel_format = fourcc;
 	video_cap.index = 0;
 	if (ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &video_cap) != 0)
 	{
 		err("framsesize enumeration error %m");
 		return -1;
 	}
-	struct v4l2_format fmt = {0};
-	fmt.type = type;
-	fmt.fmt.pix.field = V4L2_FIELD_ANY;
 
 	dbg("Frame size:");
 	if (video_cap.type == V4L2_FRMSIZE_TYPE_STEPWISE)
 	{
 		dbg("\t%d < width  < %d, step %d", video_cap.stepwise.min_width, video_cap.stepwise.max_width, video_cap.stepwise.step_width);
 		dbg("\t%d < height < %d, step %d", video_cap.stepwise.min_height, video_cap.stepwise.max_height, video_cap.stepwise.step_height);
-		if (config->parent.width < (video_cap.stepwise.max_width + 1) && config->parent.width > (video_cap.stepwise.min_width - 1))
-			fmt.fmt.pix.width = config->parent.width;
-		else if (config->parent.width > (video_cap.stepwise.max_width))
-			fmt.fmt.pix.width = video_cap.stepwise.max_width;
-		else
-			fmt.fmt.pix.width = video_cap.stepwise.min_width;
+		if (*width > video_cap.stepwise.max_width)
+			*width = video_cap.stepwise.max_width;
+		if (*width < video_cap.stepwise.min_width)
+			*width = video_cap.stepwise.min_width;
 
-		if (config->parent.height < (video_cap.stepwise.max_height + 1) && config->parent.height > (video_cap.stepwise.min_height - 1))
-			fmt.fmt.pix.height = config->parent.height;
-		else if (config->parent.height > (video_cap.stepwise.max_height))
-			fmt.fmt.pix.height = video_cap.stepwise.max_height;
-		else
-			fmt.fmt.pix.height = video_cap.stepwise.min_height;
+		if (*height > video_cap.stepwise.max_height)
+			*height = video_cap.stepwise.max_height;
+		if (*height < video_cap.stepwise.min_height)
+			*height = video_cap.stepwise.min_height;
 	}
 	else if (video_cap.type == V4L2_FRMSIZE_TYPE_DISCRETE)
 	{
-		uint32_t nbpixels = config->parent.height * config->parent.width;
-		if (config->parent.height == 0 && config->parent.width > 0)
-			config->parent.height = (config->parent.width * 9) / 16;
+		uint32_t nbpixels = *height * *width;
 		for (video_cap.index = 0; ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &video_cap) != -1; video_cap.index++)
 		{
 			dbg("\twidth %d, height %d", video_cap.discrete.width, video_cap.discrete.height);
-			if (config->parent.height > 0 && config->parent.height <= video_cap.discrete.height)
+			if (*height <= video_cap.discrete.height)
 			{
-				fmt.fmt.pix.height = video_cap.discrete.height;
-				fmt.fmt.pix.width = video_cap.discrete.width;
-				if (nbpixels == video_cap.discrete.height * video_cap.discrete.width)
+				*height = video_cap.discrete.height;
+				*width = video_cap.discrete.width;
+				if (nbpixels > 0 && nbpixels == video_cap.discrete.height * video_cap.discrete.width)
 					break;
 			}
 		}
 	}
+	return 0;
+}
 
-	fmt.fmt.pix.pixelformat = config->parent.fourcc;
+int sv4l2_getframesize(V4L2_t *dev, int(*framesize)(void *arg, uint32_t width, uint32_t height, int isset), void *cbarg)
+{
+	struct v4l2_format fmt = {0};
+	fmt.type = dev->type;
+	fmt.fmt.pix.field = V4L2_FIELD_ANY;
+	if (ioctl(dev->fd, VIDIOC_G_FMT, &fmt) != 0)
+	{
+		return -1;
+	}
+	struct v4l2_frmsizeenum video_cap = {0};
+	video_cap.pixel_format = fmt.fmt.pix.pixelformat;
+	video_cap.index = 0;
+	if (ioctl(dev->fd, VIDIOC_ENUM_FRAMESIZES, &video_cap) != 0)
+	{
+		err("framsesize enumeration error %m");
+		return -1;
+	}
+	if (video_cap.type == V4L2_FRMSIZE_TYPE_STEPWISE)
+	{
+		dbg("\t%d < width  < %d, step %d", video_cap.stepwise.min_width, video_cap.stepwise.max_width, video_cap.stepwise.step_width);
+		dbg("\t%d < height < %d, step %d", video_cap.stepwise.min_height, video_cap.stepwise.max_height, video_cap.stepwise.step_height);
+		if (framesize)
+		{
+			framesize(cbarg, video_cap.stepwise.min_width, video_cap.stepwise.min_height, 0);
+			framesize(cbarg, fmt.fmt.pix.width, fmt.fmt.pix.height, 1);
+			framesize(cbarg, video_cap.stepwise.max_width, video_cap.stepwise.max_height, 0);
+		}
+	}
+	else if (video_cap.type == V4L2_FRMSIZE_TYPE_DISCRETE)
+	{
+		for (video_cap.index = 0; ioctl(dev->fd, VIDIOC_ENUM_FRAMESIZES, &video_cap) != -1; video_cap.index++)
+		{
+			dbg("\twidth %d, height %d", video_cap.discrete.width, video_cap.discrete.height);
+			if (framesize)
+			{
+				int isset = (video_cap.discrete.width == fmt.fmt.pix.width);
+				isset = isset && (video_cap.discrete.height == fmt.fmt.pix.height);
+				framesize(cbarg, video_cap.discrete.width, video_cap.discrete.height, isset);
+			}
+		}
+	}
+	return 0;
+}
+
+static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, uint32_t width, uint32_t height)
+{
+	uint32_t framesize = 0;
+
+	struct v4l2_format fmt = {0};
+	fmt.type = type;
+	fmt.fmt.pix.field = V4L2_FIELD_ANY;
+	if (ioctl(fd, VIDIOC_G_FMT, &fmt) != 0)
+	{
+		return -1;
+	}
+
+	if (height > 0 && width == 0)
+	{
+		width = height * 16 / 9;
+	}
+	if (width > 0 && height > 0
+		&& !_v4l2_checkframesize(fd, fmt.fmt.pix.pixelformat, &width, &height))
+	{
+		fmt.fmt.pix.width = width;
+		fmt.fmt.pix.height = height;
+	}
 	if (ioctl(fd, VIDIOC_S_FMT, &fmt) != 0)
 	{
 		return -1;
@@ -962,20 +1047,34 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, CameraConf
 {
 	*type = _v4l2_getbuftype(*type, mode);
 
-	if (_v4l2_setpixformat(fd, *type, config) == -1)
+	uint32_t fourcc = 0;
+	if (config)
+		fourcc = config->parent.fourcc;
+	if (_v4l2_setpixformat(fd, *type, fourcc) == -1)
 	{
 		err("pixel format error %m");
 		return -1;
 	}
 
+	uint32_t width = 0;
+	uint32_t height = 0;
+	if (config)
+	{
+		width = config->parent.width;
+		height = config->parent.height;
+		dbg("sv4l2: device requesting %dx%d %.4s", width, height, &fourcc);
+	}
 	if (!(mode & MODE_META) &&
-		_v4l2_setframesize(fd, *type, config) == -1)
+		_v4l2_setframesize(fd, *type, width, height) == -1)
 	{
 		err("frame size error %m");
 		return -1;
 	}
 
-	_v4l2_setfps(fd, *type, config->fps);
+	int fps = -1;
+	if (config)
+		fps = config->fps;
+	_v4l2_setfps(fd, *type, fps);
 	return 0;
 }
 
@@ -1023,10 +1122,8 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 		sizeimage = fmt.fmt.pix.sizeimage;
 	}
 
-	if (bytesperline)
-		config->parent.stride = bytesperline;
-	else
-		config->parent.stride = sizeimage / config->parent.height;
+	if (!bytesperline && sizeimage)
+		bytesperline = sizeimage / config->parent.height;
 
 	if (mode & MODE_MEDIACTL)
 	{
