@@ -202,6 +202,12 @@ static V4L2Buffer_t *createbuffers_mplane(V4L2_t *dev, int number, enum v4l2_mem
 
 static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 {
+	/**
+	 * if the device is a M2M device the mode contains OUTPUT and CAPTURE
+	 * but to duplicate the device, the first one should be by default OUTPUT
+	 * and the second should be a CAPTURE.
+	 * The use of type = 0 or -1 helps to set the default value.
+	 */
 	if (type == 0 && (mode & MODE_OUTPUT))
 	{
 		if (mode & MODE_META)
@@ -209,12 +215,19 @@ static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 		else
 			type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	}
-	else if (type == 0 && (mode & MODE_CAPTURE))
+	else if ((type == 0 || type == -1) && (mode & MODE_CAPTURE))
 	{
 		if (mode & MODE_META)
 			type = V4L2_BUF_TYPE_META_CAPTURE;
 		else
 			type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	}
+	else if (type == -1 && (mode & MODE_OUTPUT))
+	{
+		if (mode & MODE_META)
+			type = V4L2_BUF_TYPE_META_OUTPUT;
+		else
+			type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	}
 	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT || type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
 	{
@@ -951,6 +964,27 @@ int sv4l2_treecontrolmenu(V4L2_t *dev, int id, int (*cb)(void *arg, struct v4l2_
 	}
 }
 
+static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, CameraConfig_t *config)
+{
+	*type = _v4l2_getbuftype(*type, mode);
+
+	if (_v4l2_setpixformat(fd, *type, config) == -1)
+	{
+		err("pixel format error %m");
+		return -1;
+	}
+
+	if (!(mode & MODE_META) &&
+		_v4l2_setframesize(fd, *type, config) == -1)
+	{
+		err("frame size error %m");
+		return -1;
+	}
+
+	_v4l2_setfps(fd, *type, config->fps);
+	return 0;
+}
+
 V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
 {
 	enum v4l2_buf_type type = 0;
@@ -960,35 +994,20 @@ V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
 	const char *device = devicename;
 	if (config && config->device)
 		device = config->device;
-	int fd = config->fd;
-	if (fd == 0)
-		fd = _v4l2_open(device, &mode);
+	int fd = _v4l2_open(device, &mode);
 	if (fd == -1)
 		return NULL;
 	if (_v4l2_devicecapabilities(fd, device, &mode))
 		return NULL;
 	int ctrlfd = fd;
 
-	type = _v4l2_getbuftype(type, mode);
 	if (config->mode & MODE_VERBOSE)
 		warn("SV4l2 create %s", devicename);
-
-	if (_v4l2_setpixformat(fd, type, config) == -1)
+	if (_sv4l2_prepare(fd, &type, mode, config))
 	{
-		err("pixel format error %m");
 		close(fd);
 		return NULL;
 	}
-
-	if (!(mode & MODE_META) &&
-		_v4l2_setframesize(fd, type, config) == -1)
-	{
-		err("frame size error %m");
-		close(fd);
-		return NULL;
-	}
-
-	_v4l2_setfps(fd, type, config->fps);
 
 	struct v4l2_format fmt;
 	fmt.type = type;
@@ -1053,6 +1072,42 @@ V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
 	dbg("V4l2 settings: %dx%d, %.4s", config->parent.width, config->parent.height, (char*)&config->parent.fourcc);
 	config->parent.dev = dev;
 	return dev;
+}
+
+V4L2_t *sv4l2_duplicate(V4L2_t *dev)
+{
+	V4L2_t *dup = NULL;
+	if ((dev->mode & (MODE_OUTPUT | MODE_CAPTURE)) !=  (MODE_OUTPUT | MODE_CAPTURE))
+	{
+		err("sv4l2: device may not support duplication");
+		return NULL;
+	}
+	dup = malloc(sizeof(*dup));
+	if (!dup)
+		return NULL;
+	memcpy(dup, dev, sizeof(*dup));
+	enum v4l2_buf_type type = -1;
+	if (_sv4l2_prepare(dup->fd, &type, dev->mode, dev->config))
+	{
+		close(dup->fd);
+		return NULL;
+	}
+	dup->type = type;
+
+	struct v4l2_format fmt;
+	fmt.type = dup->type;
+	fmt.fmt.pix.field = V4L2_FIELD_ANY;
+	if (ioctl(dup->fd, VIDIOC_G_FMT, &fmt) != 0)
+	{
+		err("sv4l2: FMT not found %m");
+		close(dup->fd);
+		return NULL;
+	}
+	dbg("sv4l2: duplicated settings: %dx%d, %.4s", fmt.fmt.pix_mp.width,
+												fmt.fmt.pix_mp.height,
+												&fmt.fmt.pix_mp.pixelformat);
+
+	return dup;
 }
 
 int sv4l2_fd(V4L2_t *dev)

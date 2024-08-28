@@ -50,7 +50,7 @@ FastVideoDevice_ops_t sv4l2_ops = {
 	.name = "cam",
 	.createconfig = sv4l2_createconfig,
 	.create = (FastVideoDevice_create_t)sv4l2_create,
-	.duplicate = (FastVideoDevice_duplicate_t)NULL,
+	.duplicate = (FastVideoDevice_duplicate_t)sv4l2_duplicate,
 	.loadsettings = (FastVideoDevice_loadsettings_t)sv4l2_loadsettings,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)sv4l2_requestbuffer,
 	.eventfd = (FastVideoDevice_eventfd_t)sv4l2_fd,
@@ -409,7 +409,7 @@ int main(int argc, char * const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:j:w:h:D");
+		opt = getopt(argc, argv, "i:o:t:j:w:h:D");
 		switch (opt)
 		{
 			case 'i':
@@ -417,6 +417,9 @@ int main(int argc, char * const argv[])
 			break;
 			case 'o':
 				output = optarg;
+			break;
+			case 't':
+				transfer = optarg;
 			break;
 			case 'j':
 				configfile = optarg;
@@ -494,6 +497,11 @@ int main(int argc, char * const argv[])
 
 	FastVideoDevice_t *transferdevD = NULL;
 	transferdevD = device_duplicate(transferdev);
+	if (!transferdevD)
+	{
+		err("%s mot duplicated", transferdev->config->name);
+		return -1;
+	}
 
 	outdev->dev = outdev->ops->create(output, outdev->config);
 	if (outdev->ops->loadsettings && outdev->config->entry)
