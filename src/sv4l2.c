@@ -701,9 +701,38 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 		}
 		break;
 		case (buf_type_memory | buf_type_master):
+		{
 			ret = sv4l2_requestbuffer_mmap(dev);
+			if (ret)
+				break;
+			int *ntargets = va_arg(ap, int *);
+			void ***targets = va_arg(ap, void ***);
+			size_t *size = va_arg(ap, size_t *);
+			if (ntargets != NULL)
+				*ntargets = dev->nbuffers;
+			if (targets != NULL)
+			{
+				*targets = calloc(dev->nbuffers, sizeof(void *));
+				for (int i = 0; i < dev->nbuffers; i++)
+					(*targets)[i] = dev->buffers[i].map;
+			}
+			if (size != NULL)
+				*size = dev->buffers[0].ops.getsize(&dev->buffers[0]);
+		}
+		break;
+		case buf_type_dmabuf:
+		{
+			int ntargets = va_arg(ap, int);
+			int *targets = va_arg(ap, int *);
+			size_t size = va_arg(ap, size_t);
+			if ((ret = sv4l2_requestbuffer_dmabuf(dev)) == 0)
+			{
+				ret = sv4l2_linkdma(dev, ntargets, targets, size);
+			}
+		}
 		break;
 		case buf_type_dmabuf | buf_type_master:
+		{
 			ret = sv4l2_requestbuffer_dmabuf(dev);
 			if (ret)
 				break;
@@ -720,16 +749,6 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 			}
 			if (size != NULL)
 				*size = dev->buffers[0].ops.getsize(&dev->buffers[0]);
-		break;
-		case buf_type_dmabuf:
-		{
-			int ntargets = va_arg(ap, int);
-			int *targets = va_arg(ap, int *);
-			size_t size = va_arg(ap, size_t);
-			if ((ret = sv4l2_requestbuffer_dmabuf(dev)) == 0)
-			{
-				ret = sv4l2_linkdma(dev, ntargets, targets, size);
-			}
 		}
 		break;
 		default:
