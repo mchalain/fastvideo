@@ -18,6 +18,7 @@
 typedef struct SubDevConfig_s  SubDevConfig_t;
 struct SubDevConfig_s
 {
+	DeviceConf_t parent;
 	const char *device;
 };
 
@@ -35,6 +36,7 @@ struct CameraConfig_s
 	DeviceConf_t parent;
 	const char *device;
 	SubDevConfig_t *subdevices;
+	int nsubdevices;
 	int (*transfer)(void *, int id, const char *mem, size_t size);
 	int fd;
 	int mode;

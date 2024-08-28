@@ -1912,15 +1912,87 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 	return _v4l2_loadjsoncontrols(dev,jconfig);
 }
 
+int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
+{
+	json_t *width = NULL;
+	json_t *height = NULL;
+	json_t *fourcc = NULL;
+	json_t *stride = NULL;
+
+	if (definition && json_is_array(definition))
+	{
+		json_t *field = NULL;
+		int index = 0;
+		json_array_foreach(definition, index, field)
+		{
+			if (json_is_object(field))
+			{
+				json_t *name = json_object_get(field, "name");
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "width"))
+				{
+					width = json_object_get(field, "value");
+				}
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "height"))
+				{
+					height = json_object_get(field, "value");
+				}
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "stride"))
+				{
+					stride = json_object_get(field, "value");
+				}
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "fourcc"))
+				{
+					fourcc = json_object_get(field, "value");
+				}
+			}
+		}
+	}
+	else if (definition && json_is_object(definition))
+	{
+		width = json_object_get(definition, "width");
+		height = json_object_get(definition, "height");
+		fourcc = json_object_get(definition, "fourcc");
+		stride = json_object_get(definition, "stride");
+	}
+	else
+		return -1;
+	if (width && json_is_object(width))
+		width = json_object_get(width, "value");
+	if (width && json_is_integer(width))
+		config->width = json_integer_value(width);
+	if (height && json_is_object(height))
+		height = json_object_get(height, "value");
+	if (height && json_is_integer(height))
+		config->height = json_integer_value(height);
+	if (stride && json_is_object(stride))
+		stride = json_object_get(stride, "value");
+	if (stride && json_is_integer(stride))
+		config->stride = json_integer_value(stride);
+	if (fourcc && json_is_object(fourcc))
+		fourcc = json_object_get(fourcc, "value");
+	if (fourcc && json_is_string(fourcc))
+	{
+		const char *value = json_string_value(fourcc);
+		config->fourcc = FOURCC(value[0], value[1], value[2], value[3]);
+	}
+	return 0;
+}
+
 int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
 {
-	int ret = 0;
+	int ret = -1;
 	json_t *subdevice = entry;
 	SubDevConfig_t *config = (SubDevConfig_t *)arg;
 
 	if (subdevice && json_is_object(subdevice))
 	{
 		subdevice = json_object_get(subdevice, "device");
+		json_t *definition = json_object_get(subdevice, "difinition");
+		scommon_loaddefinition(&config->parent, definition);
 	}
 	if (subdevice && json_is_string(subdevice))
 	{
@@ -1946,6 +2018,7 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	if (subdevices && json_is_array(subdevices))
 	{
 		config->subdevices = calloc(json_array_size(subdevices), sizeof(*config->subdevices));
+		config->nsubdevices = json_array_size(subdevices);
 		int index;
 		json_t *subdevice;
 		json_array_foreach(subdevices, index, subdevice)
