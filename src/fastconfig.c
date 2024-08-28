@@ -130,8 +130,9 @@ static json_t *_device_v4l2(json_t *devices, int major, int minor, const char *n
 		close(devfd);
 		return device;
 	}
-	device = json_object();
-	json_object_set_new(device, "name", json_string(name));
+	json_t *names = json_array();
+	json_array_append_new(names, json_string(name));
+	json_object_set_new(device, "name", names);
 	json_object_set_new(device, "type", json_string("cam"));
 	json_object_set_new(device, "device", json_string(path));
 
