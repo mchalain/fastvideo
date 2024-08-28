@@ -1835,6 +1835,14 @@ static int _v4l2_loadjsontransformation(V4L2_t *dev, json_t *transformation)
 	return 0;
 }
 
+static int _v4l2_loadjsoncontrols(V4L2_t *dev, json_t *controls)
+{
+	_SV4L2_Setting_t setting;
+	setting.dev = dev;
+	setting.jconfig = controls;
+	return sv4l2_treecontrols(dev, _sv4l2_loadjsonsetting, &setting);
+}
+
 int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 {
 	json_t *jconfig = entry;
@@ -1848,10 +1856,7 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 	json_t *jcontrols = json_object_get(jconfig,"controls");
 	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
 		jconfig = jcontrols;
-	_SV4L2_Setting_t setting;
-	setting.dev = dev;
-	setting.jconfig = jconfig;
-	return sv4l2_treecontrols(dev, _sv4l2_loadjsonsetting, &setting);
+	return _v4l2_loadjsoncontrols(dev,jconfig);
 }
 
 int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
@@ -1996,7 +2001,7 @@ static const char *CTRLTYPE(enum v4l2_ctrl_type type)
 	case V4L2_CTRL_TYPE_CTRL_CLASS:
 		return "control class";
 	}
-	dbg("type %d", type);
+	dbg("sv4l2: control type %d unsupported", type);
 	return "unknown";
 }
 
