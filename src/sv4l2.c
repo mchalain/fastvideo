@@ -1789,166 +1789,51 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t
 	}
 	return -1;
 }
+
+static int _v4l2_loadjsontransformation(V4L2_t *dev, json_t *transformation)
+{
+	int disable = 0;
+	json_t *bounds = json_object_get(transformation, "bounds");
+	if (bounds == NULL || !json_is_object(bounds))
+		bounds = transformation;
+	json_t *top = json_object_get(bounds, "top");
+	json_t *left = json_object_get(bounds, "left");
+	json_t *width = json_object_get(bounds, "width");
+	json_t *height = json_object_get(bounds, "height");
+	struct v4l2_rect r = {0};
+	if (top && json_is_integer(top))
+		r.top = json_integer_value(top);
+	if (left && json_is_integer(left))
+		r.left = json_integer_value(left);
+	if (width && json_is_integer(width))
+		r.width = json_integer_value(width);
+	else
+		disable = 1;
+	if (height && json_is_integer(height))
+		r.height = json_integer_value(height);
+	else
+		disable = 1;
+	if (disable)
+		sv4l2_crop(dev, NULL);
+	else
+		sv4l2_crop(dev, &r);
+	return 0;
+}
+
 int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 {
 	json_t *jconfig = entry;
 
-	json_t *crop = json_object_get(jconfig, "crop");
-	if (crop && json_is_object(crop))
+	json_t *transformation = json_object_get(jconfig, "transformation");
+	if (transformation && json_is_object(transformation))
 	{
-		int disable = 0;
-		json_t *top = json_object_get(jconfig, "top");
-		json_t *left = json_object_get(jconfig, "left");
-		json_t *width = json_object_get(jconfig, "width");
-		json_t *height = json_object_get(jconfig, "height");
-		struct v4l2_rect r = {0};
-		if (top && json_is_integer(top))
-			r.top = json_integer_value(top);
-		if (left && json_is_integer(left))
-			r.left = json_integer_value(left);
-		if (width && json_is_integer(width))
-			r.width = json_integer_value(width);
-		else
-			disable = 1;
-		if (height && json_is_integer(height))
-			r.height = json_integer_value(height);
-		else
-			disable = 1;
-		if (disable)
-			sv4l2_crop(dev, NULL);
-		else
-			sv4l2_crop(dev, &r);
+		_v4l2_loadjsontransformation(dev, transformation);
 	}
-	if (crop && json_is_boolean(crop) && !json_is_true(crop))
-		sv4l2_crop(dev, NULL);
 
 	json_t *jcontrols = json_object_get(jconfig,"controls");
 	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
 		jconfig = jcontrols;
-#if 1
 	return sv4l2_treecontrols(dev, _sv4l2_loadjsonsetting, jconfig);
-#else
-	json_t *brightness = json_object_get(jconfig, "brightness");
-	if (brightness && json_is_integer(brightness))
-	{
-		int value = json_integer_value(brightness);
-		sv4l2_control(dev, V4L2_CID_BRIGHTNESS, value);
-	}
-	json_t *contrast = json_object_get(jconfig, "contrast");
-	if (contrast && json_is_integer(contrast))
-	{
-		int value = json_integer_value(contrast);
-		sv4l2_control(dev, V4L2_CID_CONTRAST, value);
-	}
-	json_t *color = json_object_get(jconfig, "color");
-	if (color && json_is_object(color))
-	{
-		json_t *saturation = json_object_get(color, "saturation");
-		if (saturation && json_is_integer(saturation))
-		{
-			int value = json_integer_value(saturation);
-			sv4l2_control(dev, V4L2_CID_SATURATION, value);
-		}
-		json_t *gamma = json_object_get(color, "gamma");
-		if (gamma && json_is_integer(gamma))
-		{
-			int value = json_integer_value(gamma);
-			sv4l2_control(dev, V4L2_CID_GAMMA, value);
-		}
-		json_t *hue = json_object_get(color, "hue");
-		if (hue && json_is_integer(hue))
-		{
-			int value = json_integer_value(hue);
-			sv4l2_control(dev, V4L2_CID_HUE, value);
-		}
-		else if (hue && json_is_object(hue))
-		{
-			if (json_is_true(json_object_get(hue, "auto")))
-				sv4l2_control(dev, V4L2_CID_HUE_AUTO, 1);
-			else
-			{
-				sv4l2_control(dev, V4L2_CID_HUE_AUTO, 0);
-				int value = json_integer_value(json_object_get(hue, "value"));
-				sv4l2_control(dev, V4L2_CID_HUE, value);
-			}
-		}
-		json_t *wb = json_object_get(color, "wb");
-		if (wb && json_is_object(wb))
-		{
-			sv4l2_control(dev, V4L2_CID_DO_WHITE_BALANCE, 0);
-			if (json_is_true(json_object_get(wb, "auto")))
-				sv4l2_control(dev, V4L2_CID_AUTO_WHITE_BALANCE, 1);
-			else
-				sv4l2_control(dev, V4L2_CID_AUTO_WHITE_BALANCE, 0);
-			if (json_is_integer(json_object_get(wb, "temperature")))
-			{
-				int value = json_integer_value(json_object_get(wb, "temperature"));
-				sv4l2_control(dev, V4L2_CID_WHITE_BALANCE_TEMPERATURE, value);
-			}
-		}
-		json_t *red = json_object_get(color, "red");
-		if (red && json_is_integer(red))
-		{
-			int value = json_integer_value(red);
-			sv4l2_control(dev, V4L2_CID_RED_BALANCE, value);
-		}
-		json_t *blue = json_object_get(color, "blue");
-		if (blue && json_is_integer(blue))
-		{
-			int value = json_integer_value(blue);
-			sv4l2_control(dev, V4L2_CID_BLUE_BALANCE, value);
-		}
-		json_t *effect = json_object_get(color, "effect");
-		if (effect && json_is_string(effect))
-		{
-			const char *value = json_string_value(effect);
-			if (!strcmp(value, "bw"))
-				sv4l2_control(dev, V4L2_CID_COLORFX, V4L2_COLORFX_BW);
-			else if (!strcmp(value, "sepia"))
-				sv4l2_control(dev, V4L2_CID_COLORFX, V4L2_COLORFX_SEPIA);
-			else if (!strcmp(value, "none"))
-				sv4l2_control(dev, V4L2_CID_COLORFX, V4L2_COLORFX_NONE);
-			else
-			{
-				err("effect %s unknown", value);
-				sv4l2_control(dev, V4L2_CID_COLORFX, V4L2_COLORFX_NONE);
-			}
-		}
-	}
-	json_t *transformation = json_object_get(jconfig, "transformation");
-	if (transformation && json_is_object(transformation))
-	{
-		if (json_is_true(json_object_get(transformation, "hflip")))
-			sv4l2_control(dev, V4L2_CID_HFLIP, 1);
-		if (json_is_true(json_object_get(transformation, "vflip")))
-			sv4l2_control(dev, V4L2_CID_VFLIP, 1);
-	}
-	json_t *exposure = json_object_get(jconfig, "exposure");
-	if (exposure && json_is_object(exposure))
-	{
-		if (json_is_true(json_object_get(exposure, "auto")))
-			sv4l2_control(dev, V4L2_CID_AUTOGAIN, 1);
-		else
-		{
-			sv4l2_control(dev, V4L2_CID_AUTOGAIN, 0);
-			int value = json_integer_value(json_object_get(exposure, "value"));
-			sv4l2_control(dev, V4L2_CID_EXPOSURE, value);
-		}
-	}
-	json_t *gain = json_object_get(jconfig, "gain");
-	if (gain && json_is_object(gain))
-	{
-		if (json_is_true(json_object_get(gain, "auto")))
-			sv4l2_control(dev, V4L2_CID_AUTOGAIN, 1);
-		else
-		{
-			sv4l2_control(dev, V4L2_CID_AUTOGAIN, 0);
-			int value = json_integer_value(json_object_get(gain, "value"));
-			sv4l2_control(dev, V4L2_CID_GAIN, value);
-		}
-	}
-#endif
-	return 0;
 }
 
 int sv4l2_loadjsonconfiguration(void *arg, void *entry)
