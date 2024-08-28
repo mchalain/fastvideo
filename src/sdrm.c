@@ -724,6 +724,8 @@ DeviceConf_t * sdrm_createconfig()
 {
 	DisplayConf_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(DisplayConf_t));
+#ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sdrm_loadjsonconfiguration;
+#endif
 	return (DeviceConf_t *)devconfig;
 }

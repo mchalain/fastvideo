@@ -332,7 +332,9 @@ DeviceConf_t * segl_createconfig()
 {
 	EGLConfig_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(EGLConfig_t));
+#ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = segl_loadjsonconfiguration;
+#endif
 	return (DeviceConf_t *)devconfig;
 }
 

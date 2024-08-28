@@ -1512,7 +1512,9 @@ DeviceConf_t * sv4l2_createconfig()
 	CameraConfig_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(CameraConfig_t));
 	devconfig->device = sv4l2_defaultdevice;
+#ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sv4l2_loadjsonconfiguration;
+#endif
 	return (DeviceConf_t *)devconfig;
 }
 
@@ -1866,7 +1868,6 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 			err("library %s symbol \"transfer\" error %s", value, dlerror());
 			goto library_end;
 		}
-		
 	}
 library_end:
 	return 0;

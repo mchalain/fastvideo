@@ -334,6 +334,8 @@ DeviceConf_t * sfile_createconfig()
 {
 	FileConfig_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(FileConfig_t));
+#ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sfile_loadjsonconfiguration;
+#endif
 	return (DeviceConf_t *)devconfig;
 }
