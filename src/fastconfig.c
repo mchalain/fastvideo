@@ -323,7 +323,7 @@ int main(int argc, char *const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "ao:");
+		opt = getopt(argc, argv, "ao:m:");
 		switch (opt)
 		{
 			case 'a':
@@ -331,6 +331,9 @@ int main(int argc, char *const argv[])
 			break;
 			case 'o':
 				output = optarg;
+			break;
+			case 'm':
+				media = optarg;
 			break;
 		}
 	} while(opt != -1);
@@ -346,7 +349,18 @@ int main(int argc, char *const argv[])
 	if (devices == NULL)
 		devices = json_array();
 
-	sys_device(sysmedia, _media_device, devices);
+	if (media == NULL)
+		sys_device(sysmedia, _media_device, devices);
+	else
+	{
+		int fd = open(media, O_RDWR);
+		if (fd < 0)
+		{
+			err("media %s not found %m", media);
+			return -1;
+		}
+		_media_device(devices, media, fd);
+	}
 	json_dump_file(devices, output, JSON_INDENT(2));
 	json_decref(devices);
 	return 0;
