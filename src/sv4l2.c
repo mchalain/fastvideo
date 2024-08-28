@@ -66,6 +66,10 @@ typedef struct V4L2Subdev_s V4L2Subdev_t;
 struct V4L2Subdev_s
 {
 	int fd;
+	uint32_t width;
+	uint32_t height;
+	uint32_t stride;
+	uint32_t fourcc;
 	V4L2Subdev_t *next;
 };
 
@@ -83,6 +87,7 @@ struct V4L2_s
 	CameraConfig_t *config;
 	uint32_t width;
 	uint32_t height;
+	uint32_t stride;
 	uint32_t fourcc;
 	int fd;
 	V4L2Subdev_t *subdevices;
@@ -97,6 +102,8 @@ struct V4L2_s
 	} ops;
 	int (*transfer)(void *, int id, const char *mem, size_t size);
 };
+
+static int _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs);
 
 static int _v4l2buffer_exportdmafd(V4L2Buffer_t *buf, int fd)
 {
@@ -1118,13 +1125,16 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 
 	if (mode & MODE_MEDIACTL && config)
 	{
-		subdev = sv4l2_subdev_create(&config->subdevices[0]);
-		if (subdev)
+		for (int i = 0; i < config->nsubdevices; i++)
 		{
-			sv4l2_subdev_setpixformat(subdev, config->parent.fourcc, config->parent.width, config->parent.height);
-#if 0
-			sv4l2_subdev_getpixformat(subdev, _v4l2_subdev_set_config, config);
-#endif
+			V4L2Subdev_t *newsubdev = sv4l2_subdev_create(&config->subdevices[i]);
+			if (newsubdev)
+			{
+				sv4l2_subdev_setpixformat(newsubdev, newsubdev->fourcc, newsubdev->width, newsubdev->height);
+				sv4l2_subdev_getpixformat(newsubdev, _v4l2_subdev_set_config, &config->parent);
+				newsubdev->next = subdev;
+				subdev = newsubdev;
+			}
 		}
 	}
 
@@ -1144,14 +1154,14 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 	uint32_t width = 0;
 	uint32_t height = 0;
 	uint32_t fourcc = 0;
-	uint32_t bytesperline = 0;
+	uint32_t stride = 0;
 	uint32_t sizeimage = 0;
 	if (mode & MODE_MPLANE)
 	{
 		width = fmt.fmt.pix_mp.width;
 		height = fmt.fmt.pix_mp.height;
 		fourcc = fmt.fmt.pix_mp.pixelformat;
-		bytesperline = fmt.fmt.pix_mp.plane_fmt[0].bytesperline;
+		stride = fmt.fmt.pix_mp.plane_fmt[0].bytesperline;
 		sizeimage = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
 	}
 	else
@@ -1159,12 +1169,12 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 		width = fmt.fmt.pix.width;
 		height = fmt.fmt.pix.height;
 		fourcc = fmt.fmt.pix.pixelformat;
-		bytesperline = fmt.fmt.pix.bytesperline;
+		stride = fmt.fmt.pix.bytesperline;
 		sizeimage = fmt.fmt.pix.sizeimage;
 	}
 
-	if (!bytesperline && sizeimage)
-		bytesperline = sizeimage / config->parent.height;
+	if (!stride && sizeimage)
+		stride = sizeimage / height;
 
 	V4L2_t *dev = calloc(1, sizeof(*dev));
 	dev->name = devicename;
@@ -1174,6 +1184,7 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 	dev->type = type;
 	dev->mode = mode;
 	dev->width = width;
+	dev->stride = stride;
 	dev->height = height;
 	dev->fourcc = fourcc;
 
@@ -1591,12 +1602,19 @@ static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 	case V4L2_PIX_FMT_SBGGR10P:
 		code = V4L2_MBUS_FMT_SBGGR10_1X10;
 	break;
+	case V4L2_PIX_FMT_SGRBG10:
+	case V4L2_PIX_FMT_SGRBG10P:
+		code = MEDIA_BUS_FMT_SGRBG10_1X10;
+	break;
 	case V4L2_PIX_FMT_SRGGB12:
 	case V4L2_PIX_FMT_SRGGB12P:
 		code = V4L2_MBUS_FMT_SRGGB12_1X12;
 	break;
+	case V4L2_PIX_FMT_SRGGB10:
+	case V4L2_PIX_FMT_SRGGB10P:
+		code = MEDIA_BUS_FMT_SRGGB10_1X10;
+	break;
 	};
-	dbg("sv4l2: format request %#x", code);
 	ret = _v4l2_subdev_getfmtbus(ctrlfd, _v4l2_subdev_fmtbus, &code);
 	return ret;
 }
@@ -1609,6 +1627,7 @@ int sv4l2_subdev_setpixformat(V4L2Subdev_t *subdev, uint32_t fourcc, uint32_t wi
 	ffs.format.width = width;
 	ffs.format.height = height;
 	ffs.format.code = sv4l2_subdev_translate_fmtbus(subdev->fd, fourcc);
+	dbg("sv4l2: subdev format request %ux%u %#x for %.4s", width, height, ffs.format.code, &fourcc);
 	if (ffs.format.code != (uint32_t)-1 && ioctl(subdev->fd, VIDIOC_SUBDEV_S_FMT, &ffs) != 0)
 	{
 		err("sv4l2: subdev set format error %m");
@@ -1633,29 +1652,38 @@ uint32_t sv4l2_subdev_getpixformat(V4L2Subdev_t *subdev, int (*busformat)(void *
 	return 0;
 }
 
-#if 1
-static uint32_t _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs)
+static int _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs)
 {
-	CameraConfig_t *config = arg;
+	DeviceConf_t *config = arg;
 	uint32_t fourcc = 0xFFFFFFFF;
 	switch (ffs->format.code)
 	{
 	case V4L2_MBUS_FMT_SGBRG10_1X10:
-		fourcc = V4L2_PIX_FMT_SGBRG10;
+		fourcc = V4L2_PIX_FMT_SGBRG10; // GB10
 	break;
 	case V4L2_MBUS_FMT_SBGGR10_1X10:
-		fourcc = V4L2_PIX_FMT_SBGGR10;
+		fourcc = V4L2_PIX_FMT_SBGGR10; // BG10
+	break;
+	case MEDIA_BUS_FMT_SGRBG10_1X10:
+		fourcc = V4L2_PIX_FMT_SGRBG10; // BA10
+	break;
+	case MEDIA_BUS_FMT_SRGGB10_1X10:
+		fourcc = V4L2_PIX_FMT_SRGGB10; // RG10
 	break;
 	case V4L2_MBUS_FMT_SRGGB12_1X12:
-		fourcc = V4L2_PIX_FMT_SRGGB12;
+		fourcc = V4L2_PIX_FMT_SRGGB12; // RG12
+	break;
+	default:
+		warn("sv4l2: subdev format %#x not supported", ffs->format.code);
+		fourcc = 0;
 	break;
 	};
-	config->parent.fourcc = fourcc;
-	config->parent.width = ffs->format.width;
-	config->parent.height = ffs->format.height;
-	return fourcc;
+	config->fourcc = fourcc;
+	config->width = ffs->format.width;
+	config->height = ffs->format.height;
+	dbg("sv4l2: subdev format %dx%d %.4s", config->width, config->height, &config->fourcc);
+	return 0;
 }
-#endif
 
 V4L2Subdev_t *sv4l2_subdev_create2(int ctrlfd, SubDevConfig_t *config)
 {
