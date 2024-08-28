@@ -1848,6 +1848,14 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 		config->device = value;
 	}
 	json_t *subdevice = json_object_get(jconfig, "subdevice");
+	if (subdevice && json_is_array(subdevice))
+	{
+		subdevice = json_array_get(subdevice, 0);
+	}
+	if (subdevice && json_is_object(subdevice))
+	{
+		subdevice = json_object_get(subdevice, "device");
+	}
 	if (subdevice && json_is_string(subdevice))
 	{
 		const char *value = json_string_value(subdevice);
