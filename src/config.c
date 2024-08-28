@@ -129,6 +129,20 @@ static int main_parseconfigdevices(const char *name, json_t *jconfig, DeviceConf
 			if (!json_is_object(jdevice))
 				continue;
 			json_t *jname = json_object_get(jdevice, "name");
+			if (jname && json_is_array(jname))
+			{
+				int index;
+				json_t *jit;
+				json_array_foreach(jname, index, jit)
+				{
+					if (jit && json_is_string(jit) &&
+						!strcmp(json_string_value(jit), tmpname))
+					{
+						jname = jit;
+						break;
+					}
+				}
+			}
 			if (jname && json_is_string(jname) &&
 				!strcmp(json_string_value(jname), tmpname))
 			{
