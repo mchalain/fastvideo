@@ -2048,22 +2048,40 @@ static const char *CTRLNAME(uint32_t id)
 static int menuprint(void *arg, struct v4l2_querymenu *querymenu, V4L2_t *dev)
 {
 	json_t *control = (json_t *)arg;
-	json_t *items = json_object_get(control, "items");
 	json_t *value = json_object_get(control, "value");
-	if (querymenu->index == json_integer_value(value))
-		json_object_set(control, "value_str", json_string(querymenu->name));
-	json_array_append_new(items, json_string(querymenu->name));
+	if (value && querymenu->index == json_integer_value(value))
+		json_object_set_new(control, "value_str", json_string(querymenu->name));
 	return 0;
 }
 
+static int menuprintall(void *arg, struct v4l2_querymenu *querymenu, V4L2_t *dev)
+{
+	json_t *control = (json_t *)arg;
+	json_t *items = json_object_get(control, "items");
+	json_array_append_new(items, json_string(querymenu->name));
+dbg("menu add items %s", querymenu->name);
+	return menuprint(arg, querymenu, dev);
+}
+
+typedef struct _JSONControl_Arg_s _JSONControl_Arg_t;
+struct _JSONControl_Arg_s
+{
+	json_t *controls;
+	int all;
+};
+
 int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev)
 {
-	json_t *controls = (json_t *)arg;
+	_JSONControl_Arg_t *jsoncontrol_arg = (_JSONControl_Arg_t *)arg;
+	json_t *controls = jsoncontrol_arg->controls;
 	if (!json_is_object(controls) && !json_is_array(controls))
 		return -1;
 	json_t *ctrlclass = NULL;
 	if (json_is_array(controls))
 	{
+		/**
+		 * sort the controls into theire class
+		 */
 		int lastindex = json_array_size(controls);
 		if (lastindex > 0)
 		{
@@ -2082,101 +2100,165 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev)
 	void *value = sv4l2_control(dev, ctrl->id, (void*)-1);
 	json_t *control = json_object();
 	json_object_set_new(control, "name", json_string(ctrl->name));
-	json_object_set_new(control, "id", json_integer(ctrl->id));
-	json_t *type = json_string(CTRLTYPE(ctrl->type));
-	json_object_set_new(control, "type", type);
+	if (jsoncontrol_arg->all)
+	{
+		json_object_set_new(control, "id", json_integer(ctrl->id));
+		json_t *type = json_string(CTRLTYPE(ctrl->type));
+		json_object_set_new(control, "type", type);
+	}
 
 	switch (ctrl->type)
 	{
 	case V4L2_CTRL_TYPE_INTEGER:
 	{
-		json_object_set(control, "value", json_integer((int) value));
-		json_object_set(control, "minimum", json_integer(ctrl->minimum));
-		json_object_set(control, "maximum", json_integer(ctrl->maximum));
-		json_object_set(control, "step", json_integer(ctrl->step));
-		json_object_set(control, "default_value", json_integer(ctrl->default_value));
+		json_object_set_new(control, "value", json_integer((int) value));
+		if (jsoncontrol_arg->all)
+		{
+			json_object_set_new(control, "minimum", json_integer(ctrl->minimum));
+			json_object_set_new(control, "maximum", json_integer(ctrl->maximum));
+			json_object_set_new(control, "step", json_integer(ctrl->step));
+			json_object_set_new(control, "default_value", json_integer(ctrl->default_value));
+		}
 	}
 	break;
 	case V4L2_CTRL_TYPE_BOOLEAN:
-		json_object_set(control, "value", json_boolean((int) value));
-		json_object_set(control, "default_value", json_integer(ctrl->default_value));
+		json_object_set_new(control, "value", json_boolean((int) value));
+		if (jsoncontrol_arg->all)
+		{
+			json_object_set_new(control, "default_value", json_integer(ctrl->default_value));
+		}
 	break;
 	case V4L2_CTRL_TYPE_MENU:
 	{
-		json_object_set(control, "value", json_integer((int) value));
-		json_t *items = json_array();
-		json_object_set(control, "items", items);
-		sv4l2_treecontrolmenu(dev, ctrl->id, menuprint, control);
-		json_object_set(control, "default_value", json_integer(ctrl->default_value));
+		json_t *jvalue = json_integer((int) value);
+		json_object_set(control, "value", jvalue);
+		if (jsoncontrol_arg->all)
+		{
+			json_t *items = json_array();
+			json_object_set(control, "items", items);
+			sv4l2_treecontrolmenu(dev, ctrl, menuprintall, control);
+			json_decref(items);
+			json_object_set_new(control, "default_value", json_integer(ctrl->default_value));
+		}
+		else
+			sv4l2_treecontrolmenu(dev, ctrl, menuprint, control);
+		json_decref(jvalue);
 	}
 	break;
 	case V4L2_CTRL_TYPE_BUTTON:
 	break;
 	case V4L2_CTRL_TYPE_INTEGER64:
-		json_object_set(control, "value", json_integer((int) value));
-		json_object_set(control, "default_value", json_integer(ctrl->default_value));
+		json_object_set_new(control, "value", json_integer((int) value));
+		if (jsoncontrol_arg->all)
+		{
+			json_object_set_new(control, "default_value", json_integer(ctrl->default_value));
+		}
 	break;
 	case V4L2_CTRL_TYPE_STRING:
-		json_object_set(control, "value", json_string(value));
+		json_object_set_new(control, "value", json_string(value));
 	break;
 	case V4L2_CTRL_TYPE_CTRL_CLASS:
 	{
+		if (!jsoncontrol_arg->all)
+		{
+			json_decref(control);
+			return 0;
+		}
 		json_t *clas_ = json_array();
-		json_object_set(control, "items", clas_);
+		json_object_set_new(control, "items", clas_);
 		if (json_is_object(controls))
-			json_object_set(controls, ctrl->name, control);
+			json_object_set_new(controls, ctrl->name, control);
 		else if (json_is_array(controls))
-			json_array_append(controls, control);
+			json_array_append_new(controls, control);
 		return 0;
 	}
 	break;
 	}
 
 	if (ctrlclass && json_is_array(ctrlclass))
-		json_array_append(ctrlclass, control);
+		json_array_append_new(ctrlclass, control);
 	else if (json_is_array(controls))
-		json_array_append(controls, control);
+		json_array_append_new(controls, control);
 	return 0;
 }
 
-static int _v4l2_capabilities_crop(V4L2_t *dev, json_t *transformation)
+static int _v4l2_capabilities_crop(V4L2_t *dev, json_t *transformation, int all)
 {
+	json_t *crop = json_object();
+	json_object_set_new(crop, "name", json_string("crop"));
+	if (all)
+		json_object_set_new(crop, "type", json_string("rectangle"));
+	json_t *rect = json_object();
+	json_t *top = json_object();
+	json_t *left = json_object();
+	json_t *width = json_object();
+	json_t *height = json_object();
 	struct v4l2_selection sel = {0};
+	if (all)
+	{
+		sel.type = sv4l2_type(dev);
+		sel.target = V4L2_SEL_TGT_CROP_BOUNDS;
+		if (ioctl(sv4l2_fd(dev), VIDIOC_G_SELECTION, &sel) == 0)
+		{
+			json_object_set_new(top, "type", json_string("integer"));
+			json_object_set_new(top, "minimum", json_integer(0));
+			json_object_set_new(top, "maximum", json_integer(sel.r.height - 32));
+			json_object_set_new(left, "type", json_string("integer"));
+			json_object_set_new(left, "minimum", json_integer(0));
+			json_object_set_new(left, "maximum", json_integer(sel.r.width - 32));
+			json_object_set_new(width, "type", json_string("integer"));
+			json_object_set_new(width, "minimum", json_integer(32));
+			json_object_set_new(width, "maximum", json_integer(sel.r.width));
+			json_object_set_new(height, "type", json_string("integer"));
+			json_object_set_new(height, "minimum", json_integer(32));
+			json_object_set_new(height, "maximum", json_integer(sel.r.height));
+		}
+		else
+		{
+			json_decref(crop);
+			json_decref(rect);
+			json_decref(top);
+			json_decref(left);
+			json_decref(width);
+			json_decref(height);
+			return -1;
+		}
+		memset(&sel, 0, sizeof(sel));
+	}
 	sel.type = sv4l2_type(dev);
-	sel.target = V4L2_SEL_TGT_CROP_BOUNDS;
+	sel.target = V4L2_SEL_TGT_CROP_DEFAULT;
 	if (ioctl(sv4l2_fd(dev), VIDIOC_G_SELECTION, &sel) == 0)
 	{
-		json_t *crop = json_object();
-		json_object_set_new(crop, "name", json_string("crop"));
-		json_object_set_new(crop, "type", json_string("rectangle"));
-		json_t *rect = json_object();
-		json_t *top = json_object();
-		json_object_set_new(top, "minimum", json_integer(0));
-		json_object_set_new(top, "maximum", json_integer(sel.r.height - 32));
-		json_object_set_new(rect, "top", top);
-		json_t *left = json_object();
-		json_object_set_new(left, "minimum", json_integer(0));
-		json_object_set_new(left, "maximum", json_integer(sel.r.width - 32));
-		json_object_set_new(rect, "left", left);
-		json_t *width = json_object();
-		json_object_set_new(width, "minimum", json_integer(32));
-		json_object_set_new(width, "maximum", json_integer(sel.r.width));
-		json_object_set_new(rect, "width", width);
-		json_t *height = json_object();
-		json_object_set_new(height, "minimum", json_integer(32));
-		json_object_set_new(height, "maximum", json_integer(sel.r.height));
-		json_object_set_new(rect, "height", height);
-		json_object_set(crop, "bounds", rect);
-		json_array_append(transformation, crop);
+		json_object_set_new(top, "value", json_integer(sel.r.top));
+		json_object_set_new(left, "value", json_integer(sel.r.left));
+		json_object_set_new(width, "value", json_integer(sel.r.width));
+		json_object_set_new(height, "value", json_integer(sel.r.height));
 	}
+	else
+	{
+		json_decref(crop);
+		json_decref(rect);
+		json_decref(top);
+		json_decref(left);
+		json_decref(width);
+		json_decref(height);
+		return -1;
+	}
+	json_object_set_new(rect, "top", top);
+	json_object_set_new(rect, "left", left);
+	json_object_set_new(rect, "width", width);
+	json_object_set_new(rect, "height", height);
+	json_object_set_new(crop, "bounds", rect);
+	json_array_append_new(transformation, crop);
 	return 0;
 }
 
-static int _v4l2_capabilities_fps(V4L2_t *dev, json_t *definition)
+static int _v4l2_capabilities_fps(V4L2_t *dev, json_t *definition, int all)
 {
 	json_t *fps = json_object();
 	json_object_set_new(fps, "name", json_string("fps"));
-	json_object_set_new(fps, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
+	if (all)
+		json_object_set_new(fps, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
 	struct v4l2_streamparm streamparm = {0};
 	streamparm.type = sv4l2_type(dev);
 	if (ioctl(sv4l2_fd(dev), VIDIOC_G_PARM, &streamparm) == 0)
@@ -2186,16 +2268,47 @@ static int _v4l2_capabilities_fps(V4L2_t *dev, json_t *definition)
 		else if (streamparm.parm.capture.timeperframe.denominator > 0)
 			json_object_set_new(fps, "value", json_integer( -1 * ((int) (streamparm.parm.capture.timeperframe.numerator / streamparm.parm.capture.timeperframe.denominator))));
 	}
-	json_array_append(definition, fps);
+	else
+	{
+		json_decref(fps);
+		return -1;
+	}
+	json_array_append_new(definition, fps);
 	return 0;
 }
 
-static int _v4l2_capabilities_imageformat(V4L2_t *dev, json_t *definition)
+static int _v4l2_capabilities_imageformat(V4L2_t *dev, json_t *definition, int all)
 {
 	json_t *pixelformat = json_object();
 	json_object_set_new(pixelformat, "name", json_string("fourcc"));
-	json_object_set_new(pixelformat, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_STRING)));
 
+	json_t *width = json_object();
+	json_object_set_new(width, "name", json_string("width"));
+
+	json_t *height = json_object();
+	json_object_set_new(height, "name", json_string("height"));
+
+	struct v4l2_format fmt = {0};
+	fmt.type = sv4l2_type(dev);
+	fmt.fmt.pix.field = V4L2_FIELD_ANY;
+	if (ioctl(sv4l2_fd(dev), VIDIOC_G_FMT, &fmt) == 0)
+	{
+		json_object_set_new(pixelformat, "value", json_stringn((char*)&fmt.fmt.pix.pixelformat, 4));
+		json_object_set_new(width, "value", json_integer(fmt.fmt.pix.width));
+		json_object_set_new(height, "value", json_integer(fmt.fmt.pix.height));
+	}
+
+	if (!all)
+	{
+		json_array_append_new(definition, pixelformat);
+		json_array_append_new(definition, width);
+		json_array_append_new(definition, height);
+		return 0;
+	}
+
+	json_object_set_new(pixelformat, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_STRING)));
+	json_object_set_new(width, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
+	json_object_set_new(height, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
 	json_t *items = json_array();
 	struct v4l2_fmtdesc fmtdesc = {0};
 	fmtdesc.type = sv4l2_type(dev);
@@ -2204,59 +2317,60 @@ static int _v4l2_capabilities_imageformat(V4L2_t *dev, json_t *definition)
 		json_array_append_new(items, json_stringn((char*)&fmtdesc.pixelformat, 4));
 		fmtdesc.index++;
 	}
-
-	json_t *width = json_object();
-	json_object_set_new(width, "name", json_string("width"));
-	json_object_set_new(width, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
-
-	json_t *height = json_object();
-	json_object_set_new(height, "name", json_string("height"));
-	json_object_set_new(height, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
-
-	struct v4l2_format fmt;
-	fmt.type = sv4l2_type(dev);
-	fmt.fmt.pix.field = V4L2_FIELD_ANY;
-	if (ioctl(sv4l2_fd(dev), VIDIOC_G_FMT, &fmt) == 0)
-	{
-		json_object_set_new(pixelformat, "value", json_stringn((char*)&fmt.fmt.pix.pixelformat, 4));
-		json_object_set_new(width, "value", json_integer(fmt.fmt.pix.width));
-		json_object_set_new(height, "value", json_integer(fmt.fmt.pix.width));
-	}
+	json_object_set_new(pixelformat, "items", items);
 
 	struct v4l2_frmsizeenum video_cap = {0};
 	video_cap.pixel_format = fmt.fmt.pix.pixelformat;
 	video_cap.type = V4L2_FRMSIZE_TYPE_STEPWISE;
 	if(ioctl(sv4l2_fd(dev), VIDIOC_ENUM_FRAMESIZES, &video_cap) == 0)
 	{
-		json_object_set(width, "minimum", json_integer(video_cap.stepwise.min_width));
-		json_object_set(width, "maximum", json_integer(video_cap.stepwise.max_width));
-		json_object_set(width, "step", json_integer(video_cap.stepwise.step_width));
+		if (video_cap.type == V4L2_FRMSIZE_TYPE_STEPWISE)
+		{
+			json_object_set_new(width, "minimum", json_integer(video_cap.stepwise.min_width));
+			json_object_set_new(width, "maximum", json_integer(video_cap.stepwise.max_width));
+			json_object_set_new(width, "step", json_integer(video_cap.stepwise.step_width));
 
-		json_object_set(height, "minimum", json_integer(video_cap.stepwise.min_height));
-		json_object_set(height, "maximum", json_integer(video_cap.stepwise.max_height));
-		json_object_set(height, "step", json_integer(video_cap.stepwise.step_height));
+			json_object_set_new(height, "minimum", json_integer(video_cap.stepwise.min_height));
+			json_object_set_new(height, "maximum", json_integer(video_cap.stepwise.max_height));
+			json_object_set_new(height, "step", json_integer(video_cap.stepwise.step_height));
+		}
+		else if (video_cap.type == V4L2_FRMSIZE_TYPE_DISCRETE)
+		{
+			json_t *items1 = json_array();
+			json_t *items2 = json_array();
+			for (video_cap.index = 0; ioctl(dev->fd, VIDIOC_ENUM_FRAMESIZES, &video_cap) != -1; video_cap.index++)
+			{
+				json_array_append_new(items1, json_integer(video_cap.discrete.height));
+				json_array_append_new(items2, json_integer(video_cap.discrete.width));
+			}
+			json_object_set_new(height, "items", items1);
+			json_object_set_new(width, "items", items2);
+		}
 	}
 
-	json_object_set(pixelformat, "items", items);
-
-	json_array_append(definition, pixelformat);
-	json_array_append(definition, width);
-	json_array_append(definition, height);
+	json_array_append_new(definition, pixelformat);
+	json_array_append_new(definition, width);
+	json_array_append_new(definition, height);
 	return 0;
 }
 
-int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities)
+int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 {
 	json_t *definition = json_array();
-	_v4l2_capabilities_imageformat(dev, definition);
-	_v4l2_capabilities_fps(dev, definition);
-	json_object_set(capabilities, "definition", definition);
+	_v4l2_capabilities_imageformat(dev, definition, all);
+	_v4l2_capabilities_fps(dev, definition, all);
+	json_object_set_new(capabilities, "definition", definition);
 	json_t *transformation = json_array();
-	_v4l2_capabilities_crop(dev, transformation);
-	json_object_set(capabilities, "transformation", transformation);
-	json_t *controls = json_array();
-	sv4l2_treecontrols(dev, sv4l2_jsoncontrol_cb, controls);
-	json_object_set(capabilities, "controls", controls);
+	if (_v4l2_capabilities_crop(dev, transformation, all) == 0)
+		json_object_set(capabilities, "transformation", transformation);
+	json_decref(transformation);
+	_JSONControl_Arg_t arg = {0};
+	arg.controls = json_array();
+	arg.all = all;
+	int ret = sv4l2_treecontrols(dev, sv4l2_jsoncontrol_cb, &arg);
+	if (ret > 0)
+		json_object_set(capabilities, "controls", arg.controls);
+	json_decref(arg.controls);
 	return 0;
 }
 #endif

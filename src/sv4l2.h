@@ -274,6 +274,9 @@ int sv4l2_loadjsonconfiguration(void *config, void *jconfig);
 
 #define sv4l2_loadsettings sv4l2_loadjsonsettings
 #define sv4l2_loadconfiguration sv4l2_loadjsonconfiguration
+
+int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all);
+
 #else
 #define sv4l2_loadsettings NULL
 #define sv4l2_loadconfiguration NULL
