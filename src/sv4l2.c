@@ -442,7 +442,7 @@ static int _v4l2_setfps(int fd, enum v4l2_buf_type type, int fps)
 		dbg("\t%d / %d %u", streamparm.parm.capture.timeperframe.denominator,
 					streamparm.parm.capture.timeperframe.numerator, fps);
 	}
-	else if (fps >= 0 & fps != streamparm.parm.capture.timeperframe.denominator)
+	else if (fps >= 0 && fps != streamparm.parm.capture.timeperframe.denominator)
 	{
 		streamparm.parm.capture.timeperframe.denominator = fps;
 		streamparm.parm.capture.timeperframe.numerator = 1;
@@ -452,7 +452,7 @@ static int _v4l2_setfps(int fd, enum v4l2_buf_type type, int fps)
 			return -1;
 		}
 	}
-	else if (fps < 0 & -fps != streamparm.parm.capture.timeperframe.numerator)
+	else if (fps < 0 && -fps != streamparm.parm.capture.timeperframe.numerator)
 	{
 		streamparm.parm.capture.timeperframe.denominator = 1;
 		streamparm.parm.capture.timeperframe.numerator = fps;
@@ -780,7 +780,7 @@ int sv4l2_crop(V4L2_t *dev, struct v4l2_rect *r)
 	sel.flags = V4L2_SEL_FLAG_GE | V4L2_SEL_FLAG_LE;
 	if (ioctl(dev->fd, VIDIOC_S_SELECTION, &sel))
 	{
-		err("cropping error %m");
+		err("sv4l2: cropping error %m");
 		return -1;
 	}
 	dbg("sv4l2: croping requested (%d %d %d %d)", sel.r.left, sel.r.top, sel.r.width, sel.r.height);
@@ -798,24 +798,25 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_queryc
 		control.value = ivalue;
 		if (value != (void*)-1 && ioctl(ctrlfd, VIDIOC_S_CTRL, &control))
 		{
-			err("control %#x setting error %m", id);
+			err("sv4l2: control %#x setting error %m", id);
 			return (void *)-1;
 		}
 		control.value = 0;
-		if (ioctl(ctrlfd, VIDIOC_G_CTRL, &control))
+		if (queryctrl.type != V4L2_CTRL_TYPE_CTRL_CLASS &&
+			ioctl(ctrlfd, VIDIOC_G_CTRL, &control))
 		{
-			err("device doesn't support control %#x %m", id);
+			err("sv4l2: device doesn't support control %#x %m", id);
 			return (void *)-1;
 		}
 		value = (void *)control.value;
-		dbg("control %#x => %d", id, control.value);
+		dbg("sv4l2: control %#x => %d", id, control.value);
 	}
 	else
 #endif
-	if (value != (void*)-1 &&
-		(queryctrl.type != V4L2_CTRL_TYPE_CTRL_CLASS))
+	if (queryctrl.type != V4L2_CTRL_TYPE_CTRL_CLASS)
 	{
 		struct v4l2_ext_control control = {0};
+		char string[256] = {0};
 		control.id = id;
 		if (queryctrl.type == V4L2_CTRL_TYPE_INTEGER)
 			control.size = sizeof(uint32_t);
@@ -828,50 +829,44 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_queryc
 		else if (queryctrl.type == V4L2_CTRL_TYPE_INTEGER64)
 			control.size = sizeof(uint64_t);
 		else if (queryctrl.type == V4L2_CTRL_TYPE_STRING && value != NULL)
-			control.size = strlen(value) + 1;
+		{
+			if (value != (void*)-1)
+				control.size = strlen(value) + 1;
+			else
+				control.size = sizeof(string);
+			control.string = string;
+		}
 		else
 			control.size = 0;
-		control.string = value;
 		struct v4l2_ext_controls controls = {0};
 		controls.count = 1;
 		controls.controls = &control;
-		if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
+		if (value != (void*)-1)
 		{
-			err("control %#x setting error %m", id);
+			control.string = value;
+			if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
+			{
+				err("sv4l2: control %#x setting error %m", id);
+				return (void *)-1;
+			}
+		}
+		/**
+		 * DEBUG with valgrind.
+		 * valgrind returns problem on the next ioctl
+		 * if ptr is not set on a good address even with an integer control.
+		 * Syscall param ioctl(VKI_V4L2_G_EXT_CTRLS).controls[].ptr[] points to unaddressable byte(s)
+		 */
+		control.ptr = string;
+		if ((queryctrl.type != V4L2_CTRL_TYPE_BUTTON) &&
+			(queryctrl.type != V4L2_CTRL_TYPE_CTRL_CLASS) &&
+			ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls))
+		{
+			err("sv4l2: control %#x getting error %m", id);
 			return (void *)-1;
 		}
+		value = control.string;
+		dbg("sv4l2: control %#x => %d", id, control.value);
 	}
-	struct v4l2_ext_control control = {0};
-	control.id = id;
-	char string[256];
-	if (queryctrl.type == V4L2_CTRL_TYPE_INTEGER)
-		control.size = sizeof(uint32_t);
-	else if (queryctrl.type == V4L2_CTRL_TYPE_BOOLEAN)
-		control.size = 1;
-	else if (queryctrl.type == V4L2_CTRL_TYPE_MENU)
-		control.size = sizeof(uint32_t);
-	else if (queryctrl.type == V4L2_CTRL_TYPE_BUTTON)
-		control.size = 0;
-	else if (queryctrl.type == V4L2_CTRL_TYPE_INTEGER64)
-		control.size = sizeof(uint64_t);
-	else if (queryctrl.type == V4L2_CTRL_TYPE_STRING)
-	{
-		control.size = sizeof(string);
-		control.string = string;
-	}
-	else
-		control.size = 0;
-	struct v4l2_ext_controls controls = {0};
-	controls.count = 1;
-	controls.controls = &control;
-	if ((queryctrl.type != V4L2_CTRL_TYPE_BUTTON) &&
-		(queryctrl.type != V4L2_CTRL_TYPE_CTRL_CLASS) &&
-		ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls))
-	{
-		err("control %#x setting error %m", id);
-		return (void *)-1;
-	}
-	value = control.string;
 	return value;
 }
 
@@ -890,13 +885,21 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 		}
 		if (ret != 0)
 		{
-			err("control %#x not supported", id);
+			err("sv4l2: control %#x not supported", id);
 			return (void *)-1;
 		}
 	}
 	if (queryctrl.flags & V4L2_CTRL_FLAG_DISABLED)
 	{
-		err("control %#x disabled", id);
+		err("sv4l2: control %#x disabled", id);
+		return 0;
+	}
+	/**
+	 * TODO extend the controls
+	 */
+	if (queryctrl.flags & V4L2_CTRL_FLAG_HAS_PAYLOAD)
+	{
+		err("sv4l2: control %#x with payload unsupported", id);
 		return 0;
 	}
 	return _sv4l2_control(ctrlfd, id, value, queryctrl);
@@ -921,9 +924,9 @@ static int _sv4l2_treecontrols(int ctrlfd, V4L2_t *dev, int (*cb)(void *arg, str
 			cb(arg, &qctrl, dev);
 		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
 	}
-	if (ret)
+	if (ret && errno != EINVAL)
 	{
-		err("sv4l2: %s query controls error %m", dev->config->parent.name);
+		err("sv4l2: %s query controls error %m", dev->name);
 	}
 	return nbctrls;
 }
@@ -937,19 +940,22 @@ int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *
 	return nbctrls;
 }
 
-int sv4l2_treecontrolmenu(V4L2_t *dev, int id, int (*cb)(void *arg, struct v4l2_querymenu *ctrl, V4L2_t *dev), void * arg)
+int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_queryctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl, V4L2_t *dev), void * arg)
 {
 	struct v4l2_querymenu querymenu = {0};
-	querymenu.id = id;
-	for (querymenu.index = 0; ioctl(sv4l2_fd(dev), VIDIOC_QUERYMENU, &querymenu) == 0; querymenu.index++)
+	querymenu.id = ctrl->id;
+	for (querymenu.index = ctrl->minimum; querymenu.index <= ctrl->maximum; querymenu.index++ )
 	{
-		if (dev->config->mode & MODE_VERBOSE)
+		if (ioctl(sv4l2_fd(dev), VIDIOC_QUERYMENU, &querymenu) != 0)
+			return -1;
+		if (dev->mode & MODE_VERBOSE)
 		{
 			dbg("menu[%d] %s", querymenu.index, querymenu.name);
 		}
 		if (cb)
 			cb(arg, &querymenu, dev);
 	}
+	return 0;
 }
 
 static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, CameraConfig_t *config)
@@ -1047,7 +1053,7 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 		dev->ops.createbuffers = createbuffers_mplane;
 		dev->nplanes = fmt.fmt.pix_mp.num_planes;
 	}
-	dbg("V4l2 settings: %dx%d, %.4s", dev->width, dev->height, (char*)&dev->fourcc);
+	dbg("V4l2 settings: %dx%d, %.4s", config->parent.width, config->parent.height, (char*)&config->parent.fourcc);
 	if (config)
 		config->parent.dev = dev;
 	return dev;
