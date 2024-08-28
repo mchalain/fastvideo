@@ -91,8 +91,6 @@ struct V4L2_s
 	int (*transfer)(void *, int id, const char *mem, size_t size);
 };
 
-static int sv4l2_subdev_open(CameraConfig_t *config);
-
 static int _v4l2buffer_exportdmafd(V4L2Buffer_t *buf, int fd)
 {
 	struct v4l2_exportbuffer expbuf = {0};
@@ -1144,7 +1142,7 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 
 	if (mode & MODE_MEDIACTL && config)
 	{
-		int fd = sv4l2_subdev_open(config);
+		int fd = sv4l2_subdev_open(config->subdevice);
 		if (fd > 0)
 		{
 			ctrlfd = fd;
@@ -1615,14 +1613,8 @@ static uint32_t _set_config(void *arg, struct v4l2_subdev_format *ffs)
 	return fourcc;
 }
 
-static int sv4l2_subdev_open(CameraConfig_t *config)
+int sv4l2_subdev_open(const char *subdevice)
 {
-	const char *subdevice = config->subdevice;
-	if (subdevice == NULL)
-	{
-		err("sv4l2: error mediactl support without subdev");
-		return -1;
-	}
 	int ctrlfd = open(subdevice, O_RDWR, 0);
 	if (ctrlfd < 0)
 	{
@@ -1654,15 +1646,14 @@ static int sv4l2_subdev_open(CameraConfig_t *config)
 	if (caps.capabilities & V4L2_SUBDEV_CAP_RO_SUBDEV)
 	{
 		warn("smedia: subdev read-only");
+		close(ctrlfd);
+		return -1;
 	}
-	else
-		sv4l2_subdev_setpixformat(ctrlfd, config->parent.fourcc, config->parent.width, config->parent.height);
-	sv4l2_subdev_getpixformat(ctrlfd, _set_config, config);
 	return ctrlfd;
 }
 
 #else
-static int sv4l2_subdev_open(CameraConfig_t *config)
+static int sv4l2_subdev_open(const char *subdevice)
 {
 	err("sv4l2: subdev is not supported");
 	return -1;
