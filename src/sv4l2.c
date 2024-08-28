@@ -1515,6 +1515,39 @@ void sv4l2_destroy(V4L2_t *dev)
 
 #ifdef VIDIOC_SUBDEV_S_FMT
 
+static int _v4l2_subdev_fmtbus(void *arg, struct v4l2_subdev_mbus_code_enum *mbus_code)
+{
+	uint32_t code = *(uint32_t *)arg;
+	if (code == mbus_code->code)
+		return 0;
+	return -1;
+}
+
+uint32_t sv4l2_subdev_getfmtbus(int ctrlfd, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
+{
+	uint32_t ret = 0;
+	for (int i = 0; ; i++)
+	{
+		struct v4l2_subdev_mbus_code_enum mbusEnum = {0};
+		mbusEnum.pad = 0;
+		mbusEnum.index = i;
+		mbusEnum.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+
+		if (ioctl(ctrlfd, VIDIOC_SUBDEV_ENUM_MBUS_CODE, &mbusEnum) != 0)
+		{
+			dbg("smedia: %d supported formats", i);
+			break;
+		}
+		dbg("smedia: format supported %#x", mbusEnum.code);
+		if (fmtbus)
+		{
+			if (!fmtbus(cbarg, &mbusEnum))
+				ret = mbusEnum.code;
+		}
+	}
+	return ret;
+}
+
 static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 {
 	uint32_t ret = -1;
@@ -1535,25 +1568,7 @@ static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 	break;
 	};
 	dbg("smedia: format request %#x", code);
-	for (int i = 0; ; i++)
-	{
-		struct v4l2_subdev_mbus_code_enum mbusEnum = {0};
-		mbusEnum.pad = 0;
-		mbusEnum.index = i;
-		mbusEnum.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-
-		if (ioctl(ctrlfd, VIDIOC_SUBDEV_ENUM_MBUS_CODE, &mbusEnum) != 0)
-		{
-			dbg("smedia: %d supported formats", i);
-			break;
-		}
-		dbg("smedia: format supported %#x", mbusEnum.code);
-		if (mbusEnum.code == code)
-		{
-			warn("smedia: bus format found");
-			ret = code;
-		}
-	}
+	ret = sv4l2_subdev_getfmtbus(ctrlfd, _v4l2_subdev_fmtbus, &code);
 	return ret;
 }
 
