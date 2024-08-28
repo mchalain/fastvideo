@@ -176,6 +176,8 @@ static json_t * _device_subv4l2(json_t *devices, int major, int minor, const cha
 		sv4l2_subdev_capabilities(subdev, device, all_capabilities_format);
 		sv4L2_subdev_destroy(subdev);
 	}
+	else
+		close(devfd);
 	return device;
 }
 
