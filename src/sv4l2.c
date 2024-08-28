@@ -62,6 +62,13 @@ struct V4L2Buffer_s
 	} ops;
 };
 
+typedef struct V4L2Subdev_s V4L2Subdev_t;
+struct V4L2Subdev_s
+{
+	int fd;
+	V4L2Subdev_t *next;
+};
+
 #define MODE_CAPTURE 0x01
 #define MODE_OUTPUT 0x02
 #define MODE_MASTER 0x04
@@ -78,7 +85,7 @@ struct V4L2_s
 	uint32_t height;
 	uint32_t fourcc;
 	int fd;
-	int ctrlfd;
+	V4L2Subdev_t *subdevices;
 	enum v4l2_buf_type type;
 	int nbuffers;
 	int nplanes;
@@ -958,23 +965,27 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_queryc
 
 void * sv4l2_control(V4L2_t *dev, int id, void *value)
 {
-	int ctrlfd = dev->ctrlfd;
+	int ctrlfd = dev->fd;
 	struct v4l2_queryctrl queryctrl = {0};
 	queryctrl.id = id;
-	int ret = ioctl (ctrlfd, VIDIOC_QUERYCTRL, &queryctrl);
-	if (ret != 0)
+	int ret = ioctl(ctrlfd, VIDIOC_QUERYCTRL, &queryctrl);
+	if (ret != 0 && dev->subdevices)
 	{
-		if (dev->ctrlfd != dev->fd)
+		V4L2Subdev_t *it;
+		for (it = dev->subdevices; it != NULL; it = it->next)
 		{
-			ctrlfd = dev->fd;
-			ret = ioctl (ctrlfd, VIDIOC_QUERYCTRL, &queryctrl);
-		}
-		if (ret != 0)
-		{
-			err("sv4l2: control %#x not supported", id);
-			return (void *)-1;
+			ctrlfd = it->fd;
+			ret = ioctl(ctrlfd, VIDIOC_QUERYCTRL, &queryctrl);
+			if (ret == 0)
+				break;
 		}
 	}
+	if (ret != 0)
+	{
+		err("sv4l2: control %#x not supported", id);
+		return (void *)-1;
+	}
+
 	if (queryctrl.flags & V4L2_CTRL_FLAG_DISABLED)
 	{
 		err("sv4l2: control %#x disabled", id);
@@ -1021,12 +1032,15 @@ int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *
 {
 	int nbctrls = 0;
 	int ret;
-	ret = _sv4l2_treecontrols(dev->ctrlfd, cb, arg);
-	nbctrls += ret;
-	if (dev->fd != dev->ctrlfd)
-	{
-		ret = _sv4l2_treecontrols(dev->fd, cb, arg);
+	ret = _sv4l2_treecontrols(dev->fd, cb, arg);
+	if (ret > 0)
 		nbctrls += ret;
+	V4L2Subdev_t *it;
+	for (it = dev->subdevices; it; it = it->next)
+	{
+		ret = _sv4l2_treecontrols(it->fd, cb, arg);
+		if (ret > 0)
+			nbctrls += ret;
 	}
 	if (ret < 0)
 		err("sv4l2: %s query controls error %m", dev->name);
@@ -1100,7 +1114,19 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 	{
 		return NULL;
 	}
-	int ctrlfd = fd;
+	V4L2Subdev_t *subdev = NULL;
+
+	if (mode & MODE_MEDIACTL && config)
+	{
+		subdev = sv4l2_subdev_create(&config->subdevices[0]);
+		if (subdev)
+		{
+			sv4l2_subdev_setpixformat(subdev->fd, config->parent.fourcc, config->parent.width, config->parent.height);
+#if 0
+			sv4l2_subdev_getpixformat(subdev->fd, _v4l2_subdev_set_config, config);
+#endif
+		}
+	}
 
 	if (_sv4l2_prepare(fd, &type, mode, config))
 	{
@@ -1144,7 +1170,7 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 	dev->name = devicename;
 	dev->config = config;
 	dev->fd = fd;
-	dev->ctrlfd = ctrlfd;
+	dev->subdevices = subdev;
 	dev->type = type;
 	dev->mode = mode;
 	dev->width = width;
@@ -1639,14 +1665,8 @@ static uint32_t _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ff
 }
 #endif
 
-int sv4l2_subdev_open(SubDevConfig_t *config)
+V4L2Subdev_t *sv4l2_subdev_create2(int ctrlfd, SubDevConfig_t *config)
 {
-	int ctrlfd = open(config->device, O_RDWR, 0);
-	if (ctrlfd < 0)
-	{
-		err("sv4l2: subdevice %s not exist", config->device);
-		return -1;
-	}
 	struct v4l2_subdev_capability caps = {0};
 	if (ioctl(ctrlfd, VIDIOC_SUBDEV_QUERYCAP, &caps) != 0)
 	{
@@ -1661,8 +1681,7 @@ int sv4l2_subdev_open(SubDevConfig_t *config)
 		if (ioctl(ctrlfd, VIDIOC_SUBDEV_S_CLIENT_CAP, &clientCaps) != 0)
 		{
 			err("sv4l2: subdev control error %m");
-			close(ctrlfd);
-			return -1;
+			return NULL;
 		}
 		warn("sv4l2: client streams capabilities");
 	}
@@ -1670,19 +1689,49 @@ int sv4l2_subdev_open(SubDevConfig_t *config)
 	if (caps.capabilities & V4L2_SUBDEV_CAP_RO_SUBDEV)
 	{
 		warn("sv4l2: subdev read-only");
-		close(ctrlfd);
-		return -1;
+		return NULL;
 	}
-	return ctrlfd;
+	V4L2Subdev_t *subdev = calloc(1, sizeof(*subdev));
+	subdev->fd = ctrlfd;
+	if (config)
+	{
+		subdev->name = config->parent.name;
+		subdev->width = config->parent.width;
+		subdev->height = config->parent.height;
+		subdev->stride = config->parent.stride;
+		subdev->fourcc = config->parent.fourcc;
+		dbg("sv4l2: subdev %s created", subdev->name);
+	}
+	return subdev;
+}
+
+V4L2Subdev_t *sv4l2_subdev_create(SubDevConfig_t *config)
+{
+	int ctrlfd = open(config->device, O_RDWR, 0);
+	if (ctrlfd < 0)
+	{
+		err("sv4l2: subdevice %s not exist", config->device);
+		return NULL;
+	}
+	V4L2Subdev_t *subdev = sv4l2_subdev_create2(ctrlfd, config);
+	if (subdev == NULL)
+		close(ctrlfd);
+	return subdev;
 }
 
 #else
-static int sv4l2_subdev_open(SubDevConfig_t *config)
+V4L2Subdev_t *sv4l2_subdev_create(SubDevConfig_t *config)
 {
 	err("sv4l2: subdev is not supported");
-	return -1;
+	return NULL;
 }
 #endif
+
+void sv4L2_subdev_destroy(V4L2Subdev_t *subdev)
+{
+	close(subdev->fd);
+	free(subdev);
+}
 
 DeviceConf_t * sv4l2_createconfig()
 {
