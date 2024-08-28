@@ -117,6 +117,12 @@ static json_t *_device_v4l2(json_t *devices, int major, int minor, const char *n
 			return NULL;
 		}
 	}
+	/**
+	 * TODO
+	 * check the devices to find the subdevices corresponding to this entity's id
+	 * The id comes from the media like the name.
+	 * The subdeivces are injected into the device
+	 */
 	device = NULL;
 	V4L2_t *dev = sv4l2_create2(devfd, name, NULL);
 	if (dev == NULL)
@@ -177,6 +183,7 @@ static json_t * _device_subv4l2(json_t *devices, int major, int minor, const cha
 	json_object_set_new(device, "device", json_string(path));
 	sv4l2_subdev_getpixformat(devfd, _subv4l2_pixformat, device);
 	sv4l2_subdev_getfmtbus(devfd, _subv4l2_fmtbus, device);
+	sv4l2_subdev_capabilities(devfd, device, all_capabilities_format);
 	return device;
 }
 

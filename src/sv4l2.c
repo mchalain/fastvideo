@@ -2425,4 +2425,36 @@ int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 	json_decref(arg.controls);
 	return 0;
 }
+
+int sv4l2_subdev_capabilities(int ctrlfd, json_t *capabilities, int all)
+{
+	struct v4l2_subdev_capability caps;
+	if (ioctl(ctrlfd, VIDIOC_SUBDEV_QUERYCAP, &caps) != 0)
+	{
+		err("smedia: subdev control error %m");
+		close(ctrlfd);
+		return -1;
+	}
+#ifdef V4L2_SUBDEV_CAP_STREAMS
+	if (caps.capabilities & V4L2_SUBDEV_CAP_STREAMS)
+	{
+	}
+#endif
+	if (caps.capabilities & V4L2_SUBDEV_CAP_RO_SUBDEV)
+	{
+		warn("smedia: subdev read-only");
+		close(ctrlfd);
+		return -1;
+	}
+	_JSONControl_Arg_t arg = {0};
+	arg.controls = json_array();
+	arg.all = all;
+	arg.ctrlfd = ctrlfd;
+	int ret = _sv4l2_treecontrols(ctrlfd, _sv4l2_jsoncontrol_cb, &arg);
+	if (ret > 0)
+		json_object_set(capabilities, "controls", arg.controls);
+	json_decref(arg.controls);
+	return 0;
+}
+
 #endif
