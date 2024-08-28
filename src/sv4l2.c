@@ -1121,9 +1121,9 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 		subdev = sv4l2_subdev_create(&config->subdevices[0]);
 		if (subdev)
 		{
-			sv4l2_subdev_setpixformat(subdev->fd, config->parent.fourcc, config->parent.width, config->parent.height);
+			sv4l2_subdev_setpixformat(subdev, config->parent.fourcc, config->parent.width, config->parent.height);
 #if 0
-			sv4l2_subdev_getpixformat(subdev->fd, _v4l2_subdev_set_config, config);
+			sv4l2_subdev_getpixformat(subdev, _v4l2_subdev_set_config, config);
 #endif
 		}
 	}
@@ -1176,19 +1176,6 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 	dev->width = width;
 	dev->height = height;
 	dev->fourcc = fourcc;
-
-	if (mode & MODE_MEDIACTL && config)
-	{
-		int fd = sv4l2_subdev_open(&config->subdevices[0]);
-		if (fd > 0)
-		{
-			ctrlfd = fd;
-			sv4l2_subdev_setpixformat(ctrlfd, dev->fourcc, dev->width, dev->height);
-#if 0
-			sv4l2_subdev_getpixformat(ctrlfd, _v4l2_subdev_set_config, dev->config);
-#endif
-		}
-	}
 
 	if (mode & MODE_VERBOSE)
 		warn("sv4l2: create %s", devicename);
@@ -1560,7 +1547,7 @@ static int _v4l2_subdev_fmtbus(void *arg, struct v4l2_subdev_mbus_code_enum *mbu
 	return -1;
 }
 
-uint32_t sv4l2_subdev_getfmtbus(int ctrlfd, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
+uint32_t _sv4l2_subdev_getfmtbus(int ctrlfd, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
 {
 	uint32_t ret = 0;
 	for (int i = 0; ; i++)
@@ -1585,6 +1572,11 @@ uint32_t sv4l2_subdev_getfmtbus(int ctrlfd, int(*fmtbus)(void *arg, struct v4l2_
 	return ret;
 }
 
+uint32_t sv4l2_subdev_getfmtbus(V4L2Subdev_t *subdev, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
+{
+	return _sv4l2_subdev_getfmtbus(subdev->fd, fmtbus, cbarg);
+}
+
 static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 {
 	uint32_t ret = -1;
@@ -1605,19 +1597,19 @@ static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 	break;
 	};
 	dbg("sv4l2: format request %#x", code);
-	ret = sv4l2_subdev_getfmtbus(ctrlfd, _v4l2_subdev_fmtbus, &code);
+	ret = _sv4l2_subdev_getfmtbus(ctrlfd, _v4l2_subdev_fmtbus, &code);
 	return ret;
 }
 
-int sv4l2_subdev_setpixformat(int ctrlfd, uint32_t fourcc, uint32_t width, uint32_t height)
+int sv4l2_subdev_setpixformat(V4L2Subdev_t *subdev, uint32_t fourcc, uint32_t width, uint32_t height)
 {
 	struct v4l2_subdev_format ffs = {0};
 	ffs.pad = 0;
 	ffs.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	ffs.format.width = width;
 	ffs.format.height = height;
-	ffs.format.code = sv4l2_subdev_translate_fmtbus(ctrlfd, fourcc);
-	if (ioctl(ctrlfd, VIDIOC_SUBDEV_S_FMT, &ffs) != 0)
+	ffs.format.code = sv4l2_subdev_translate_fmtbus(subdev->fd, fourcc);
+	if (ioctl(subdev->fd, VIDIOC_SUBDEV_S_FMT, &ffs) != 0)
 	{
 		err("sv4l2: subdev set format error %m");
 		return -1;
@@ -1625,12 +1617,12 @@ int sv4l2_subdev_setpixformat(int ctrlfd, uint32_t fourcc, uint32_t width, uint3
 	return 0;
 }
 
-uint32_t sv4l2_subdev_getpixformat(int ctrlfd, int (*busformat)(void *arg, struct v4l2_subdev_format *ffs), void *cbarg)
+uint32_t sv4l2_subdev_getpixformat(V4L2Subdev_t *subdev, int (*busformat)(void *arg, struct v4l2_subdev_format *ffs), void *cbarg)
 {
 	struct v4l2_subdev_format ffs = {0};
 	ffs.pad = 0;
 	ffs.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	if (ioctl(ctrlfd, VIDIOC_SUBDEV_G_FMT, &ffs) != 0)
+	if (ioctl(subdev->fd, VIDIOC_SUBDEV_G_FMT, &ffs) != 0)
 	{
 		err("sv4l2: subdev get format error %m");
 		return 0;
@@ -2527,31 +2519,31 @@ int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 	return 0;
 }
 
-int sv4l2_subdev_capabilities(int ctrlfd, json_t *capabilities, int all)
+int sv4l2_subdev_capabilities(V4L2Subdev_t *subdev, json_t *capabilities, int all)
 {
 	struct v4l2_subdev_capability caps;
-	if (ioctl(ctrlfd, VIDIOC_SUBDEV_QUERYCAP, &caps) != 0)
+	if (ioctl(subdev->fd, VIDIOC_SUBDEV_QUERYCAP, &caps) != 0)
 	{
 		err("smedia: subdev control error %m");
-		close(ctrlfd);
 		return -1;
 	}
 #ifdef V4L2_SUBDEV_CAP_STREAMS
 	if (caps.capabilities & V4L2_SUBDEV_CAP_STREAMS)
 	{
+		dbg("sv4l2: subdevice streaming");
+		json_object_set_new(capabilities, "stream", json_true());
 	}
 #endif
 	if (caps.capabilities & V4L2_SUBDEV_CAP_RO_SUBDEV)
 	{
 		warn("smedia: subdev read-only");
-		close(ctrlfd);
 		return -1;
 	}
 	_JSONControl_Arg_t arg = {0};
 	arg.controls = json_array();
 	arg.all = all;
-	arg.ctrlfd = ctrlfd;
-	int ret = _sv4l2_treecontrols(ctrlfd, _sv4l2_jsoncontrol_cb, &arg);
+	arg.ctrlfd = subdev->fd;
+	int ret = _sv4l2_treecontrols(subdev->fd, _sv4l2_jsoncontrol_cb, &arg);
 	if (ret > 0)
 		json_object_set(capabilities, "controls", arg.controls);
 	json_decref(arg.controls);
