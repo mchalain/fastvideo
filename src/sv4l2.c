@@ -1606,7 +1606,8 @@ uint32_t sv4l2_subdev_getpixformat(int ctrlfd, int (*busformat)(void *arg, struc
 	return 0;
 }
 
-static uint32_t _set_config(void *arg, struct v4l2_subdev_format *ffs)
+#if 0
+static uint32_t _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs)
 {
 	CameraConfig_t *config = arg;
 	uint32_t fourcc = 0xFFFFFFFF;
@@ -1627,6 +1628,7 @@ static uint32_t _set_config(void *arg, struct v4l2_subdev_format *ffs)
 	config->parent.height = ffs->format.height;
 	return fourcc;
 }
+#endif
 
 int sv4l2_subdev_open(const char *subdevice)
 {
