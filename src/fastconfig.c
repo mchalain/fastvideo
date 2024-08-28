@@ -6,6 +6,7 @@
 #include <dirent.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 
 #include <linux/media.h>
 
@@ -232,6 +233,42 @@ static int _device_video(void *arg, Media_t *media, struct media_entity_desc *en
 	return -1;
 }
 
+static int _devices_append(json_t *devices, json_t *device)
+{
+	/**
+	 * check if the device is already inside the array
+	 */
+	json_t *jname = json_object_get(device, "name");
+	if (json_is_array(jname))
+	{
+		int last = json_array_size(jname) - 1;
+		jname = json_array_get(jname, last);
+	}
+	const char *name = json_string_value(jname);
+	int j;
+	json_t *olddevice;
+	json_array_foreach(devices, j, olddevice)
+	{
+		json_t *oldname = json_object_get(olddevice, "name");
+		if (oldname && json_is_array(oldname))
+		{
+			int last = json_array_size(oldname) - 1;
+			oldname = json_array_get(oldname, last);
+		}
+		if (oldname && json_is_string(oldname))
+		{
+			if (!strcmp(json_string_value(oldname), name))
+				break;
+		}
+	}
+	/** free if the device existing or append **/
+	if (j < json_array_size(olddevice))
+		json_decref(device);
+	else
+		json_array_append_new(devices, device);
+	return 0;
+}
+
 static int _media_device(void *arg, const char *name, int fd)
 {
 	json_t *devices = (json_t *)arg;
@@ -269,7 +306,7 @@ static int _media_device(void *arg, const char *name, int fd)
 			json_object_set_new(device,"subdevice", subdevices);
 			subdevices = NULL;
 		}
-		json_array_append_new(devices, device);
+		_devices_append(devices, device);
 	}
 	return 0;
 }
@@ -295,7 +332,16 @@ int main(int argc, char *const argv[])
 		}
 	} while(opt != -1);
 
-	json_t *devices = json_array();
+	json_t *devices = NULL;
+
+	struct stat statd = {0};
+	if (stat(output, &statd))
+	{
+		json_error_t jerror;
+		devices = json_load_file(output, 0, &jerror);
+	}
+	if (devices == NULL)
+		devices = json_array();
 
 	sys_device(sysmedia, _media_device, devices);
 	json_dump_file(devices, output, JSON_INDENT(2));
