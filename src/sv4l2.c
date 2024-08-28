@@ -1559,10 +1559,10 @@ uint32_t _sv4l2_subdev_getfmtbus(int ctrlfd, int(*fmtbus)(void *arg, struct v4l2
 
 		if (ioctl(ctrlfd, VIDIOC_SUBDEV_ENUM_MBUS_CODE, &mbusEnum) != 0)
 		{
-			dbg("smedia: %d supported formats", i);
+			dbg("sv4l2: %d supported formats", i);
 			break;
 		}
-		dbg("smedia: format supported %#x", mbusEnum.code);
+		dbg("sv4l2: format supported %#x", mbusEnum.code);
 		if (fmtbus)
 		{
 			if (!fmtbus(cbarg, &mbusEnum))
@@ -1574,7 +1574,7 @@ uint32_t _sv4l2_subdev_getfmtbus(int ctrlfd, int(*fmtbus)(void *arg, struct v4l2
 
 uint32_t sv4l2_subdev_getfmtbus(V4L2Subdev_t *subdev, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
 {
-	return _sv4l2_subdev_getfmtbus(subdev->fd, fmtbus, cbarg);
+	return _v4l2_subdev_getfmtbus(subdev->fd, fmtbus, cbarg);
 }
 
 static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
@@ -1597,7 +1597,7 @@ static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 	break;
 	};
 	dbg("sv4l2: format request %#x", code);
-	ret = _sv4l2_subdev_getfmtbus(ctrlfd, _v4l2_subdev_fmtbus, &code);
+	ret = _v4l2_subdev_getfmtbus(ctrlfd, _v4l2_subdev_fmtbus, &code);
 	return ret;
 }
 
@@ -1609,7 +1609,7 @@ int sv4l2_subdev_setpixformat(V4L2Subdev_t *subdev, uint32_t fourcc, uint32_t wi
 	ffs.format.width = width;
 	ffs.format.height = height;
 	ffs.format.code = sv4l2_subdev_translate_fmtbus(subdev->fd, fourcc);
-	if (ioctl(subdev->fd, VIDIOC_SUBDEV_S_FMT, &ffs) != 0)
+	if (ffs.format.code != (uint32_t)-1 && ioctl(subdev->fd, VIDIOC_SUBDEV_S_FMT, &ffs) != 0)
 	{
 		err("sv4l2: subdev set format error %m");
 		return -1;
@@ -1625,7 +1625,7 @@ uint32_t sv4l2_subdev_getpixformat(V4L2Subdev_t *subdev, int (*busformat)(void *
 	if (ioctl(subdev->fd, VIDIOC_SUBDEV_G_FMT, &ffs) != 0)
 	{
 		err("sv4l2: subdev get format error %m");
-		return 0;
+		return -1;
 	}
 	dbg("sv4l2: current subdev %lu x %lu %#X", ffs.format.width, ffs.format.height, ffs.format.code);
 	if (busformat)
@@ -2592,6 +2592,82 @@ int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 	return 0;
 }
 
+static int _subv4l2_capabilities_pixformat(void *arg, struct v4l2_subdev_format *ffs)
+{
+	_JSONControl_Arg_t *jsoncontrol_arg = arg;
+	json_t *definition = jsoncontrol_arg->controls;
+	DeviceConf_t config = {0};
+	_v4l2_subdev_set_config(&config, ffs);
+
+	json_t *pixelformat = json_object();
+	json_object_set_new(pixelformat, "name", json_string("fourcc"));
+
+	json_t *width = json_object();
+	json_object_set_new(width, "name", json_string("width"));
+
+	json_t *height = json_object();
+	json_object_set_new(height, "name", json_string("height"));
+
+	json_object_set_new(pixelformat, "value", json_sprintf("%.4s",&config.fourcc));
+	json_object_set_new(width, "value", json_integer(config.width));
+	json_object_set_new(height, "value", json_integer(config.height));
+
+	if (jsoncontrol_arg->all)
+	{
+		json_object_set_new(pixelformat, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_STRING)));
+		json_t *items = json_array();
+		struct v4l2_subdev_mbus_code_enum mbusEnum = {0};
+		mbusEnum.pad = ffs->pad;
+		mbusEnum.which = ffs->which;
+		for (mbusEnum.index = 0; ioctl(jsoncontrol_arg->ctrlfd, VIDIOC_SUBDEV_ENUM_MBUS_CODE, &mbusEnum) == 0; mbusEnum.index++)
+		{
+			json_array_append_new(items, json_sprintf("%.4s",&config.fourcc));
+		}
+		if (mbusEnum.index > 0)
+		{
+			json_object_set(pixelformat, "items", items);
+		}
+		json_decref(items);
+
+		json_object_set_new(width, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
+		json_object_set_new(height, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
+		json_t *items1 = json_array();
+		json_t *items2 = json_array();
+		struct v4l2_subdev_frame_size_enum framesizes = {0};
+		framesizes.pad = ffs->pad;
+		framesizes.code = ffs->format.code;
+		framesizes.which = ffs->which;
+		for (framesizes.index = 0; ioctl(jsoncontrol_arg->ctrlfd, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, &framesizes) == 0; framesizes.index++)
+		{
+			if (framesizes.min_width == framesizes.max_width)
+				json_array_append_new(items1, json_integer(framesizes.min_width));
+			else
+			{
+				json_object_set_new(width, "minimum", json_integer(framesizes.min_width));
+				json_object_set_new(width, "maximum", json_integer(framesizes.max_width));
+			}
+			if (framesizes.min_height == framesizes.max_height)
+				json_array_append_new(items2, json_integer(framesizes.min_height));
+			else
+			{
+				json_object_set_new(width, "minimum", json_integer(framesizes.min_height));
+				json_object_set_new(width, "maximum", json_integer(framesizes.max_height));
+			}
+		}
+		if (framesizes.index > 0)
+		{
+			json_object_set(width, "items", items1);
+			json_object_set(height, "items", items2);
+		}
+		json_decref(items1);
+		json_decref(items2);
+	}
+	json_array_append_new(definition, pixelformat);
+	json_array_append_new(definition, width);
+	json_array_append_new(definition, height);
+	return 0;
+}
+
 int sv4l2_subdev_capabilities(V4L2Subdev_t *subdev, json_t *capabilities, int all)
 {
 	struct v4l2_subdev_capability caps;
@@ -2616,6 +2692,11 @@ int sv4l2_subdev_capabilities(V4L2Subdev_t *subdev, json_t *capabilities, int al
 	arg.controls = json_array();
 	arg.all = all;
 	arg.ctrlfd = subdev->fd;
+	if (!sv4l2_subdev_getpixformat(subdev, _subv4l2_capabilities_pixformat, &arg))
+		json_object_set(capabilities, "definition", arg.controls);
+	json_decref(arg.controls);
+
+	arg.controls = json_array();
 	int ret = _sv4l2_treecontrols(subdev->fd, _sv4l2_jsoncontrol_cb, &arg);
 	if (ret > 0)
 		json_object_set(capabilities, "controls", arg.controls);

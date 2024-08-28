@@ -148,16 +148,6 @@ static json_t *_device_v4l2(json_t *devices, int major, int minor, const char *n
 	return device;
 }
 
-static int _subv4l2_pixformat(void *arg, struct v4l2_subdev_format *ffs)
-{
-	return 0;
-}
-
-static int _subv4l2_fmtbus(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode)
-{
-	return 0;
-}
-
 static json_t * _device_subv4l2(json_t *devices, int major, int minor, const char *name, uint32_t type)
 {
 	char path[32];
@@ -182,10 +172,13 @@ static json_t * _device_subv4l2(json_t *devices, int major, int minor, const cha
 #endif
 	json_object_set_new(device, "device", json_string(path));
 	V4L2Subdev_t *subdev = sv4l2_subdev_create2(devfd, NULL);
-	sv4l2_subdev_getpixformat(subdev, _subv4l2_pixformat, device);
-	sv4l2_subdev_getfmtbus(subdev, _subv4l2_fmtbus, device);
-	sv4l2_subdev_capabilities(subdev, device, all_capabilities_format);
-	sv4L2_subdev_destroy(subdev);
+	if (subdev)
+	{
+		sv4l2_subdev_capabilities(subdev, device, all_capabilities_format);
+		sv4L2_subdev_destroy(subdev);
+	}
+	else
+		close(devfd);
 	return device;
 }
 
