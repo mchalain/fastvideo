@@ -991,7 +991,7 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 	return _sv4l2_control(ctrlfd, id, value, &queryctrl);
 }
 
-static int _sv4l2_treecontrols(int ctrlfd, V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev), void * arg)
+static int _sv4l2_treecontrols(int ctrlfd, int (*cb)(void *arg, struct v4l2_queryctrl *ctrl), void * arg)
 {
 	int nbctrls = 0;
 	struct v4l2_queryctrl qctrl = {0};
@@ -1007,41 +1007,49 @@ static int _sv4l2_treecontrols(int ctrlfd, V4L2_t *dev, int (*cb)(void *arg, str
 		}
 		dbg("sv4l2: control %s id %#x", qctrl.name, qctrl.id);
 		if (cb)
-			cb(arg, &qctrl, dev);
+			cb(arg, &qctrl);
 		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
 	}
 	if (ret && errno != EINVAL)
 	{
-		err("sv4l2: %s query controls error %m", dev->name);
+		nbctrls = ret;
 	}
 	return nbctrls;
 }
 
-int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev), void * arg)
+int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *ctrl), void * arg)
 {
 	int nbctrls = 0;
-	nbctrls += _sv4l2_treecontrols(dev->ctrlfd, dev, cb, arg);
+	int ret;
+	ret = _sv4l2_treecontrols(dev->ctrlfd, cb, arg);
+	nbctrls += ret;
 	if (dev->fd != dev->ctrlfd)
-		nbctrls += _sv4l2_treecontrols(dev->fd, dev, cb, arg);
+	{
+		ret = _sv4l2_treecontrols(dev->fd, cb, arg);
+		nbctrls += ret;
+	}
+	if (ret < 0)
+		err("sv4l2: %s query controls error %m", dev->name);
 	return nbctrls;
 }
 
-int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_queryctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl, V4L2_t *dev), void * arg)
+int _sv4l2_treecontrolmenu(int ctrlfd, struct v4l2_queryctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg)
 {
 	struct v4l2_querymenu querymenu = {0};
 	querymenu.id = ctrl->id;
 	for (querymenu.index = ctrl->minimum; querymenu.index <= ctrl->maximum; querymenu.index++ )
 	{
-		if (ioctl(sv4l2_fd(dev), VIDIOC_QUERYMENU, &querymenu) != 0)
+		if (ioctl(ctrlfd, VIDIOC_QUERYMENU, &querymenu) != 0)
 			return -1;
-		if (dev->mode & MODE_VERBOSE)
-		{
-			dbg("menu[%d] %s", querymenu.index, querymenu.name);
-		}
 		if (cb)
-			cb(arg, &querymenu, dev);
+			cb(arg, &querymenu);
 	}
-	return 0;
+	return ctrl->maximum - ctrl->minimum;
+}
+
+int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_queryctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg)
+{
+	return _sv4l2_treecontrolmenu(sv4l2_fd(dev), ctrl, cb, arg);
 }
 
 static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, CameraConfig_t *config)
@@ -1689,10 +1697,18 @@ DeviceConf_t * sv4l2_createconfig()
 }
 
 #ifdef HAVE_JANSSON
-
-static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev)
+typedef struct _SV4L2_Setting_s _SV4L2_Setting_t;
+struct _SV4L2_Setting_s
 {
-	json_t *jconfig = (json_t *)arg;
+	V4L2_t *dev;
+	json_t *jconfig;
+};
+
+static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_queryctrl *ctrl)
+{
+	_SV4L2_Setting_t *setting = (_SV4L2_Setting_t *)arg;
+	json_t *jconfig = setting->jconfig;
+	V4L2_t *dev = setting->dev;
 	json_t *jvalue = NULL;
 	if (json_is_object(jconfig))
 	{
@@ -1833,7 +1849,10 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 	json_t *jcontrols = json_object_get(jconfig,"controls");
 	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
 		jconfig = jcontrols;
-	return sv4l2_treecontrols(dev, _sv4l2_loadjsonsetting, jconfig);
+	_SV4L2_Setting_t setting;
+	setting.dev = dev;
+	setting.jconfig = jconfig;
+	return sv4l2_treecontrols(dev, _sv4l2_loadjsonsetting, &setting);
 }
 
 int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
@@ -2076,7 +2095,7 @@ static const char *CTRLNAME(uint32_t id)
 	return "V4L2_CID???";
 }
 
-static int menuprint(void *arg, struct v4l2_querymenu *querymenu, V4L2_t *dev)
+static int menuprint(void *arg, struct v4l2_querymenu *querymenu)
 {
 	json_t *control = (json_t *)arg;
 	json_t *value = json_object_get(control, "value");
@@ -2085,26 +2104,27 @@ static int menuprint(void *arg, struct v4l2_querymenu *querymenu, V4L2_t *dev)
 	return 0;
 }
 
-static int menuprintall(void *arg, struct v4l2_querymenu *querymenu, V4L2_t *dev)
+static int menuprintall(void *arg, struct v4l2_querymenu *querymenu)
 {
 	json_t *control = (json_t *)arg;
 	json_t *items = json_object_get(control, "items");
 	json_array_append_new(items, json_string(querymenu->name));
-dbg("menu add items %s", querymenu->name);
-	return menuprint(arg, querymenu, dev);
+	return menuprint(arg, querymenu);
 }
 
 typedef struct _JSONControl_Arg_s _JSONControl_Arg_t;
 struct _JSONControl_Arg_s
 {
 	json_t *controls;
+	int ctrlfd;
 	int all;
 };
 
-int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev)
+static int _sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl)
 {
 	_JSONControl_Arg_t *jsoncontrol_arg = (_JSONControl_Arg_t *)arg;
 	json_t *controls = jsoncontrol_arg->controls;
+	int ctrlfd = jsoncontrol_arg->ctrlfd;
 	if (!json_is_object(controls) && !json_is_array(controls))
 		return -1;
 	json_t *ctrlclass = NULL;
@@ -2128,7 +2148,7 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev)
 			}
 		}
 	}
-	void *value = _sv4l2_control(dev->ctrlfd, ctrl->id, (void*)-1, ctrl);
+	void *value = _sv4l2_control(ctrlfd, ctrl->id, (void*)-1, ctrl);
 	json_t *control = json_object();
 	json_object_set_new(control, "name", json_string(ctrl->name));
 	if (jsoncontrol_arg->all)
@@ -2167,12 +2187,12 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev)
 		{
 			json_t *items = json_array();
 			json_object_set(control, "items", items);
-			sv4l2_treecontrolmenu(dev, ctrl, menuprintall, control);
+			_sv4l2_treecontrolmenu(ctrlfd, ctrl, menuprintall, control);
 			json_decref(items);
 			json_object_set_new(control, "default_value", json_integer(ctrl->default_value));
 		}
 		else
-			sv4l2_treecontrolmenu(dev, ctrl, menuprint, control);
+			_sv4l2_treecontrolmenu(ctrlfd, ctrl, menuprint, control);
 		json_decref(jvalue);
 	}
 	break;
@@ -2398,7 +2418,8 @@ int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 	_JSONControl_Arg_t arg = {0};
 	arg.controls = json_array();
 	arg.all = all;
-	int ret = sv4l2_treecontrols(dev, sv4l2_jsoncontrol_cb, &arg);
+	arg.ctrlfd = sv4l2_fd(dev);
+	int ret = sv4l2_treecontrols(dev, _sv4l2_jsoncontrol_cb, &arg);
 	if (ret > 0)
 		json_object_set(capabilities, "controls", arg.controls);
 	json_decref(arg.controls);

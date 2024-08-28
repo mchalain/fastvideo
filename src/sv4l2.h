@@ -183,7 +183,7 @@ void *sv4l2_control(V4L2_t *dev, int id, void *value);
  *
  * @return -1 on error, 0 otherwise.
  */
-int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev), void * arg);
+int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *ctrl), void * arg);
 /**
  * @brief parse a control menu.
  * it calls the cb function for each entry of the menu.
@@ -195,20 +195,7 @@ int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *
  *
  * @return -1 on error, 0 otherwise.
  */
-int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_queryctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl, V4L2_t *dev), void * arg);
-#ifdef HAVE_JANSSON
-/**
- * @brief callback for sv4l2_treecontrols.
- * it fills a json_t object with controls information
- *
- * @param arg a pointer on json_object of jansson library.
- * @param ctrl the control cf the standard v4l2 dpcumentation.
- * @param dev the V4L2_t object.
- *
- * @return -1 on error, 0 otherwise.
- */
-int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl, V4L2_t *dev);
-#endif
+int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_queryctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg);
 
 /**
  * @brief send dynamic configuration to an interactive loop
