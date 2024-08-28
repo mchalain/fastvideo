@@ -1135,9 +1135,9 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 
 	if (mode & MODE_VERBOSE)
 		warn("SV4l2 create %s", devicename);
+
 	if (_sv4l2_prepare(fd, &type, mode, config))
 	{
-		close(fd);
 		return NULL;
 	}
 
@@ -1147,7 +1147,6 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 	if (ioctl(fd, VIDIOC_G_FMT, &fmt) != 0)
 	{
 		err("FMT not found %m");
-		close(fd);
 		return NULL;
 	}
 	uint32_t width = 0;
@@ -1187,6 +1186,8 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 	dev->height = height;
 	dev->fourcc = fourcc;
 
+	if (mode & MODE_VERBOSE)
+		warn("sv4l2: create %s", devicename);
 	dev->ops.createbuffers = createbuffers_splane;
 	dev->nplanes = 1;
 	if (mode & MODE_MPLANE)
