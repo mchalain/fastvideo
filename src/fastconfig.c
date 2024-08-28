@@ -253,7 +253,7 @@ static int _devices_append(json_t *devices, json_t *device)
 	}
 	const char *name = json_string_value(jname);
 	int j;
-	json_t *olddevice;
+	json_t *olddevice = NULL;
 	json_array_foreach(devices, j, olddevice)
 	{
 		json_t *oldname = json_object_get(olddevice, "name");
@@ -269,7 +269,7 @@ static int _devices_append(json_t *devices, json_t *device)
 		}
 	}
 	/** free if the device existing or append **/
-	if (j < json_array_size(olddevice))
+	if (olddevice && j < json_array_size(olddevice))
 		json_decref(device);
 	else
 		json_array_append_new(devices, device);
@@ -293,26 +293,18 @@ static int _media_device(void *arg, const char *name, int fd)
 	json_t *device;
 	json_array_foreach(mediadevices, index, device)
 	{
+		dbg("device found %s", json_string_value(json_object_get(device, "name")));
 		if (!strcmp("subv4l", json_string_value(json_object_get(device, "type"))))
 		{
-			int tmpsink = json_integer_value(json_object_get(device, "sink"));
-			if (sink > 0 && sink != tmpsink)
-				continue;
-
 			if (subdevices == NULL)
 			{
 				subdevices = json_array();
 			}
 			json_array_append_new(subdevices, device);
-			sink = tmpsink;
 			continue;
 		}
-		int id = json_integer_value(json_object_get(device, "id"));
-		if (id == sink)
-		{
-			json_object_set_new(device,"subdevice", subdevices);
-			subdevices = NULL;
-		}
+		json_object_set_new(device,"subdevice", subdevices);
+		subdevices = NULL;
 		_devices_append(devices, device);
 	}
 	return 0;
