@@ -1040,7 +1040,10 @@ int _sv4l2_treecontrolmenu(int ctrlfd, struct v4l2_queryctrl *ctrl, int (*cb)(vo
 	for (querymenu.index = ctrl->minimum; querymenu.index <= ctrl->maximum; querymenu.index++ )
 	{
 		if (ioctl(ctrlfd, VIDIOC_QUERYMENU, &querymenu) != 0)
+		{
+			err("sv4l2: query menu error %m");
 			return -1;
+		}
 		if (cb)
 			cb(arg, &querymenu);
 	}
@@ -1575,7 +1578,7 @@ static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 		code = V4L2_MBUS_FMT_SRGGB12_1X12;
 	break;
 	};
-	dbg("smedia: format request %#x", code);
+	dbg("sv4l2: format request %#x", code);
 	ret = sv4l2_subdev_getfmtbus(ctrlfd, _v4l2_subdev_fmtbus, &code);
 	return ret;
 }
@@ -1590,8 +1593,7 @@ int sv4l2_subdev_setpixformat(int ctrlfd, uint32_t fourcc, uint32_t width, uint3
 	ffs.format.code = sv4l2_subdev_translate_fmtbus(ctrlfd, fourcc);
 	if (ioctl(ctrlfd, VIDIOC_SUBDEV_S_FMT, &ffs) != 0)
 	{
-		err("smedia: subdev set format error %m");
-		close(ctrlfd);
+		err("sv4l2: subdev set format error %m");
 		return -1;
 	}
 	return 0;
@@ -1604,11 +1606,10 @@ uint32_t sv4l2_subdev_getpixformat(int ctrlfd, int (*busformat)(void *arg, struc
 	ffs.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	if (ioctl(ctrlfd, VIDIOC_SUBDEV_G_FMT, &ffs) != 0)
 	{
-		err("smedia: subdev get format error %m");
-		close(ctrlfd);
-		return -1;
+		err("sv4l2: subdev get format error %m");
+		return 0;
 	}
-	dbg("smedia: current subdev %lu x %lu %#X", ffs.format.width, ffs.format.height, ffs.format.code);
+	dbg("sv4l2: current subdev %lu x %lu %#X", ffs.format.width, ffs.format.height, ffs.format.code);
 	if (busformat)
 		return busformat(cbarg, &ffs);
 	return 0;
@@ -1643,15 +1644,13 @@ int sv4l2_subdev_open(SubDevConfig_t *config)
 	int ctrlfd = open(config->device, O_RDWR, 0);
 	if (ctrlfd < 0)
 	{
-		err("smedia: subdevice %s not exist", config->device);
+		err("sv4l2: subdevice %s not exist", config->device);
 		return -1;
 	}
-	struct v4l2_subdev_capability caps;
+	struct v4l2_subdev_capability caps = {0};
 	if (ioctl(ctrlfd, VIDIOC_SUBDEV_QUERYCAP, &caps) != 0)
 	{
-		err("smedia: subdev control error %m");
-		close(ctrlfd);
-		return -1;
+		warn("sv4l2: subdev control error %m");
 	}
 #ifdef V4L2_SUBDEV_CAP_STREAMS
 	if (caps.capabilities & V4L2_SUBDEV_CAP_STREAMS)
@@ -1661,16 +1660,16 @@ int sv4l2_subdev_open(SubDevConfig_t *config)
 
 		if (ioctl(ctrlfd, VIDIOC_SUBDEV_S_CLIENT_CAP, &clientCaps) != 0)
 		{
-			err("smedia: subdev control error %m");
+			err("sv4l2: subdev control error %m");
 			close(ctrlfd);
 			return -1;
 		}
-		warn("smedia: client streams capabilities");
+		warn("sv4l2: client streams capabilities");
 	}
 #endif
 	if (caps.capabilities & V4L2_SUBDEV_CAP_RO_SUBDEV)
 	{
-		warn("smedia: subdev read-only");
+		warn("sv4l2: subdev read-only");
 		close(ctrlfd);
 		return -1;
 	}
