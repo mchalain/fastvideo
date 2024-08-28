@@ -1601,6 +1601,10 @@ static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 	case V4L2_PIX_FMT_SBGGR10P:
 		code = V4L2_MBUS_FMT_SBGGR10_1X10;
 	break;
+	case V4L2_PIX_FMT_SGRBG10:
+	case V4L2_PIX_FMT_SGRBG10P:
+		code = MEDIA_BUS_FMT_SGRBG10_1X10;
+	break;
 	case V4L2_PIX_FMT_SRGGB12:
 	case V4L2_PIX_FMT_SRGGB12P:
 		code = V4L2_MBUS_FMT_SRGGB12_1X12;
@@ -1610,7 +1614,6 @@ static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 		code = MEDIA_BUS_FMT_SRGGB10_1X10;
 	break;
 	};
-	dbg("sv4l2: format request %#x", code);
 	ret = _v4l2_subdev_getfmtbus(ctrlfd, _v4l2_subdev_fmtbus, &code);
 	return ret;
 }
@@ -1623,6 +1626,7 @@ int sv4l2_subdev_setpixformat(V4L2Subdev_t *subdev, uint32_t fourcc, uint32_t wi
 	ffs.format.width = width;
 	ffs.format.height = height;
 	ffs.format.code = sv4l2_subdev_translate_fmtbus(subdev->fd, fourcc);
+	dbg("sv4l2: subdev format request %ux%u %#x for %.4s", width, height, ffs.format.code, &fourcc);
 	if (ffs.format.code != (uint32_t)-1 && ioctl(subdev->fd, VIDIOC_SUBDEV_S_FMT, &ffs) != 0)
 	{
 		err("sv4l2: subdev set format error %m");
