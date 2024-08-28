@@ -1044,7 +1044,8 @@ int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *
 	for (it = dev->subdevices; it; it = it->next)
 	{
 		ret = _sv4l2_treecontrols(it->fd, cb, arg);
-		nbctrls += ret;
+		if (ret > 0)
+			nbctrls += ret;
 	}
 	if (ret < 0)
 		err("sv4l2: %s query controls error %m", dev->name);
@@ -1730,7 +1731,10 @@ V4L2Subdev_t *sv4l2_subdev_create(SubDevConfig_t *config)
 		err("sv4l2: subdevice %s not exist", config->device);
 		return NULL;
 	}
-	return sv4l2_subdev_create2(ctrlfd, config);
+	V4L2Subdev_t *subdev = sv4l2_subdev_create2(ctrlfd, config);
+	if (subdev == NULL)
+		close(ctrlfd);
+	return subdev;
 }
 
 #else
