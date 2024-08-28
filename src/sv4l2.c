@@ -1246,7 +1246,7 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev)
 	}
 	dbg("sv4l2: duplicated settings: %dx%d, %.4s", fmt.fmt.pix_mp.width,
 												fmt.fmt.pix_mp.height,
-												fmt.fmt.pix_mp.pixelformat);
+												&fmt.fmt.pix_mp.pixelformat);
 
 	return dup;
 }
