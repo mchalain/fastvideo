@@ -1053,11 +1053,14 @@ int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *
 
 int _sv4l2_treecontrolmenu(int ctrlfd, struct v4l2_queryctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg)
 {
+	V4L2_t *dev = (V4L2_t *)arg;
 	struct v4l2_querymenu querymenu = {0};
 	querymenu.id = ctrl->id;
 	for (querymenu.index = ctrl->minimum; querymenu.index <= ctrl->maximum; querymenu.index++ )
 	{
 		if (ioctl(ctrlfd, VIDIOC_QUERYMENU, &querymenu) != 0)
+			return -1;
+		if (dev->mode & MODE_VERBOSE)
 		{
 			err("sv4l2: query menu error %m");
 			return -1;
@@ -1195,7 +1198,7 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 		dev->ops.createbuffers = createbuffers_mplane;
 		dev->nplanes = fmt.fmt.pix_mp.num_planes;
 	}
-	dbg("V4l2 settings: %dx%d, %.4s", dev->width, dev->height, (char*)&dev->fourcc);
+	dbg("V4l2 settings: %dx%d, %.4s", config->parent.width, config->parent.height, (char*)&config->parent.fourcc);
 	if (config)
 		config->parent.dev = dev;
 	return dev;
@@ -1895,6 +1898,15 @@ static int _v4l2_loadjsontransformation(V4L2_t *dev, json_t *transformation)
 	return 0;
 }
 
+/**
+ * @brief callback for sv4l2_treecontrols.
+ * it fills a json_t object with controls information
+ *
+ * @param arg a pointer on json_object of jansson library.
+ * @param ctrl the control cf the standard v4l2 dpcumentation.
+ *
+ * @return -1 on error, 0 otherwise.
+ */
 static int _v4l2_loadjsoncontrols(V4L2_t *dev, json_t *controls)
 {
 	_SV4L2_Setting_t setting;
