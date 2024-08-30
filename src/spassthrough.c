@@ -7,17 +7,33 @@
 #include "config.h"
 #include "spassthrough.h"
 
+typedef struct PassBuffer_s PassBuffer_t;
+struct PassBuffer_s
+{
+	int index;
+	void *mem;
+	int dmabuf;
+	size_t size;
+	size_t bytesused;
+	PassBuffer_t *next;
+	PassBuffer_t *previous;
+};
+
+static const char name1_str[] = "input";
+static const char name2_str[] = "output";
+
 typedef struct Passthrough_s Passthrough_t;
 struct Passthrough_s
 {
+	const char *name;
 	DeviceConf_t *config;
-	Passthrough_t *first;
+	Passthrough_t *dup;
 	int nbuffers;
-	int index;
 	void **mems;
 	int *dmabufs;
 	size_t size;
-	size_t bytesused;
+	PassBuffer_t *buffers;
+	PassBuffer_t *fifo;
 };
 
 DeviceConf_t * spassthrough_createconfig(void)
@@ -29,17 +45,38 @@ void *spassthrough_create(const char *devicename, DeviceConf_t *config)
 {
 	Passthrough_t *dev = calloc(1, sizeof(*dev));
 	dev->config = config;
+	dev->name = name1_str;
 	return dev;
 }
 void *spassthrough_duplicate(Passthrough_t *dev)
 {
 	Passthrough_t *dup = calloc(1, sizeof(*dup));
-	dup->first = dev;
+	dup->name = name2_str;
+	dup->dup = dev;
+	dev->dup = dup;
 	return dup;
 }
 int spassthrough_loadsettings(Passthrough_t *dev, void *configentry)
 {
 	return 0;
+}
+static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems, int *dmabufs, size_t size)
+{
+	dev->nbuffers = nmems;
+	dev->buffers = calloc(nmems, sizeof(*dev->buffers));
+	for (int i = 0; i < nmems; i++)
+	{
+		if (mems)
+			dev->buffers[i].mem = mems[i];
+		if (dmabufs)
+			dev->buffers[i].dmabuf = dmabufs[i];
+		dev->buffers[i].index = i;
+		dev->buffers[i].size = size;
+	}
+	dev->mems = mems;
+	dev->dmabufs = dmabufs;
+	dev->size = size;
+	return nmems;
 }
 int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 {
@@ -49,64 +86,62 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 	switch (t)
 	{
 		case buf_type_memory:
-		{
-			int nmem = va_arg(ap, int);
-			void **mems = va_arg(ap, void **);
-			size_t size = va_arg(ap, size_t);
-			if (dev->first)
+		{dbg("%s %d", __FILE__, __LINE__);
+			if (!dev->dup || dev->buffers)
 				break;
-			dev->nbuffers = nmem;
-			dev->mems = mems;
-			dev->size = size;
+			int ntargets = va_arg(ap, int);
+			void **targets = va_arg(ap, void **);
+			size_t size = va_arg(ap, size_t);
+			_passthrough_createbuffers(dev, ntargets, targets, NULL, size);
+			_passthrough_createbuffers(dev->dup, ntargets, targets, NULL, size);
 			ret = 0;
 		}
 		break;
 		case (buf_type_memory | buf_type_master):
 		{
-			if (dev->first == NULL || dev->first->mems == NULL)
+			if (!dev->buffers || !dev->mems)
 				break;
 			int *ntargets = va_arg(ap, int *);
 			void ***targets = va_arg(ap, void ***);
 			size_t *size = va_arg(ap, size_t *);
 			if (ntargets != NULL)
-				*ntargets = dev->first->nbuffers;
+				*ntargets = dev->nbuffers;
 			if (targets != NULL)
 			{
-				*targets = dev->first->mems;
+				*targets = dev->mems;
 			}
 			if (size != NULL)
-				*size = dev->first->size;
+				*size = dev->size;
 			ret = 0;
 		}
 		break;
 		case buf_type_dmabuf:
 		{
+			if (!dev->dup || dev->buffers)
+				break;
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
-			if (dev->first)
-				break;
-			dev->nbuffers = ntargets;
-			dev->dmabufs = targets;
-			dev->size = size;
+			_passthrough_createbuffers(dev, ntargets, NULL, targets, size);
+			_passthrough_createbuffers(dev->dup, ntargets, NULL, targets, size);
 			ret = 0;
 		}
 		break;
 		case buf_type_dmabuf | buf_type_master:
 		{
-			if (dev->first == NULL || dev->first->dmabufs == NULL)
+			if (!dev->buffers || !dev->dmabufs)
 				break;
 			int *ntargets = va_arg(ap, int *);
 			int **targets = va_arg(ap, int **);
 			size_t *size = va_arg(ap, size_t *);
 			if (ntargets != NULL)
-				*ntargets = dev->first->nbuffers;
+				*ntargets = dev->nbuffers;
 			if (targets != NULL)
 			{
-				*targets = dev->first->dmabufs;
+				*targets = dev->dmabufs;
 			}
 			if (size != NULL)
-				*size = dev->first->size;
+				*size = dev->size;
 			ret = 0;
 		}
 		break;
@@ -130,20 +165,35 @@ int spassthrough_stop(Passthrough_t *dev)
 }
 int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused)
 {
-	if (! dev->first)
-		return dev->index;
+	PassBuffer_t *last = dev->fifo;
+	if (last == NULL)
+		return -1;
+	/** the real fifo is useless as the entry is immediately pushed **/
+#if 0
+	while (last->next) last = last->next;
+	if (last->previous)
+		last->previous->next = NULL;
+	last->previous = NULL;
+#endif
+
 	if (bytesused)
-		*bytesused = dev->first->bytesused;
+		*bytesused = last->bytesused;
 	if (mem)
-		*mem = dev->first->mems[dev->first->index];
-	return dev->first->index;
+		*mem = last->mem;
+	return last->index;
 }
 int spassthrough_queue(Passthrough_t *dev, int index, size_t bytesused)
 {
-	if (dev->first)
-		return 0;
-	dev->index = index;
-	dev->bytesused = bytesused;
+	dev = dev->dup;
+	dev->buffers[index].bytesused = bytesused;
+#if 0
+	/** prepare fifo's items **/
+	dev->buffers[index].next = dev->fifo;
+	if (dev->fifo)
+		dev->fifo->previous = &dev->buffers[index];
+#endif
+	/** insert into fifo **/
+	dev->fifo = &dev->buffers[index];
 	return 0;
 }
 void spassthrough_destroy(Passthrough_t *dev)
