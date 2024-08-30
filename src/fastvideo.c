@@ -16,6 +16,7 @@
 #include "config.h"
 
 #define MODE_DAEMONIZE 0x01
+//#define DISABLE_TRANSFER
 
 typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
 typedef void *(*FastVideoDevice_create_t)(const char *devicename, DeviceConf_t *config);
@@ -207,12 +208,39 @@ int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 	return 0;
 }
 
+static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *output)
+{
+	int index = 0;
+	size_t bytesused = 0;
+	if ((index = input->ops->dequeue(input->dev, NULL, &bytesused)) < 0)
+	{
+		if (errno == EAGAIN)
+			return 0;
+		if (errno)
+			err("%s buffer dequeuing error %m", input->config->name);
+		return -1;
+	}
+	//dbg("transfer (%d) %s => %s", index, input->config->name, output->config->name);
+
+	if (output->ops->queue(output->dev, index, bytesused) < 0)
+	{
+		if (errno == EAGAIN)
+			return 0;
+		if (errno)
+			err("%s buffer queuing error %m", output->config->name);
+		return -1;
+	}
+	return 0;
+}
+
 int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 			FastVideoDevice_t *outtr, FastVideoDevice_t *output)
 {
 	output->ops->start(output->dev);
+#ifndef DISABLE_TRANSFER
 	outtr->ops->start(outtr->dev);
 	intr->ops->start(intr->dev);
+#endif
 	input->ops->start(input->dev);
 	int maxfd = 0;
 	int infd = -1;
@@ -221,6 +249,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 		infd = input->ops->eventfd(input->dev);
 		maxfd = (infd > maxfd)?infd:maxfd;
 	}
+#ifndef DISABLE_TRANSFER
 	int intrfd = -1;
 	if (intr->ops->eventfd)
 	{
@@ -233,6 +262,10 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 		outtrfd = outtr->ops->eventfd(outtr->dev);
 		maxfd = (outtrfd > maxfd)?outtrfd:maxfd;
 	}
+#else
+	int intrfd = -1;
+	int outtrfd = -1;
+#endif
 	int outfd = -1;
 	if (output->ops->eventfd)
 	{
@@ -287,109 +320,62 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 		{
 			continue;
 		}
-		if (infd < 0 || (ret > 0 && FD_ISSET(infd, &rfds)))
+		if (infd < 0 ||
+			FD_ISSET(infd, &rfds))
 		{
-			int index = 0;
-			size_t bytesused = 0;
-			if ((index = input->ops->dequeue(input->dev, NULL, &bytesused)) < 0)
+#ifndef DISABLE_TRANSFER
+			if (main_transferbuffer(input, intr))
+#else
+			if (main_transferbuffer(input, output))
+#endif
 			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("input buffer dequeuing error %m");
 				killdaemon(NULL);
 				break;
 			}
-
-			if (intr->ops->queue(intr->dev, index, bytesused) < 0)
-			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("output buffer queuing error %m");
-				killdaemon(NULL);
-				break;
-			}
-			ret--;
 		}
-		if (outtrfd < 0 || (ret > 0 && FD_ISSET(outtrfd, &rfds)))
+#ifndef DISABLE_TRANSFER
+		if (outtrfd < 0 ||
+			FD_ISSET(outtrfd, &rfds))
 		{
-			int index = 0;
-			size_t bytesused = 0;
-			if ((index = outtr->ops->dequeue(outtr->dev, NULL, &bytesused)) < 0)
+			if (main_transferbuffer(outtr, output))
 			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("input buffer dequeuing error %m");
 				killdaemon(NULL);
 				break;
 			}
-
-			if (output->ops->queue(output->dev, index, bytesused) < 0)
-			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("output buffer queuing error %m");
-				killdaemon(NULL);
-				break;
-			}
-			ret--;
 		}
-		if (outfd < 0 || (ret > 0 && FD_ISSET(outfd, &wfds)) || (ret > 0 && FD_ISSET(outfd, &rfds)))
+#endif
+		if (outfd < 0 ||
+			FD_ISSET(outfd, &wfds) ||
+			FD_ISSET(outfd, &rfds))
 		{
-			int index = 0;
-			if ((index = output->ops->dequeue(output->dev, NULL, NULL)) < 0)
+#ifndef DISABLE_TRANSFER
+			if (main_transferbuffer(output, outtr))
+#else
+			if (main_transferbuffer(output, input))
+#endif
 			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("output buffer dequeuing error %m");
-				killdaemon(NULL);
-				break;
-			}
-			if (outtr->ops->queue(outtr->dev, index, 0) < 0)
-			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("input buffer queuing error %m");
 				killdaemon(NULL);
 				break;
 			}
 			count++;
-			ret--;
 		}
-		if (intrfd < 0 || (ret > 0 && FD_ISSET(intrfd, &wfds)))
+#ifndef DISABLE_TRANSFER
+		if (intrfd < 0 ||
+			FD_ISSET(intrfd, &wfds))
 		{
-			int index = 0;
-			size_t bytesused = 0;
-			if ((index = intr->ops->dequeue(intr->dev, NULL, &bytesused)) < 0)
+			if (main_transferbuffer(intr, input))
 			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("input buffer dequeuing error %m");
 				killdaemon(NULL);
 				break;
 			}
-
-			if (input->ops->queue(input->dev, index, bytesused) < 0)
-			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("output buffer queuing error %m");
-				killdaemon(NULL);
-				break;
-			}
-			ret--;
 		}
+#endif
 	}
 	input->ops->stop(input->dev);
+#ifndef DISABLE_TRANSFER
 	intr->ops->stop(intr->dev);
 	outtr->ops->stop(outtr->dev);
+#endif
 	output->ops->stop(output->dev);
 	return 0;
 }
@@ -452,30 +438,38 @@ int main(int argc, char * const argv[])
 
 	FastVideoDevice_t *indev = NULL;
 	indev = config_createdevice(input, configfile, fastVideoDevice_ops);
-	if (!indev->ops)
+	if (indev && !indev->ops)
 	{
 		err("input not available");
 		return -1;
 	}
 
+#ifndef DISABLE_TRANSFER
 	FastVideoDevice_t *transferdev = NULL;
 	transferdev = config_createdevice(transfer, configfile, fastVideoDevice_ops);
-	if (!transferdev->ops)
+	if (transferdev && !transferdev->ops)
 	{
 		err("transfer not available");
 		return -1;
 	}
+#else
+	FastVideoDevice_t *transferdev = NULL;
+#endif
 
 	FastVideoDevice_t *outdev = NULL;
 	outdev = config_createdevice(output, configfile, fastVideoDevice_ops);
-	if (!outdev->ops)
+	if (outdev && !outdev->ops)
 	{
 		err("output not available");
 		return -1;
 	}
 
+#ifndef DISABLE_TRANSFER
 	choice_config(indev->config, transferdev->config);
 	choice_config(transferdev->config, outdev->config);
+#else
+	choice_config(indev->config, outdev->config);
+#endif
 
 	indev->dev = indev->ops->create(input, indev->config);
 	if (indev->ops->loadsettings && indev->config->entry)
@@ -486,6 +480,7 @@ int main(int argc, char * const argv[])
 	if (indev->dev == NULL)
 		return -1;
 
+#ifndef DISABLE_TRANSFER
 	transferdev->dev = transferdev->ops->create(transfer, transferdev->config);
 	if (transferdev->ops->loadsettings && transferdev->config->entry)
 	{
@@ -502,6 +497,9 @@ int main(int argc, char * const argv[])
 		err("%s mot duplicated", transferdev->config->name);
 		return -1;
 	}
+#else
+	FastVideoDevice_t *transferdevD = NULL;
+#endif
 
 	outdev->dev = outdev->ops->create(output, outdev->config);
 	if (outdev->ops->loadsettings && outdev->config->entry)
@@ -519,22 +517,24 @@ int main(int argc, char * const argv[])
 	int nbbufs = 0;
 	if (indev->ops->requestbuffer(indev->dev, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
 	{
-		err("input dma buffer not allowed");
+		err("%s dma buffer not allowed", indev->config->name);
 		return -1;
 	}
+#ifndef DISABLE_TRANSFER
 	if (transferdev->ops->requestbuffer(transferdev->dev, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
 	{
-		err("output dma buffers not linked");
+		err("%s dma buffers not linked", transferdev->config->name);
 		return -1;
 	}
 	if (transferdevD->ops->requestbuffer(transferdevD->dev, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
 	{
-		err("input dma buffer not allowed");
+		err("%s dma buffer not allowed", transferdevD->config->name);
 		return -1;
 	}
+#endif
 	if (outdev->ops->requestbuffer(outdev->dev, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
 	{
-		err("output dma buffers not linked");
+		err("%s dma buffers not linked", outdev->config->name);
 		return -1;
 	}
 	main_loop(indev, transferdev, transferdevD, outdev);
