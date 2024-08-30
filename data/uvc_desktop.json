@@ -7,6 +7,14 @@
 	"fourcc":"YUYV",
 	"end":true
 },{
+	"name":"uvc-jpeg",
+	"type":"cam",
+	"device":"/dev/video0",
+	"width":640,
+	"height":480,
+	"fourcc":"MJPG",
+	"end":true
+},{
 	"name":"file",
 	"type":"file",
 	"end":true
