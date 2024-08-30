@@ -26,7 +26,10 @@ static int main_parseconfigdevice(json_t *jconfig, DeviceConf_t *devconfig)
 	else
 		devconfig->type = unknown_str;
 	json_t *definition = json_object_get(jconfig, "definition");
-	ret = scommon_loaddefinition(devconfig, definition);
+	if (definition && json_is_object(definition))
+		ret = scommon_loaddefinition(devconfig, definition);
+	else
+		ret = scommon_loaddefinition(devconfig, jconfig);
 	if (devconfig->ops.loadconfiguration)
 	{
 		ret = devconfig->ops.loadconfiguration(devconfig, jconfig);
