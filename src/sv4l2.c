@@ -2018,9 +2018,12 @@ int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
 
 	if (subdevice && json_is_object(subdevice))
 	{
-		subdevice = json_object_get(subdevice, "device");
 		json_t *definition = json_object_get(subdevice, "difinition");
-		scommon_loaddefinition(&config->parent, definition);
+		if (definition && json_is_object(definition))
+			scommon_loaddefinition(&config->parent, definition);
+		else
+			scommon_loaddefinition(&config->parent, subdevice);
+		subdevice = json_object_get(subdevice, "device");
 	}
 	if (subdevice && json_is_string(subdevice))
 	{
