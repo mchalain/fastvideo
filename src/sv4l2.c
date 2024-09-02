@@ -65,6 +65,7 @@ struct V4L2Buffer_s
 typedef struct V4L2Subdev_s V4L2Subdev_t;
 struct V4L2Subdev_s
 {
+	const char *name;
 	int fd;
 	uint32_t width;
 	uint32_t height;
