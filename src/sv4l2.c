@@ -1791,7 +1791,7 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_queryctrl *ctrl)
 	{
 		/**
 		 * json format:
-		 * [ {"name":"Gain","value":1000},{"name":"Exposure","value":1}]
+		 * [ {"name":"Gain","value":1000},{"id":9963790,"value":1}]
 		 */
 		int index = 0;
 		json_t *jcontrol = NULL;
@@ -1802,6 +1802,13 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_queryctrl *ctrl)
 				json_t *jname = json_object_get(jcontrol, "name");
 				if (jname && json_is_string(jname) &&
 					!strcmp(json_string_value(jname),ctrl->name))
+				{
+					jvalue = json_object_get(jcontrol, "value");
+					break;
+				}
+				json_t *jid = json_object_get(jcontrol, "id");
+				if (jid && json_is_integer(jid) &&
+					json_integer_value(jid) == ctrl->id)
 				{
 					jvalue = json_object_get(jcontrol, "value");
 					break;
@@ -2332,9 +2339,9 @@ static int _sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl)
 	void *value = _sv4l2_control(ctrlfd, ctrl->id, (void*)-1, ctrl);
 	json_t *control = json_object();
 	json_object_set_new(control, "name", json_string(ctrl->name));
+	json_object_set_new(control, "id", json_integer(ctrl->id));
 	if (jsoncontrol_arg->all)
 	{
-		json_object_set_new(control, "id", json_integer(ctrl->id));
 		json_t *type = json_string(CTRLTYPE(ctrl->type));
 		json_object_set_new(control, "type", type);
 	}
