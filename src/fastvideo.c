@@ -320,6 +320,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 		{
 			continue;
 		}
+		ret = 0;
 		if (infd < 0 ||
 			FD_ISSET(infd, &rfds))
 		{
@@ -332,9 +333,10 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 				killdaemon(NULL);
 				break;
 			}
-		}
 #ifndef DISABLE_TRANSFER
-		if (outtrfd < 0 ||
+			ret = 1;
+		}
+		if ((outtrfd < 0 && ret == 1) ||
 			FD_ISSET(outtrfd, &rfds))
 		{
 			if (main_transferbuffer(outtr, output))
@@ -342,9 +344,10 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 				killdaemon(NULL);
 				break;
 			}
-		}
 #endif
-		if (outfd < 0 ||
+			ret = 2;
+		}
+		if ((outfd < 0 && ret == 2) ||
 			FD_ISSET(outfd, &wfds) ||
 			FD_ISSET(outfd, &rfds))
 		{
@@ -358,9 +361,10 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 				break;
 			}
 			count++;
-		}
 #ifndef DISABLE_TRANSFER
-		if (intrfd < 0 ||
+			ret = 3;
+		}
+		if ((intrfd < 0 && ret == 3) ||
 			FD_ISSET(intrfd, &wfds))
 		{
 			if (main_transferbuffer(intr, input))
@@ -368,8 +372,8 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 				killdaemon(NULL);
 				break;
 			}
-		}
 #endif
+		}
 	}
 	input->ops->stop(input->dev);
 #ifndef DISABLE_TRANSFER
