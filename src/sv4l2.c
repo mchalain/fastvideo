@@ -937,6 +937,15 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 				control.size = sizeof(string);
 			control.string = string;
 		}
+		else if (queryctrl->type == V4L2_CTRL_TYPE_U8 ||
+				queryctrl->type == V4L2_CTRL_TYPE_U16 ||
+				queryctrl->type == V4L2_CTRL_TYPE_U32)
+		{
+			if (value != (void*)-1)
+				control.size = queryctrl->elem_size * queryctrl->elems;
+			else
+				control.size = sizeof(string);
+		}
 		else
 			control.size = 0;
 		struct v4l2_ext_controls controls = {0};
@@ -1901,6 +1910,51 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 			warn("%s => %s", ctrl->name, value);
 		return (int)value;
 	}
+	else if (ctrl->type == V4L2_CTRL_TYPE_U8 && json_is_array(jvalue))
+	{
+		uint8_t *u8 = calloc(ctrl->elems, sizeof(uint8_t));
+		int index;
+		json_t *ju8;
+		json_array_foreach(jvalue, index, ju8)
+		{
+			u8[index] = (uint8_t)json_integer_value(ju8);
+		}
+		void *value = sv4l2_control(dev, ctrl->id, (void*)u8);
+		if (value != (void *)-1)
+			warn("%s => array", ctrl->name);
+		free(u8);
+		return (int)value;
+	}
+	else if (ctrl->type == V4L2_CTRL_TYPE_U16 && json_is_array(jvalue))
+	{
+		uint16_t *u16 = calloc(ctrl->elems, sizeof(uint16_t));
+		int index;
+		json_t *ju16;
+		json_array_foreach(jvalue, index, ju16)
+		{
+			u16[index] = (uint16_t)json_integer_value(ju16);
+		}
+		void *value = sv4l2_control(dev, ctrl->id, (void*)u16);
+		if (value != (void *)-1)
+			warn("%s => array", ctrl->name);
+		free(u16);
+		return (int)value;
+	}
+	else if (ctrl->type == V4L2_CTRL_TYPE_U32 && json_is_array(jvalue))
+	{
+		uint32_t *u32 = calloc(ctrl->elems, sizeof(uint32_t));
+		int index;
+		json_t *ju32;
+		json_array_foreach(jvalue, index, ju32)
+		{
+			u32[index] = (uint32_t)json_integer_value(ju32);
+		}
+		void *value = sv4l2_control(dev, ctrl->id, (void*)u32);
+		if (value != (void *)-1)
+			warn("%s => array", ctrl->name);
+		free(u32);
+		return (int)value;
+	}
 	else
 	{
 		int value = json_integer_value(jvalue);
@@ -2195,6 +2249,12 @@ static const char *CTRLTYPE(enum v4l2_ctrl_type type)
 		return "large integer";
 	case V4L2_CTRL_TYPE_STRING:
 		return "string";
+	case V4L2_CTRL_TYPE_U8:
+		return "u8array";
+	case V4L2_CTRL_TYPE_U16:
+		return "u16array";
+	case V4L2_CTRL_TYPE_U32:
+		return "u32array";
 	case V4L2_CTRL_TYPE_CTRL_CLASS:
 		return "control class";
 	}
@@ -2443,6 +2503,36 @@ static int _sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 	case V4L2_CTRL_TYPE_STRING:
 		json_object_set_new(control, "value", json_string(value));
 	break;
+	case V4L2_CTRL_TYPE_U8:
+	{
+		json_t *jvalue = json_array();
+		for (int i = 0; i < ctrl->elems; i++)
+		{
+			json_array_append_new(jvalue, json_integer(((uint8_t*)value)[i]));
+		}
+		json_object_set_new(control, "value", jvalue);
+	}
+	break;
+	case V4L2_CTRL_TYPE_U16:
+	{
+		json_t *jvalue = json_array();
+		for (int i = 0; i < ctrl->elems; i++)
+		{
+			json_array_append_new(jvalue, json_integer(((uint16_t*)value)[i]));
+		}
+		json_object_set_new(control, "value", jvalue);
+	}
+	break;
+	case V4L2_CTRL_TYPE_U32:
+	{
+		json_t *jvalue = json_array();
+		for (int i = 0; i < ctrl->elems; i++)
+		{
+			json_array_append_new(jvalue, json_integer(((uint32_t*)value)[i]));
+		}
+		json_object_set_new(control, "value", jvalue);
+	}
+	break;
 	case V4L2_CTRL_TYPE_CTRL_CLASS:
 	{
 		if (!jsoncontrol_arg->all)
@@ -2654,7 +2744,8 @@ int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 	arg.controls = json_array();
 	arg.all = all;
 	arg.ctrlfd = sv4l2_fd(dev);
-	int ret = sv4l2_treecontrols(dev, _sv4l2_jsoncontrol_cb, &arg);
+	int ret;
+	ret = sv4l2_treecontrols(dev, _sv4l2_jsoncontrol_cb, &arg);
 	if (ret > 0)
 		json_object_set(capabilities, "controls", arg.controls);
 	json_decref(arg.controls);
@@ -2766,7 +2857,8 @@ int sv4l2_subdev_capabilities(V4L2Subdev_t *subdev, json_t *capabilities, int al
 	json_decref(arg.controls);
 
 	arg.controls = json_array();
-	int ret = _sv4l2_treecontrols(subdev->fd, _sv4l2_jsoncontrol_cb, &arg);
+	int ret;
+	ret = _sv4l2_treecontrols(subdev->fd, _sv4l2_jsoncontrol_cb, &arg);
 	if (ret > 0)
 		json_object_set(capabilities, "controls", arg.controls);
 	json_decref(arg.controls);
