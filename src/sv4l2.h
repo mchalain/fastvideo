@@ -186,7 +186,7 @@ void *sv4l2_control(V4L2_t *dev, int id, void *value);
  *
  * @return -1 on error, 0 otherwise.
  */
-int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *ctrl), void * arg);
+int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_query_ext_ctrl *ctrl), void * arg);
 /**
  * @brief parse a control menu.
  * it calls the cb function for each entry of the menu.
@@ -198,7 +198,7 @@ int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *
  *
  * @return -1 on error, 0 otherwise.
  */
-int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_queryctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg);
+int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_query_ext_ctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg);
 
 /**
  * @brief send dynamic configuration to an interactive loop

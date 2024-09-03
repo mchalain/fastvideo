@@ -888,9 +888,9 @@ int sv4l2_crop(V4L2_t *dev, struct v4l2_rect *r)
 	return 0;
 }
 
-static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_queryctrl *queryctrl)
+static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_ext_ctrl *queryctrl)
 {
-#if 1
+#if 0
 	if (V4L2_CTRL_ID2CLASS(id) == V4L2_CTRL_CLASS_USER)
 	{
 		uint32_t ivalue = (uint32_t) value;
@@ -974,7 +974,7 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_queryc
 void * sv4l2_control(V4L2_t *dev, int id, void *value)
 {
 	int ctrlfd = dev->fd;
-	struct v4l2_queryctrl queryctrl = {0};
+	struct v4l2_query_ext_ctrl queryctrl = {0};
 	queryctrl.id = id;
 	int ret = ioctl(ctrlfd, VIDIOC_QUERYCTRL, &queryctrl);
 	if (ret != 0 && dev->subdevices)
@@ -983,7 +983,7 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 		for (it = dev->subdevices; it != NULL; it = it->next)
 		{
 			ctrlfd = it->fd;
-			ret = ioctl(ctrlfd, VIDIOC_QUERYCTRL, &queryctrl);
+			ret = ioctl(ctrlfd, VIDIOC_QUERY_EXT_CTRL, &queryctrl);
 			if (ret == 0)
 				break;
 		}
@@ -1010,9 +1010,10 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 	return _sv4l2_control(ctrlfd, id, value, &queryctrl);
 }
 
-static int _sv4l2_treecontrols(int ctrlfd, int (*cb)(void *arg, struct v4l2_queryctrl *ctrl), void * arg)
+static int _sv4l2_treecontrols(int ctrlfd, int (*cb)(void *arg, struct v4l2_query_ext_ctrl *ctrl), void * arg)
 {
 	int nbctrls = 0;
+#if 0
 	struct v4l2_queryctrl qctrl = {0};
 	qctrl.id = V4L2_CTRL_FLAG_NEXT_CTRL;
 	int ret;
@@ -1021,14 +1022,43 @@ static int _sv4l2_treecontrols(int ctrlfd, int (*cb)(void *arg, struct v4l2_quer
 		if (qctrl.flags & V4L2_CTRL_FLAG_DISABLED)
 		{
 			dbg("control %s %#x disabled", qctrl.name, qctrl.id);
-			qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
+			qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
+			continue;
+		}
+		dbg("sv4l2: control %s id %#x", qctrl.name, qctrl.id);
+		if (cb)
+		{
+			struct v4l2_query_ext_ctrl qectrl = {0};
+			qectrl.id = qctrl.id;
+			qectrl.type = qctrl.type;
+			memcpy(qectrl.name, qctrl.name, 32);
+			qectrl.minimum = qctrl.minimum;
+			qectrl.maximum = qctrl.maximum;
+			qectrl.step = qctrl.step;
+			qectrl.default_value = qctrl.default_value;
+			qectrl.flags = qctrl.flags;
+			cb(arg, &qectrl);
+		}
+		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
+	}
+#else
+	struct v4l2_query_ext_ctrl qctrl = {0};
+	qctrl.id = V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
+	int ret;
+	for (nbctrls = 0; (ret = ioctl(ctrlfd, VIDIOC_QUERY_EXT_CTRL, &qctrl)) == 0; nbctrls++)
+	{
+		if (qctrl.flags & V4L2_CTRL_FLAG_DISABLED)
+		{
+			dbg("control %s %#x disabled", qctrl.name, qctrl.id);
+			qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
 			continue;
 		}
 		dbg("sv4l2: control %s id %#x", qctrl.name, qctrl.id);
 		if (cb)
 			cb(arg, &qctrl);
-		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
+		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
 	}
+#endif
 	if (ret && errno != EINVAL)
 	{
 		nbctrls = ret;
@@ -1036,7 +1066,7 @@ static int _sv4l2_treecontrols(int ctrlfd, int (*cb)(void *arg, struct v4l2_quer
 	return nbctrls;
 }
 
-int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *ctrl), void * arg)
+int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_query_ext_ctrl *ctrl), void * arg)
 {
 	int nbctrls = 0;
 	int ret;
@@ -1055,7 +1085,7 @@ int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_queryctrl *
 	return nbctrls;
 }
 
-int _sv4l2_treecontrolmenu(int ctrlfd, struct v4l2_queryctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg)
+int _sv4l2_treecontrolmenu(int ctrlfd, struct v4l2_query_ext_ctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg)
 {
 	struct v4l2_querymenu querymenu = {0};
 	querymenu.id = ctrl->id;
@@ -1072,7 +1102,7 @@ int _sv4l2_treecontrolmenu(int ctrlfd, struct v4l2_queryctrl *ctrl, int (*cb)(vo
 	return ctrl->maximum - ctrl->minimum;
 }
 
-int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_queryctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg)
+int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_query_ext_ctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg)
 {
 	return _sv4l2_treecontrolmenu(sv4l2_fd(dev), ctrl, cb, arg);
 }
@@ -1773,7 +1803,7 @@ struct _SV4L2_Setting_s
 	json_t *jconfig;
 };
 
-static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_queryctrl *ctrl)
+static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 {
 	_SV4L2_Setting_t *setting = (_SV4L2_Setting_t *)arg;
 	json_t *jconfig = setting->jconfig;
@@ -2168,7 +2198,7 @@ static const char *CTRLTYPE(enum v4l2_ctrl_type type)
 	case V4L2_CTRL_TYPE_CTRL_CLASS:
 		return "control class";
 	}
-	dbg("sv4l2: control type %d unsupported", type);
+	dbg("sv4l2: control type %#x unsupported", type);
 	return "unknown";
 }
 
@@ -2308,7 +2338,7 @@ struct _JSONControl_Arg_s
 	int all;
 };
 
-static int _sv4l2_jsoncontrol_cb(void *arg, struct v4l2_queryctrl *ctrl)
+static int _sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 {
 	_JSONControl_Arg_t *jsoncontrol_arg = (_JSONControl_Arg_t *)arg;
 	json_t *controls = jsoncontrol_arg->controls;
