@@ -442,7 +442,7 @@ int main(int argc, char * const argv[])
 
 	FastVideoDevice_t *indev = NULL;
 	indev = config_createdevice(input, configfile, fastVideoDevice_ops);
-	if (indev && !indev->ops)
+	if (!indev || !indev->ops)
 	{
 		err("input not available");
 		return -1;
@@ -451,7 +451,7 @@ int main(int argc, char * const argv[])
 #ifndef DISABLE_TRANSFER
 	FastVideoDevice_t *transferdev = NULL;
 	transferdev = config_createdevice(transfer, configfile, fastVideoDevice_ops);
-	if (transferdev && !transferdev->ops)
+	if (!transferdev || !transferdev->ops)
 	{
 		err("transfer not available");
 		return -1;
@@ -462,7 +462,7 @@ int main(int argc, char * const argv[])
 
 	FastVideoDevice_t *outdev = NULL;
 	outdev = config_createdevice(output, configfile, fastVideoDevice_ops);
-	if (outdev && !outdev->ops)
+	if (!outdev || !outdev->ops)
 	{
 		err("output not available");
 		return -1;
