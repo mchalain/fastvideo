@@ -106,6 +106,17 @@
 		"definition": {
 			"end":true
 		},
+		"transformation": {
+			"name":"crop",
+			"bounds": {
+				"top":0,
+				"left":0,
+				"width":640,
+				"height":480,
+				"end":true
+			},
+			"end":true
+		},
 		"controls":[],
 		"end":true
 	},{

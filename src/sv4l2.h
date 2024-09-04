@@ -160,11 +160,12 @@ int sv4l2_queue(V4L2_t *dev, int index, size_t bytesused);
  *
  * @param dev the V4L2_t object.
  * @param r the rectangle strucutre cf standard v4l2 documentation.
- * @param dev the V4L2_t object.
  *
  * @return -1 on error, 0 otherwise.
  */
 int sv4l2_crop(V4L2_t *dev, struct v4l2_rect *r);
+int sv4l2_compose(V4L2_t *dev, struct v4l2_rect *r);
+
 /**
  * @brief get/set device control
  *
