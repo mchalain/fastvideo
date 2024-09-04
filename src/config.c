@@ -121,7 +121,7 @@ int config_parseconfigfile(const char *name, const char *configfile, DeviceConf_
 	jconfig = json_loadf(cf, 0, &error);
 	if (! jconfig || !(json_is_object(jconfig) || json_is_array(jconfig)))
 	{
-		err("config %s error %s", configfile, error.text);
+		err("config %s:%d error %s", configfile, error.line, error.text);
 		return -1;
 	}
 	if (json_is_array(jconfig))
