@@ -59,7 +59,7 @@ static int main_parseconfigdevices(const char *name, json_t *jconfig, DeviceConf
 		json_t *jdevice = NULL;
 		/**
 		 * json format:
-		 * [{"name":"cam","device":"/dev/video0","controls":[{"name":"Gain","value":1000},{"name":"Exposure","value":1}]}]
+		 * [{"name":"cam","type":"v4l2","device":"/dev/video0","controls":[{"name":"Gain","value":1000},{"name":"Exposure","value":1}]}]
 		 */
 		json_array_foreach(jconfig, index, jdevice)
 		{
@@ -92,7 +92,9 @@ static int main_parseconfigdevices(const char *name, json_t *jconfig, DeviceConf
 	{
 		/**
 		 * json format:
-		 * { "cam":{"device":"/dev/video0","Gain":1000,"Exposure":1}
+		 * { "cam":{"type":"v4l2","device":"/dev/video0","Gain":1000,"Exposure":1},
+		 *   "screen":{"device":"dev/dri/card0"}
+		 * }
 		 */
 		json_t *jdevice = json_object_get(jconfig, tmpname);
 		if (jdevice && json_is_object(jdevice))

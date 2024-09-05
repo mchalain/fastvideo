@@ -2,7 +2,7 @@
 	"devices":
 	[{
 		"name":"cam-ov5647",
-		"type":"cam",
+		"type":"v4l2",
 		"device":"/dev/video0",
 		"subdevice":"/dev/v4l-subdev0",
 		"definition": {
@@ -41,7 +41,7 @@
 		"end":true
 	},{
 		"name":"cam-imx477",
-		"type":"cam",
+		"type":"v4l2",
 		"device":"/dev/video0",
 		"subdevice":"/dev/v4l-subdev0",
 		"definition": {
@@ -61,7 +61,7 @@
 		"end":true
 	},{
 		"name":"cam-imx708",
-		"type":"cam",
+		"type":"v4l2",
 		"device":"/dev/video0",
 		"subdevice":"/dev/v4l-subdev0",
 		"definition": {
@@ -81,7 +81,7 @@
 		"end":true
 	},{
 		"name":"cam-imx296",
-		"type":"cam",
+		"type":"v4l2",
 		"device":"/dev/video0",
 		"subdevice":"/dev/v4l-subdev0",
 		"definition": {
@@ -101,7 +101,7 @@
 		"end":true
 	},{
 		"name":"isp-in",
-		"type":"cam",
+		"type":"v4l2",
 		"device":"/dev/video13",
 		"definition": {
 			"end":true
@@ -121,7 +121,7 @@
 		"end":true
 	},{
 		"name":"isp-meta",
-		"type":"cam",
+		"type":"v4l2",
 		"device":"/dev/video16",
 		"definition":{
 			"fourcc":"BSTA",
@@ -131,7 +131,7 @@
 		"end":true
 	},{
 		"name":"isp-out",
-		"type":"cam",
+		"type":"v4l2",
 		"description":"high resolution output",
 		"device":"/dev/video14",
 		"definition": {
@@ -144,7 +144,7 @@
 		"end":true
 	},{
 		"name":"isp-out2",
-		"type":"cam",
+		"type":"v4l2",
 		"description":"low resolution output, needs that video14 running",
 		"device":"/dev/video15",
 		"definition": {
@@ -165,7 +165,7 @@
 		"end":true
 	},{
 		"name":"enc-h264",
-		"type":"cam",
+		"type":"v4l2",
 		"device":"/dev/video11",
 		"controls":[],
 		"end":true
