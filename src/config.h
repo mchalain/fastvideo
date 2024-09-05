@@ -27,13 +27,20 @@
  *  - int buffers[*] a table of dmabuf to use
  *  - size_t size the size of each dmabuf
  */
-enum buf_type_e
+typedef enum buf_type_e
 {
 	buf_type_sv4l2 = 1,
 	buf_type_memory = 2,
 	buf_type_dmabuf = 3,
 	buf_type_master = 0x80,
-};
+} buf_type_e;
+
+typedef enum device_type_e
+{
+	device_input,
+	device_output,
+	device_transfer,
+} device_type_e;
 
 typedef struct DeviceConf_s DeviceConf_t;
 struct DeviceConf_s

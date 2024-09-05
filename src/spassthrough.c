@@ -41,8 +41,13 @@ DeviceConf_t * spassthrough_createconfig(void)
 	DeviceConf_t *config = calloc(1, sizeof(*config));
 	return config;
 }
-void *spassthrough_create(const char *devicename, DeviceConf_t *config)
+void *spassthrough_create(const char *devicename, device_type_e type, DeviceConf_t *config)
 {
+	if (type != device_transfer)
+	{
+		err("spassthrough: %s bad device type", config->name);
+		return NULL;
+	}
 	Passthrough_t *dev = calloc(1, sizeof(*dev));
 	dev->config = config;
 	dev->name = name1_str;

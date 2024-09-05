@@ -20,7 +20,7 @@ typedef struct Display_s Display_t;
 
 DeviceConf_t * sdrm_createconfig();
 
-Display_t *sdrm_create(const char *name, DisplayConf_t *config);
+Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf_t *config);
 int sdrm_requestbuffer(Display_t *dev, enum buf_type_e t, ...);
 int sdrm_fd(Display_t *disp);
 int sdrm_queue(Display_t *disp, int id);

@@ -266,7 +266,7 @@ static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 	return -1;
 }
 
-static int _v4l2_devicecapabilities(int fd, const char *interface, int *mode)
+static int _v4l2_devicecapabilities(int fd, const char *interface, int *mode, device_type_e type)
 {
 	struct v4l2_capability cap;
 	if (ioctl(fd, VIDIOC_QUERYCAP, &cap) != 0)
@@ -299,15 +299,17 @@ static int _v4l2_devicecapabilities(int fd, const char *interface, int *mode)
 	if(cap.device_caps & V4L2_CAP_IO_MC)
 		dbg("device %s media control available", interface);
 #endif
-	if (cap.device_caps & V4L2_CAP_VIDEO_CAPTURE ||
-		cap.device_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE ||
-		cap.device_caps & V4L2_CAP_VIDEO_M2M ||
-		cap.device_caps & V4L2_CAP_VIDEO_M2M_MPLANE)
+	if ((cap.device_caps & V4L2_CAP_VIDEO_CAPTURE ||
+		cap.device_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE) &&
+		type == device_input)
 		*mode |= MODE_CAPTURE;
-	if (cap.device_caps & V4L2_CAP_VIDEO_OUTPUT ||
-		cap.device_caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE ||
-		cap.device_caps & V4L2_CAP_VIDEO_M2M ||
-		cap.device_caps & V4L2_CAP_VIDEO_M2M_MPLANE)
+	if ((cap.device_caps & V4L2_CAP_VIDEO_M2M ||
+		cap.device_caps & V4L2_CAP_VIDEO_M2M_MPLANE) &&
+		type == device_transfer)
+		*mode |= (MODE_CAPTURE | MODE_OUTPUT);
+	if ((cap.device_caps & V4L2_CAP_VIDEO_OUTPUT ||
+		cap.device_caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE) &&
+		type == device_output)
 		*mode |= MODE_OUTPUT;
 	if (cap.device_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE ||
 		cap.device_caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE ||
@@ -319,12 +321,17 @@ static int _v4l2_devicecapabilities(int fd, const char *interface, int *mode)
 	if (cap.device_caps & V4L2_CAP_IO_MC)
 		*mode |= MODE_MEDIACTL;
 
-	if (!(cap.device_caps & V4L2_CAP_STREAMING))
+	if ((*mode & (MODE_CAPTURE | MODE_OUTPUT)) == 0)
 	{
-		err("device %s not camera", interface);
+		err("sv4l2: %s bad device type", interface);
 		return -1;
 	}
-	dbg("%s streaming available (%#x)", interface, *mode);
+	if (!(cap.device_caps & V4L2_CAP_STREAMING))
+	{
+		err("sv4l2: device %s not camera", interface);
+		return -1;
+	}
+	dbg("sv4l2: %s streaming available (%#x)", interface, *mode);
 	return 0;
 }
 
@@ -1162,13 +1169,13 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, CameraConf
 	return 0;
 }
 
-V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
+V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e dtype, CameraConfig_t *config)
 {
 	enum v4l2_buf_type type = 0;
 	int mode = 0;
 	if (config && config->mode)
 		mode = config->mode;
-	if (_v4l2_devicecapabilities(fd, devicename, &mode))
+	if (_v4l2_devicecapabilities(fd, devicename, &mode, dtype))
 	{
 		return NULL;
 	}
@@ -1254,7 +1261,7 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config)
 	return dev;
 }
 
-V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config)
+V4L2_t *sv4l2_create(const char *devicename, device_type_e type, CameraConfig_t *config)
 {
 	const char *device = devicename;
 	if (config && config->device)

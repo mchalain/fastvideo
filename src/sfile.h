@@ -25,7 +25,7 @@ typedef struct File_s File_t;
 
 DeviceConf_t * sfile_createconfig();
 
-File_t * sfile_create(const char *name, FileConfig_t *config);
+File_t * sfile_create(const char *name, device_type_e type, FileConfig_t *config);
 int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...);
 int sfile_fd(File_t *dev);
 int sfile_start(File_t *dev);

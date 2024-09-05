@@ -125,7 +125,7 @@ int main(int argc, char * const argv[])
 		config_parseconfigfile(output, configfile, &outconfig.parent);
 	}
 
-	V4L2_t *cam = sv4l2_create(inconfig.device, &inconfig);
+	V4L2_t *cam = sv4l2_create(inconfig.device, device_input, &inconfig);
 	if (!cam)
 	{
 		err("camera not available");
@@ -137,7 +137,7 @@ int main(int argc, char * const argv[])
 	outconfig.parent.fourcc = inconfig.parent.fourcc;
 	outconfig.parent.stride = inconfig.parent.stride;
 	outconfig.direction = File_Input_e;
-	File_t *file = sfile_create(outconfig.filename, &outconfig);
+	File_t *file = sfile_create(outconfig.filename, device_output, &outconfig);
 	if (!file)
 	{
 		err("file not available");
