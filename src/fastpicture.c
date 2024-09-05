@@ -88,7 +88,7 @@ int main_loop(V4L2_t *cam, File_t *file)
 int main(int argc, char * const argv[])
 {
 	const char *configfile = NULL;
-	const char *input = "cam";
+	const char *input = "v4l2";
 	const char *output = "file:screem.unkown";
 
 	CameraConfig_t CAMERACONFIG(inconfig, "/dev/video0");

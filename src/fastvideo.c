@@ -48,7 +48,7 @@ struct FastVideoDevice_ops_s
 };
 
 FastVideoDevice_ops_t sv4l2_ops = {
-	.name = "cam",
+	.name = "v4l2",
 	.createconfig = sv4l2_createconfig,
 	.create = (FastVideoDevice_create_t)sv4l2_create,
 	.duplicate = (FastVideoDevice_duplicate_t)sv4l2_duplicate,
@@ -389,7 +389,7 @@ int main(int argc, char * const argv[])
 	const char *owner = NULL;
 	const char *pidfile= NULL;
 	const char *configfile = NULL;
-	const char *input = "cam";
+	const char *input = "v4l2";
 	const char *output = "gpu";
 	const char *transfer = "passthrough";
 	int width = 640;

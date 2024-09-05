@@ -1,6 +1,6 @@
 [{
 	"name":"uvc",
-	"type":"cam",
+	"type":"v4l2",
 	"device":"/dev/video0",
 	"width":640,
 	"height":480,
@@ -8,7 +8,7 @@
 	"end":true
 },{
 	"name":"uvc-jpeg",
-	"type":"cam",
+	"type":"v4l2",
 	"device":"/dev/video0",
 	"width":640,
 	"height":480,
