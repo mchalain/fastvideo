@@ -43,10 +43,15 @@ PFNEGLEXPORTDMABUFIMAGEMESAPROC eglExportDMABUFImageMESA = NULL;
 PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
 PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
 
-EGL_t *segl_create(const char *devicename, EGLConfig_t *config)
+EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *config)
 {
+	if (type != device_output)
+	{
+		err("segl: %s bad device type", config->parent.name);
+		return NULL;
+	}
 	EGLNativeDisplayType ndisplay = EGL_DEFAULT_DISPLAY;
-	EGLNative_t *natives[] = 
+	EGLNative_t *natives[] =
 	{
 #ifdef HAVE_GBM
 		eglnative_drm,
@@ -191,7 +196,7 @@ static int link_texturedma(EGL_t *dev, int dma_fd, size_t size)
 		EGL_NONE
 	};
 	dbg("segl: create image for dma %d : %dx%d %u %.4s", dma_fd, dev->config->parent.width, dev->config->parent.height, stride, (char*)&dev->config->parent.fourcc);
-	dma_image = eglCreateImageKHR(	  
+	dma_image = eglCreateImageKHR(
 					dev->egldisplay,
 					EGL_NO_CONTEXT,
 					EGL_LINUX_DMA_BUF_EXT,
@@ -297,7 +302,7 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 	glprog_run(dev->programs, (int)id);
 
 	dev->curbufferid = (int)id;
-	
+
 	return dev->native->flush(dev->native_window);
 }
 
@@ -310,7 +315,7 @@ int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
 	glBindTexture(GL_TEXTURE_2D, 0);
 	if (dev->native->sync(dev->native_window) < 0)
 		return -1;
-	
+
 	return id;
 }
 

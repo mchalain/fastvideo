@@ -346,7 +346,7 @@ static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uin
 		err("sdrm: dmabuf not allowed %m");
 	}
 #endif
-	
+
 	if (drmModeAddFB2(disp->fd, width, height, disp->fourcc, bo_handles,
 		pitches, offsets, &buffer->fb_id, 0))
 	{
@@ -397,8 +397,13 @@ static void sdrm_freebuffer(Display_t *disp, DisplayBuffer_t *buffer)
 #endif
 }
 
-Display_t *sdrm_create(const char *name, DisplayConf_t *config)
+Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf_t *config)
 {
+	if (type != device_output)
+	{
+		err("sdrm: %s bad device type", config->parent.name);
+		return NULL;
+	}
 	int fd = 0;
 	if (!access(config->device, R_OK | W_OK))
 		fd = open(config->device, O_RDWR);

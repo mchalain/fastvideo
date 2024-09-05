@@ -58,8 +58,8 @@ typedef struct V4L2Subdev_s V4L2Subdev_t;
  *
  * @return V4L2_t object.
  */
-V4L2_t *sv4l2_create(const char *devicename, CameraConfig_t *config);
-V4L2_t *sv4l2_create2(int fd, const char *devicename, CameraConfig_t *config);
+V4L2_t *sv4l2_create(const char *devicename, device_type_e type, CameraConfig_t *config);
+V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e type, CameraConfig_t *config);
 
 /**
  * @brief create a new object with a previous one

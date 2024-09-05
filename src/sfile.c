@@ -30,17 +30,26 @@ struct FileBuffer_s
 typedef struct File_s File_t;
 struct File_s
 {
-	FileConfig_t *config;
 	const char *path;
 	int fd;
+	device_type_e type;
+	uint32_t fourcc;
+	uint32_t width;
+	uint32_t height;
+	uint32_t stride;
 	size_t size;
 	size_t nbuffers;
 	FileBuffer_t *buffers;
 	int lastbufferid;
 };
 
-File_t * sfile_create(const char *filename, FileConfig_t *config)
+File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
 {
+	if (type == device_transfer)
+	{
+		err("sfile: %s bad device type", config->parent.name);
+		return NULL;
+	}
 	int rootfd = AT_FDCWD;
 	if (config == NULL)
 	{
@@ -62,7 +71,7 @@ File_t * sfile_create(const char *filename, FileConfig_t *config)
 		filename = config->filename;
 	size_t fsize = 0;
 	int mode = 0;
-	if (config->direction & File_Output_e)
+	if (type == device_input)
 	{
 		mode = O_RDONLY;
 		if (faccessat(rootfd, filename, R_OK, 0) < 0)
@@ -89,7 +98,6 @@ File_t * sfile_create(const char *filename, FileConfig_t *config)
 		mode = O_WRONLY;
 		if (faccessat(rootfd, filename, F_OK, 0) < 0)
 			mode |= O_CREAT;
-		config->direction = File_Input_e;
 	}
 
 	int fd = openat(rootfd, filename, mode, 0644);
@@ -102,14 +110,20 @@ File_t * sfile_create(const char *filename, FileConfig_t *config)
 	File_t *dev = calloc(1, sizeof(*dev));
 	dev->fd = fd;
 	dev->size = fsize;
-	dev->config = config;
+	dev->type = type;
+	dev->fourcc = config->parent.fourcc;
+	dev->width = config->parent.width;
+	dev->height = config->parent.height;
+	if (config->parent.stride)
+		dev->stride = config->parent.stride;
+	else if (fsize)
+		dev->stride = fsize / config->parent.height;
 	dev->path = filename;
 	return dev;
 }
 
 int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 {
-	FileConfig_t *config = dev->config;
 	int ret = 0;
 	va_list ap;
 	va_start(ap, t);
@@ -167,14 +181,13 @@ int sfile_fd(File_t *dev)
 
 int sfile_start(File_t *dev)
 {
-	FileConfig_t *config = dev->config;
 	dev->lastbufferid = 0;
-	if (config->direction & File_Input_e)
+	if (dev->type & device_output)
 	{
-		switch (config->parent.fourcc)
+		switch (dev->fourcc)
 		{
 			case FOURCC('R','G', 'B', 'A'):
-				dprintf(dev->fd, "P7 WIDTH %d HEIGHT %d DEPTH %d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR", config->parent.width, config->parent.height, config->parent.stride / config->parent.width);
+				dprintf(dev->fd, "P7 WIDTH %d HEIGHT %d DEPTH %d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR", dev->width, dev->height, dev->stride / dev->width);
 			break;
 			case FOURCC('J','P','E','G'):
 			case FOURCC('M','J','P','G'):
@@ -182,7 +195,6 @@ int sfile_start(File_t *dev)
 			default:
 			break;
 		}
-
 	}
 	else
 	{
@@ -203,7 +215,6 @@ int sfile_stop(File_t *dev)
 
 int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
 {
-	FileConfig_t *config = dev->config;
 	int ret = dev->lastbufferid;
 	FileBuffer_t *buffer = &dev->buffers[dev->lastbufferid];
 	if (bytesused)
@@ -217,7 +228,6 @@ int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
 
 int sfile_queue(File_t *dev, int index, size_t bytesused)
 {
-	FileConfig_t *config = dev->config;
 	if (index > dev->nbuffers)
 	{
 		err("unkown %d buffer index to queue", index);
@@ -230,7 +240,7 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 	{
 		warn("sfile: buffer too small %lu %lu", buffer->size, bytesused);
 	}
-	if (config->direction & File_Input_e)
+	if (dev->type == device_output)
 	{
 		if (buffer->dma_buf > 0)
 		{
@@ -253,7 +263,7 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 		}
 		buffer->bytesused = ret;
 	}
-	else if (config->direction & File_Output_e)
+	else if (dev->type == device_input)
 	{
 		if (buffer->dma_buf > 0)
 		{

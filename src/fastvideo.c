@@ -19,7 +19,7 @@
 //#define DISABLE_TRANSFER
 
 typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
-typedef void *(*FastVideoDevice_create_t)(const char *devicename, DeviceConf_t *config);
+typedef void *(*FastVideoDevice_create_t)(const char *devicename, device_type_e type, DeviceConf_t *config);
 typedef void *(*FastVideoDevice_duplicate_t)(void *dev);
 typedef int (*FastVideoDevice_loadsettings_t)(void *dev, void *configentry);
 typedef int (*FastVideoDevice_requestbuffer_t)(void *dev, enum buf_type_e t, ...);
@@ -475,7 +475,7 @@ int main(int argc, char * const argv[])
 	choice_config(indev->config, outdev->config);
 #endif
 
-	indev->dev = indev->ops->create(input, indev->config);
+	indev->dev = indev->ops->create(input, device_input, indev->config);
 	if (indev->ops->loadsettings && indev->config->entry)
 	{
 		dbg("loadsettings");
@@ -485,7 +485,7 @@ int main(int argc, char * const argv[])
 		return -1;
 
 #ifndef DISABLE_TRANSFER
-	transferdev->dev = transferdev->ops->create(transfer, transferdev->config);
+	transferdev->dev = transferdev->ops->create(transfer, device_transfer, transferdev->config);
 	if (transferdev->ops->loadsettings && transferdev->config->entry)
 	{
 		dbg("loadsettings");
@@ -505,7 +505,7 @@ int main(int argc, char * const argv[])
 	FastVideoDevice_t *transferdevD = NULL;
 #endif
 
-	outdev->dev = outdev->ops->create(output, outdev->config);
+	outdev->dev = outdev->ops->create(output, device_output, outdev->config);
 	if (outdev->ops->loadsettings && outdev->config->entry)
 	{
 		dbg("loadsettings");

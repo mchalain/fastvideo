@@ -4,7 +4,7 @@
 typedef struct Passthrough_s Passthrough_t;
 
 DeviceConf_t * spassthrough_createconfig(void);
-void *spassthrough_create(const char *devicename, DeviceConf_t *config);
+void *spassthrough_create(const char *devicename, device_type_e type, DeviceConf_t *config);
 void *spassthrough_duplicate(Passthrough_t *dev);
 int spassthrough_loadsettings(Passthrough_t *dev, void *configentry);
 int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...);

@@ -124,7 +124,12 @@ static json_t *_device_v4l2(json_t *devices, int major, int minor, const char *n
 	 * The subdeivces are injected into the device
 	 */
 	device = NULL;
-	V4L2_t *dev = sv4l2_create2(devfd, name, NULL);
+	V4L2_t *dev = NULL;
+	device_type_e types[] = {device_input, device_transfer, device_output};
+	for (int i = 0; i < sizeof(types)/sizeof(device_type_e) && dev == NULL; i++)
+	{
+		dev = sv4l2_create2(devfd, name, types[i], NULL);
+	}
 	if (dev == NULL)
 	{
 		close(devfd);
