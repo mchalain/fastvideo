@@ -14,12 +14,19 @@
 	.DEVICECONFIG(parent, config, sv4l2_loadconfiguration), \
 	.device = defaultdevice, \
 	}
+typedef struct CameraDefinition_s CameraDefinition_t;
+struct CameraDefinition_s
+{
+	int mode;
+	int fps;
+};
 
 typedef struct SubDevConfig_s  SubDevConfig_t;
 struct SubDevConfig_s
 {
 	DeviceConf_t parent;
 	const char *device;
+	CameraDefinition_t definition;
 };
 
 /**
@@ -39,8 +46,7 @@ struct CameraConfig_s
 	int nsubdevices;
 	int (*transfer)(void *, int id, const char *mem, size_t size);
 	int fd;
-	int mode;
-	int fps;
+	CameraDefinition_t definition;
 };
 
 typedef struct V4L2_s V4L2_t;
@@ -273,6 +279,7 @@ void sv4L2_subdev_destroy(V4L2Subdev_t *subdev);
 #ifdef HAVE_JANSSON
 int sv4l2_loadjsonsettings(V4L2_t *dev, void *jconfig);
 int sv4l2_loadjsonconfiguration(void *config, void *jconfig);
+int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry);
 
 #define sv4l2_loadsettings sv4l2_loadjsonsettings
 #define sv4l2_loadconfiguration sv4l2_loadjsonconfiguration

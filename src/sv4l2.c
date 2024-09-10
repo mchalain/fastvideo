@@ -271,7 +271,7 @@ static int _v4l2_devicecapabilities(int fd, const char *interface, int *mode, de
 	struct v4l2_capability cap;
 	if (ioctl(fd, VIDIOC_QUERYCAP, &cap) != 0)
 	{
-		err("device %s not video %m", interface);
+		err("sv4l2: device %s not video %m", interface);
 		return -1;
 	}
 #ifdef DEBUG
@@ -1164,7 +1164,7 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, CameraConf
 
 	int fps = -1;
 	if (config)
-		fps = config->fps;
+		fps = config->definition.fps;
 	_v4l2_setfps(fd, *type, fps);
 	return 0;
 }
@@ -1173,8 +1173,8 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e dtype, Camer
 {
 	enum v4l2_buf_type type = 0;
 	int mode = 0;
-	if (config && config->mode)
-		mode = config->mode;
+	if (config && config->definition.mode)
+		mode = config->definition.mode;
 	if (_v4l2_devicecapabilities(fd, devicename, &mode, dtype))
 	{
 		return NULL;
@@ -2085,60 +2085,9 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 	return _v4l2_loadjsoncontrols(dev,jconfig);
 }
 
-int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
+static int _v4l2_parsedefinition(json_t *jconfig, CameraDefinition_t *config)
 {
 	int ret = -1;
-	json_t *subdevice = entry;
-	SubDevConfig_t *config = (SubDevConfig_t *)arg;
-
-	if (subdevice && json_is_object(subdevice))
-	{
-		json_t *definition = json_object_get(subdevice, "difinition");
-		if (definition && json_is_object(definition))
-			scommon_loaddefinition(&config->parent, definition);
-		else
-			scommon_loaddefinition(&config->parent, subdevice);
-		subdevice = json_object_get(subdevice, "device");
-	}
-	if (subdevice && json_is_string(subdevice))
-	{
-		const char *value = json_string_value(subdevice);
-		config->device = value;
-		ret = 0;
-	}
-	return ret;
-}
-
-int sv4l2_loadjsonconfiguration(void *arg, void *entry)
-{
-	json_t *jconfig = entry;
-
-	CameraConfig_t *config = (CameraConfig_t *)arg;
-	json_t *device = json_object_get(jconfig, "device");
-	if (device && json_is_string(device))
-	{
-		const char *value = json_string_value(device);
-		config->device = value;
-	}
-	json_t *subdevices = json_object_get(jconfig, "subdevice");
-	if (subdevices && json_is_array(subdevices))
-	{
-		config->subdevices = calloc(json_array_size(subdevices), sizeof(*config->subdevices));
-		config->nsubdevices = json_array_size(subdevices);
-		int index;
-		json_t *subdevice;
-		json_array_foreach(subdevices, index, subdevice)
-		{
-			sv4l2_subdev_loadjsonconfiguration(&config->subdevices[index], subdevice);
-		}
-	}
-	else if (subdevices)
-	{
-		config->subdevices = calloc(1, sizeof(*config->subdevices));
-		sv4l2_subdev_loadjsonconfiguration(&config->subdevices[0], subdevices);
-		config->nsubdevices = 1;
-	}
-
 	json_t *fps = NULL;
 	json_t *mode = NULL;
 	json_t *definition = json_object_get(jconfig, "definition");
@@ -2187,29 +2136,114 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 		if (strstr(value,"output"))
 			config->mode |= MODE_OUTPUT;
 	}
-	json_t *interactive = json_object_get(jconfig, "interactive");
-	if (interactive && json_is_boolean(interactive) && json_is_true(interactive))
+	return ret;
+}
+
+int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
+{
+	int ret = -1;
+	json_t *subdevice = entry;
+	SubDevConfig_t *config = (SubDevConfig_t *)arg;
+
+	if (subdevice && json_is_object(subdevice))
 	{
-		config->mode |= MODE_INTERACTIVE;
-	}
-	json_t *library = json_object_get(jconfig, "library");
-	if (library && json_is_string(library))
-	{
-		const char *value = json_string_value(library);
-		void *handle;
-		handle = dlopen(value, RTLD_LAZY);
-		if (!handle)
+		int disable = json_is_true(json_object_get(subdevice, "disable"));
+		json_t *definition = json_object_get(subdevice, "definition");
+		if (!disable)
 		{
-			err("library %s opening error %s", value, dlerror());
-			goto library_end;
-		}
-		config->transfer = dlsym(handle, "transfer");
-		if (config->transfer == NULL)
-		{
-			err("library %s symbol \"transfer\" error %s", value, dlerror());
-			goto library_end;
+			if (definition == NULL)
+				definition = subdevice;
+			_v4l2_parsedefinition(definition, &config->definition);
+			subdevice = json_object_get(subdevice, "device");
 		}
 	}
+	if (subdevice && json_is_string(subdevice))
+	{
+		const char *value = json_string_value(subdevice);
+		config->device = value;
+		ret = 0;
+	}
+	return ret;
+}
+
+static int _v4l2_parsesubdevice(CameraConfig_t *config, int index, json_t *subdevice)
+{
+	int ret = -1;
+	json_t *definition = NULL;
+	if (!config_parsedevices(config->parent.name, subdevice, &config->subdevices[index].parent))
+	{
+		/** use the first defintion found inside a subdevice as defintion of the device **/
+		if (definition == NULL)
+			definition = json_object_get(subdevice, "definition");
+		if (definition != NULL)
+		{
+			config->parent.width = config->subdevices[index].parent.width;
+			config->parent.height = config->subdevices[index].parent.height;
+			config->parent.stride = config->subdevices[index].parent.stride;
+			config->parent.fourcc = config->subdevices[index].parent.fourcc;
+		}
+		/** change subdevice name with the last of the array **/
+		json_t *name = json_object_get(subdevice, "name");
+		if (name && json_is_array(name))
+			name = json_array_get(name, json_array_size(name));
+		if (name && json_is_string(name))
+			config->subdevices[index].parent.name = json_string_value(name);
+		ret = 0;
+	}
+	return ret;
+}
+
+int sv4l2_loadjsonconfiguration(void *arg, void *entry)
+{
+	json_t *jconfig = entry;
+
+	CameraConfig_t *config = (CameraConfig_t *)arg;
+	json_t *device = json_object_get(jconfig, "device");
+	if (device && json_is_string(device))
+	{
+		const char *value = json_string_value(device);
+		config->device = value;
+	}
+	_v4l2_parsedefinition(jconfig, &config->definition);
+	json_t *subdevices = json_object_get(jconfig, "subdevice");
+	if (subdevices && json_is_array(subdevices))
+	{
+		config->subdevices = calloc(json_array_size(subdevices), sizeof(*config->subdevices));
+		for (int i = 0; i < json_array_size(subdevices); i++)
+		{
+			config->subdevices[i].parent.ops.loadconfiguration = sv4l2_subdev_loadjsonconfiguration;
+		}
+		config->nsubdevices = 0;
+		int index;
+		json_t *subdevice;
+		json_t *name = NULL;
+		json_array_foreach(subdevices, index, subdevice)
+		{
+			/** load only the subdevices containing the name of the device **/
+			json_t *names = json_object_get(subdevice, "name");
+			if (json_is_array(names))
+			{
+				int j;
+				json_array_foreach(names, j, name)
+				{
+					if (json_is_string(name) && ! strcmp(json_string_value(name), config->parent.name))
+						break;
+				}
+			}
+			if (json_is_string(name) && ! strcmp(json_string_value(name), config->parent.name))
+			{
+				if (!_v4l2_parsesubdevice(config, config->nsubdevices, subdevice))
+					config->nsubdevices++;
+			}
+		}
+	}
+	else if (subdevices && json_is_object(subdevices))
+	{
+		config->subdevices = calloc(1, sizeof(*config->subdevices));
+		if (!_v4l2_parsesubdevice(config, 0, subdevices))
+			config->nsubdevices++;
+	}
+
 library_end:
 	return 0;
 }
