@@ -476,23 +476,23 @@ int main(int argc, char * const argv[])
 #endif
 
 	indev->dev = indev->ops->create(input, device_input, indev->config);
+	if (indev->dev == NULL)
+		return -1;
 	if (indev->ops->loadsettings && indev->config->entry)
 	{
 		dbg("loadsettings");
 		indev->ops->loadsettings(indev->dev, indev->config->entry);
 	}
-	if (indev->dev == NULL)
-		return -1;
 
 #ifndef DISABLE_TRANSFER
 	transferdev->dev = transferdev->ops->create(transfer, device_transfer, transferdev->config);
+	if (transferdev->dev == NULL)
+		return -1;
 	if (transferdev->ops->loadsettings && transferdev->config->entry)
 	{
 		dbg("loadsettings");
 		transferdev->ops->loadsettings(transferdev->dev, transferdev->config->entry);
 	}
-	if (transferdev->dev == NULL)
-		return -1;
 
 	FastVideoDevice_t *transferdevD = NULL;
 	transferdevD = device_duplicate(transferdev);
@@ -506,15 +506,13 @@ int main(int argc, char * const argv[])
 #endif
 
 	outdev->dev = outdev->ops->create(output, device_output, outdev->config);
+	if (outdev->dev == NULL)
+		return -1;
 	if (outdev->ops->loadsettings && outdev->config->entry)
 	{
 		dbg("loadsettings");
 		outdev->ops->loadsettings(outdev->dev, outdev->config->entry);
 	}
-	if (outdev->dev == NULL)
-		return -1;
-
-	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
 
 	int *dma_bufs = {0};
 	size_t size = 0;
@@ -541,6 +539,9 @@ int main(int argc, char * const argv[])
 		err("%s dma buffers not linked", outdev->config->name);
 		return -1;
 	}
+
+	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
+
 	main_loop(indev, transferdev, transferdevD, outdev);
 
 	killdaemon(pidfile);
