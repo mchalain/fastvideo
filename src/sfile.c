@@ -17,16 +17,6 @@
 #include "config.h"
 #include "log.h"
 
-typedef struct FileBuffer_s FileBuffer_t;
-struct FileBuffer_s
-{
-	void *mem;
-	int dma_buf;
-	size_t size;
-	size_t bytesused;
-	FileBuffer_t *next;
-};
-
 typedef struct File_s File_t;
 struct File_s
 {
@@ -39,7 +29,7 @@ struct File_s
 	uint32_t stride;
 	size_t size;
 	size_t nbuffers;
-	FileBuffer_t *buffers;
+	FrameBuffer_t *buffers;
 	int lastbufferid;
 };
 
@@ -134,8 +124,8 @@ int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 			int nmem = va_arg(ap, int);
 			void **mems = va_arg(ap, void **);
 			size_t size = va_arg(ap, size_t);
-			FileBuffer_t *buffers = NULL;
-			buffers = calloc(nmem, sizeof(FileBuffer_t));
+			FrameBuffer_t *buffers = NULL;
+			buffers = calloc(nmem, sizeof(FrameBuffer_t));
 			for (int i = 0; i < nmem; i++)
 			{
 				buffers[i].mem = mems[i];
@@ -152,8 +142,8 @@ int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
-			FileBuffer_t *buffers = NULL;
-			buffers = calloc(ntargets, sizeof(FileBuffer_t));
+			FrameBuffer_t *buffers = NULL;
+			buffers = calloc(ntargets, sizeof(FrameBuffer_t));
 			for (int i = 0; i < ntargets; i++)
 			{
 				buffers[i].dma_buf = targets[i];
@@ -216,7 +206,7 @@ int sfile_stop(File_t *dev)
 int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
 {
 	int ret = dev->lastbufferid;
-	FileBuffer_t *buffer = &dev->buffers[dev->lastbufferid];
+	FrameBuffer_t *buffer = &dev->buffers[dev->lastbufferid];
 	if (bytesused)
 		*bytesused = buffer->bytesused;
 	if (mem && buffer->mem)
@@ -233,7 +223,7 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 		err("unkown %d buffer index to queue", index);
 		return -1;
 	}
-	FileBuffer_t *buffer = &dev->buffers[index];
+	FrameBuffer_t *buffer = &dev->buffers[index];
 	if (bytesused == 0)
 		bytesused = buffer->size;
 	if (bytesused > buffer->size)

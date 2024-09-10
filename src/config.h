@@ -77,8 +77,22 @@ struct DeviceConf_s
 int scommon_loaddefinition(DeviceConf_t *config, json_t *definition);
 
 int config_parseconfigfile(const char *name, const char *configfile, DeviceConf_t *devconfig);
+int config_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devconfig);
 #else
 inline int config_parseconfigfile(const char *name, const char *configfile, DeviceConf_t *devconfig) {return -1;};
 #endif
+
+/**
+ * @brief share a same definition of buffer for the devices
+ */
+typedef struct FrameBuffer_s FrameBuffer_t;
+struct FrameBuffer_s
+{
+	void *mem;
+	int dma_buf;
+	size_t size;
+	size_t bytesused;
+	FrameBuffer_t *next;
+};
 
 #endif
