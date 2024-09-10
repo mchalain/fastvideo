@@ -2,6 +2,7 @@ lib-y+=fastvideo
 fastvideo_SOURCES+=sv4l2.c
 fastvideo_SOURCES+=sfile.c
 fastvideo_SOURCES+=smedia.c
+fastvideo_SOURCES-$(HAVE_JANSSON)+=config.c
 fastvideo_SOURCES-$(HAVE_LIBDRM)+=sdrm.c
 fastvideo_SOURCES-$(HAVE_EGL)+=segl.c
 fastvideo_SOURCES-$(HAVE_EGL)+=segl_glprog.c

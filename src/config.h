@@ -42,6 +42,15 @@ typedef enum device_type_e
 	device_transfer,
 } device_type_e;
 
+typedef struct ImageDefinition_s ImageDefinition_t;
+struct ImageDefinition_s
+{
+	uint32_t fourcc;
+	uint32_t width;
+	uint32_t height;
+	uint32_t stride;
+};
+
 typedef struct DeviceConf_s DeviceConf_t;
 struct DeviceConf_s
 {
