@@ -2067,16 +2067,35 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 		_v4l2_loadjsontransformation(dev, transformations);
 	}
 
-	json_t *subdevice = json_object_get(jconfig, "subdevice");
-	if (subdevice && json_is_array(subdevice))
+	json_t *subdevices = json_object_get(jconfig, "subdevice");
+	if (subdevices && json_is_array(subdevices))
 	{
-		int index;
-		json_t *subdevice;
-		json_array_foreach(subdevice, index, subdevice)
+		for (V4L2Subdev_t *it = dev->subdevices; it; it= it->next)
 		{
-			json_t *jcontrols = json_object_get(jconfig,"controls");
-			if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
-				_v4l2_loadjsoncontrols(dev,jcontrols);
+			int index;
+			json_t *subdevice;
+			json_array_foreach(subdevices, index, subdevice)
+			{
+				json_t *names = json_object_get(subdevice,"name");
+				if (json_is_array(names))
+				{
+					int index;
+					json_t *name;
+					json_array_foreach(names, index, name)
+					{
+						if (json_is_string(name) && !strcmp(json_string_value(name), it->name))
+							break;
+					}
+					names = name;
+				}
+				if (!(json_is_string(names) && !strcmp(json_string_value(names), it->name)))
+					continue;
+				json_t *jcontrols = json_object_get(subdevice,"controls");
+				if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
+				{
+					_v4l2_loadjsoncontrols(dev,jcontrols);
+				}
+			}
 		}
 	}
 	json_t *jcontrols = json_object_get(jconfig,"controls");
