@@ -397,11 +397,12 @@ int main(int argc, char * const argv[])
 	int height = 480;
 	unsigned int mode = 0;
 	const char *logfile = "-";
+	const char *cwd = NULL;
 
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:t:j:w:h:DL:");
+		opt = getopt(argc, argv, "i:o:t:j:w:h:DL:W:");
 		switch (opt)
 		{
 			case 'i':
@@ -427,6 +428,9 @@ int main(int argc, char * const argv[])
 			break;
 			case 'L':
 				logfile = optarg;
+			break;
+			case 'W':
+				cwd = optarg;
 			break;
 		}
 	} while(opt != -1);
@@ -457,6 +461,9 @@ int main(int argc, char * const argv[])
 		else
 			err("log file error %m");
 	}
+
+	if (cwd != NULL && chdir(cwd) != 0)
+		err("main: working directory %m");
 
 	FastVideoDevice_t *indev = NULL;
 	indev = config_createdevice(input, configfile, fastVideoDevice_ops);
