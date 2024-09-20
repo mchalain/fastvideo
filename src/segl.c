@@ -373,4 +373,44 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 library_end:
 	return 0;
 }
-#endif //EGL
+
+typedef int (*definition_cb)(void *arg, ImageDefinition_t *image);
+static int _egl_parsedefinition(EGL_t *dev, definition_cb cb, void *arg)
+{
+	return -1;
+}
+
+typedef struct _JSON_Cb_Arg_s _JSON_Cb_Arg_t;
+struct _JSON_Cb_Arg_s
+{
+	json_t *array;
+	void *dev;
+	int all;
+};
+
+static int _egl_setjsondefinition(void *arg, ImageDefinition_t *image)
+{
+	_JSON_Cb_Arg_t *definitions = (_JSON_Cb_Arg_t *)arg;
+	json_t *definition = json_object();
+	json_object_set_new(definition, "width", json_integer(image->width));
+	json_object_set_new(definition, "height", json_integer(image->height));
+	if (image->stride)
+		json_object_set_new(definition, "stride", json_integer(image->stride));
+	json_object_set_new(definition, "fourcc", json_sprintf("%.4s", &image->fourcc));
+	json_array_append_new(definitions->array, definition);
+	return 0;
+}
+
+int segl_capabilities(EGL_t *dev, json_t *capabilities, int all)
+{
+	json_object_set_new(capabilities, "native", json_string(dev->native->name));
+	_JSON_Cb_Arg_t definitions;
+	definitions.array = json_array();
+	definitions.all = all;
+	definitions.dev = dev;
+	_egl_parsedefinition(dev, _egl_setjsondefinition, &definitions);
+	json_object_set_new(capabilities, "definition", definitions.array);
+	return 0;
+}
+
+#endif //HAVE_JANSSON
