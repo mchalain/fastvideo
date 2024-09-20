@@ -5,6 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/timerfd.h>
+#include <fcntl.h>
 
 #include "log.h"
 #include "daemonize.h"
@@ -395,11 +396,12 @@ int main(int argc, char * const argv[])
 	int width = 640;
 	int height = 480;
 	unsigned int mode = 0;
+	const char *logfile = "-";
 
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:t:j:w:h:D");
+		opt = getopt(argc, argv, "i:o:t:j:w:h:DL:");
 		switch (opt)
 		{
 			case 'i':
@@ -423,6 +425,9 @@ int main(int argc, char * const argv[])
 			case 'D':
 				mode |= MODE_DAEMONIZE;
 			break;
+			case 'L':
+				logfile = optarg;
+			break;
 		}
 	} while(opt != -1);
 
@@ -439,6 +444,19 @@ int main(int argc, char * const argv[])
 		&spassthrough_ops,
 		NULL
 	};
+
+	if (strcmp(logfile,"-"))
+	{
+		int logfd = open(logfile, O_WRONLY | O_CREAT | O_TRUNC, 00644);
+		if (logfd > 0)
+		{
+			dup2(logfd, 1);
+			dup2(logfd, 2);
+			close(logfd);
+		}
+		else
+			err("log file error %m");
+	}
 
 	FastVideoDevice_t *indev = NULL;
 	indev = config_createdevice(input, configfile, fastVideoDevice_ops);
