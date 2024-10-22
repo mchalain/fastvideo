@@ -91,7 +91,7 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 	switch (t)
 	{
 		case buf_type_memory:
-		{dbg("%s %d", __FILE__, __LINE__);
+		{
 			if (!dev->dup || dev->buffers)
 				break;
 			int ntargets = va_arg(ap, int);

@@ -168,7 +168,7 @@ static void setdma_mplane(V4L2Buffer_t *buf, int fd, size_t size)
 {
 	buf->v4l2.m.planes[0].m.fd = fd;
 	buf->v4l2.m.planes[0].length = size;
-	buf->length = size;
+	buf->length = 1;
 }
 
 static void setmem_mplane(V4L2Buffer_t *buf, void *mem, size_t size)
