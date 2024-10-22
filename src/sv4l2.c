@@ -22,6 +22,9 @@
 #include "log.h"
 #include "sv4l2.h"
 
+/**
+ * TODO split this file
+ */
 #define MAX_BUFFERS 4
 
 #define dbg_buffer_splane(v4l2) 		dbg("sv4l2: buf %d info:", v4l2->index); \
@@ -226,23 +229,29 @@ static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 	 */
 	if (type == 0 && (mode & MODE_OUTPUT))
 	{
+#ifdef HAS_V4L2_META
 		if (mode & MODE_META)
 			type = V4L2_BUF_TYPE_META_OUTPUT;
 		else
+#endif
 			type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	}
 	else if ((type == 0 || type == -1) && (mode & MODE_CAPTURE))
 	{
+#ifdef HAS_V4L2_META
 		if (mode & MODE_META)
 			type = V4L2_BUF_TYPE_META_CAPTURE;
 		else
+#endif
 			type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	}
 	else if (type == -1 && (mode & MODE_OUTPUT))
 	{
+#ifdef HAS_V4L2_META
 		if (mode & MODE_META)
 			type = V4L2_BUF_TYPE_META_OUTPUT;
 		else
+#endif
 			type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	}
 	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT || type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
@@ -259,10 +268,12 @@ static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 		if (mode & MODE_CAPTURE)
 			return V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	}
+#ifdef HAS_V4L2_META
 	if ((type == V4L2_BUF_TYPE_META_CAPTURE || type == V4L2_BUF_TYPE_META_OUTPUT) && (mode & MODE_META))
 	{
 		return type;
 	}
+#endif
 	return -1;
 }
 
@@ -315,11 +326,15 @@ static int _v4l2_devicecapabilities(int fd, const char *interface, int *mode, de
 		cap.device_caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE ||
 		cap.device_caps & V4L2_CAP_VIDEO_M2M_MPLANE)
 		*mode |= MODE_MPLANE;
+#ifdef HAS_V4L2_META
 	if (cap.device_caps & V4L2_CAP_META_CAPTURE ||
 		cap.device_caps & V4L2_CAP_META_OUTPUT)
 		*mode |= MODE_META;
+#endif
+#ifdef V4L2_CAP_IO_MC
 	if (cap.device_caps & V4L2_CAP_IO_MC)
 		*mode |= MODE_MEDIACTL;
+#endif
 
 	if ((*mode & (MODE_CAPTURE | MODE_OUTPUT)) == 0)
 	{
@@ -346,9 +361,11 @@ uint32_t sv4l2_getpixformat(V4L2_t *dev, int (*pixformat)(void *arg, struct v4l2
 		err("FMT not found %m");
 		return -1;
 	}
+#ifdef HAS_V4L2_META
 	if (dev->type == V4L2_BUF_TYPE_META_CAPTURE || dev->type == V4L2_BUF_TYPE_META_OUTPUT)
 		pixelformat = fmt.fmt.meta.dataformat;
 	else
+#endif
 		pixelformat = fmt.fmt.pix.pixelformat;
 
 	struct v4l2_fmtdesc fmtdesc = {0};
@@ -376,9 +393,11 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 		err("FMT not found %m");
 		return -1;
 	}
+#ifdef HAS_V4L2_META
 	if (type == V4L2_BUF_TYPE_META_CAPTURE || type == V4L2_BUF_TYPE_META_OUTPUT)
 		pixelformat = fmt.fmt.meta.dataformat;
 	else
+#endif
 		pixelformat = fmt.fmt.pix.pixelformat;
 
 	struct v4l2_fmtdesc fmtdesc = {0};
@@ -402,9 +421,11 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 			pixelformat = formats[i].fourcc;
 		}
 	}
+#ifdef HAS_V4L2_META
 	if (type == V4L2_BUF_TYPE_META_CAPTURE || type == V4L2_BUF_TYPE_META_OUTPUT)
 		fmt.fmt.meta.dataformat = pixelformat;
 	else
+#endif
 		fmt.fmt.pix.pixelformat = pixelformat;
 	if (ioctl(fd, VIDIOC_S_FMT, &fmt) != 0)
 	{
@@ -614,10 +635,12 @@ int sv4l2_requestbuffer_mmap(V4L2_t *dev)
 		err("sv4l2: Request buffer for mmap error %m");
 		return -1;
 	}
+#ifdef V4L2_BUF_CAP_SUPPORTS_DMABUF
 	if (req.capabilities & V4L2_BUF_CAP_SUPPORTS_DMABUF)
 	{
 		dbg("buffer supports DMABUF too");
 	}
+#endif
 	dev->nbuffers = req.count;
 	dev->buffers = dev->ops.createbuffers(dev, dev->nbuffers, V4L2_MEMORY_MMAP);
 
@@ -1660,11 +1683,15 @@ static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 		code = V4L2_MBUS_FMT_SBGGR10_1X10;
 	break;
 	case V4L2_PIX_FMT_SGRBG10:
+#ifdef V4L2_PIX_FMT_SGRBG10P
 	case V4L2_PIX_FMT_SGRBG10P:
+#endif
 		code = MEDIA_BUS_FMT_SGRBG10_1X10;
 	break;
 	case V4L2_PIX_FMT_SRGGB12:
+#ifdef V4L2_PIX_FMT_SRGGB12P
 	case V4L2_PIX_FMT_SRGGB12P:
+#endif
 		code = V4L2_MBUS_FMT_SRGGB12_1X12;
 	break;
 	case V4L2_PIX_FMT_SRGGB10:
@@ -1747,6 +1774,7 @@ static int _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs)
 
 V4L2Subdev_t *sv4l2_subdev_create2(int ctrlfd, SubDevConfig_t *config)
 {
+#ifdef VIDIOC_SUBDEV_QUERYCAP
 	struct v4l2_subdev_capability caps = {0};
 	if (ioctl(ctrlfd, VIDIOC_SUBDEV_QUERYCAP, &caps) != 0)
 	{
@@ -1773,6 +1801,7 @@ V4L2Subdev_t *sv4l2_subdev_create2(int ctrlfd, SubDevConfig_t *config)
 		close(ctrlfd);
 		return NULL;
 	}
+#endif
 	V4L2Subdev_t *subdev = calloc(1, sizeof(*subdev));
 	subdev->fd = ctrlfd;
 	if (config)
@@ -2892,6 +2921,7 @@ static int _subv4l2_capabilities_pixformat(void *arg, struct v4l2_subdev_format 
 
 int sv4l2_subdev_capabilities(V4L2Subdev_t *subdev, json_t *capabilities, int all)
 {
+#ifdef VIDIOC_SUBDEV_QUERYCAP
 	struct v4l2_subdev_capability caps;
 	if (ioctl(subdev->fd, VIDIOC_SUBDEV_QUERYCAP, &caps) != 0)
 	{
@@ -2910,6 +2940,7 @@ int sv4l2_subdev_capabilities(V4L2Subdev_t *subdev, json_t *capabilities, int al
 		warn("smedia: subdev read-only");
 		return -1;
 	}
+#endif
 	_JSONControl_Arg_t arg = {0};
 	arg.controls = json_array();
 	arg.all = all;

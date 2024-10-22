@@ -1,2 +1,4 @@
 EGL=y
 DRM=y
+
+HAS_V4L2_META=y
