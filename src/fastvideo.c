@@ -14,6 +14,7 @@
 #include "sdrm.h"
 #include "segl.h"
 #include "sfile.h"
+#include "sdvb.h"
 #include "config.h"
 
 #define MODE_DAEMONIZE 0x01
@@ -61,6 +62,20 @@ FastVideoDevice_ops_t sv4l2_ops = {
 	.dequeue = (FastVideoDevice_dequeue_t)sv4l2_dequeue,
 	.queue = (FastVideoDevice_queue_t)sv4l2_queue,
 	.destroy = (FastVideoDevice_destroy_t)sv4l2_destroy,
+};
+FastVideoDevice_ops_t sdvb_ops = {
+	.name = "dvb",
+	.createconfig = sdvb_createconfig,
+	.create = (FastVideoDevice_create_t)sdvb_create,
+	.duplicate = (FastVideoDevice_duplicate_t)NULL,
+	.loadsettings = (FastVideoDevice_loadsettings_t)sdvb_loadsettings,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)sdvb_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)sdvb_fd,
+	.start = (FastVideoDevice_start_t)sdvb_start,
+	.stop = (FastVideoDevice_stop_t)sdvb_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)sdvb_dequeue,
+	.queue = (FastVideoDevice_queue_t)sdvb_queue,
+	.destroy = (FastVideoDevice_destroy_t)sdvb_destroy,
 };
 FastVideoDevice_ops_t spassthrough_ops = {
 	.name = "passthrough",
@@ -438,6 +453,7 @@ int main(int argc, char * const argv[])
 	FastVideoDevice_ops_t *fastVideoDevice_ops[] =
 	{
 		&sv4l2_ops,
+		&sdvb_ops,
 #ifdef HAVE_EGL
 		&segl_ops,
 #endif
