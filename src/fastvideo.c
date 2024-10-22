@@ -63,6 +63,7 @@ FastVideoDevice_ops_t sv4l2_ops = {
 	.queue = (FastVideoDevice_queue_t)sv4l2_queue,
 	.destroy = (FastVideoDevice_destroy_t)sv4l2_destroy,
 };
+#ifdef SDVB
 FastVideoDevice_ops_t sdvb_ops = {
 	.name = "dvb",
 	.createconfig = sdvb_createconfig,
@@ -77,6 +78,7 @@ FastVideoDevice_ops_t sdvb_ops = {
 	.queue = (FastVideoDevice_queue_t)sdvb_queue,
 	.destroy = (FastVideoDevice_destroy_t)sdvb_destroy,
 };
+#endif
 FastVideoDevice_ops_t spassthrough_ops = {
 	.name = "passthrough",
 	.createconfig = spassthrough_createconfig,
@@ -453,7 +455,9 @@ int main(int argc, char * const argv[])
 	FastVideoDevice_ops_t *fastVideoDevice_ops[] =
 	{
 		&sv4l2_ops,
+#ifdef SDVB
 		&sdvb_ops,
+#endif
 #ifdef HAVE_EGL
 		&segl_ops,
 #endif
