@@ -2,17 +2,23 @@
 	"name":"uvc",
 	"type":"v4l2",
 	"device":"/dev/video0",
-	"width":640,
-	"height":480,
-	"fourcc":"YUYV",
+	"definition":{
+		"width":640,
+		"height":480,
+		"fourcc":"YUYV",
+		"end":true
+	},
 	"end":true
 },{
 	"name":"uvc-jpeg",
 	"type":"v4l2",
 	"device":"/dev/video0",
-	"width":640,
-	"height":480,
-	"fourcc":"MJPG",
+	"definition":{
+		"width":640,
+		"height":480,
+		"fourcc":"MJPG",
+		"end":true
+	},
 	"end":true
 },{
 	"name":"file",
@@ -22,8 +28,5 @@
 	"name":"gpu",
 	"type":"gpu",
 	"native":"x11",
-	"width":640,
-	"height":480,
-	"fourcc":"YUYV",
 	"end":true
 }]
