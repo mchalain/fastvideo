@@ -1160,6 +1160,12 @@ int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_query_ext_ctrl *ctrl, int (*c
 
 static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, CameraConfig_t *config)
 {
+	/// The same device may give Stream data and meta data.
+	/// Here we want only Stream data
+#ifdef HAS_V4L2_META
+	if (mode & MODE_META)
+		mode &= ~MODE_META;
+#endif
 	*type = _v4l2_getbuftype(*type, mode);
 
 	uint32_t fourcc = 0;
