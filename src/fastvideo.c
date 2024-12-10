@@ -18,6 +18,7 @@
 #include "config.h"
 
 #define MODE_DAEMONIZE 0x01
+#define MODE_INITIALIZE 0x02
 //#define DISABLE_TRANSFER
 
 typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
@@ -419,7 +420,7 @@ int main(int argc, char * const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:t:j:w:h:DL:W:");
+		opt = getopt(argc, argv, "i:o:t:j:w:h:DL:W:I");
 		switch (opt)
 		{
 			case 'i':
@@ -442,6 +443,9 @@ int main(int argc, char * const argv[])
 			break;
 			case 'D':
 				mode |= MODE_DAEMONIZE;
+			break;
+			case 'I':
+				mode |= MODE_INITIALIZE;
 			break;
 			case 'L':
 				logfile = optarg;
@@ -587,7 +591,8 @@ int main(int argc, char * const argv[])
 
 	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
 
-	main_loop(indev, transferdev, transferdevD, outdev);
+	if ((mode & MODE_INITIALIZE) == 0)
+		main_loop(indev, transferdev, transferdevD, outdev);
 
 	killdaemon(pidfile);
 	indev->ops->destroy(indev->dev);
