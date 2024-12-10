@@ -59,7 +59,7 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 		stride = json_object_get(definition, "stride");
 	}
 	else
-		return -1;
+		return 0;
 	if (width && json_is_object(width))
 		width = json_object_get(width, "value");
 	if (width && json_is_integer(width))
@@ -96,11 +96,8 @@ static int main_parseconfigdevice(json_t *jconfig, DeviceConf_t *devconfig)
 	else
 		devconfig->type = unknown_str;
 	json_t *definition = json_object_get(jconfig, "definition");
-	if (definition && json_is_object(definition))
-		ret = scommon_loaddefinition(devconfig, definition);
-	else
-		ret = scommon_loaddefinition(devconfig, jconfig);
-	if (devconfig->ops.loadconfiguration)
+	ret = scommon_loaddefinition(devconfig, definition);
+	if (ret == 0 && devconfig->ops.loadconfiguration)
 	{
 		ret = devconfig->ops.loadconfiguration(devconfig, jconfig);
 	}
@@ -112,6 +109,9 @@ int config_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devconf
 	int ret;
 	if (name == NULL)
 		return -1;
+
+	/// This part allows to use option with argument
+	/// cam:width=640
 	char tmpname[256] = {0};
 	const char *end = strchr(name, ':');
 	int length = strlen(name);
