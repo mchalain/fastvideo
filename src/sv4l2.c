@@ -2268,6 +2268,51 @@ static int _v4l2_parsesubdevice(CameraConfig_t *config, int index, json_t *subde
 	return ret;
 }
 
+static int _sv4l2_isjsonsubdevice(json_t *subdevice, const char *parent)
+{
+	json_t *names = json_object_get(subdevice, "name");
+	if (json_is_array(names))
+	{
+		json_t *name = NULL;
+		int j;
+		json_array_foreach(names, j, name)
+		{
+			if (json_is_string(name) && ! strcmp(json_string_value(name), parent))
+				return 1;
+		}
+	}
+	return 0;
+}
+
+#if 0
+static int _sv4l2_addsubdevice(CameraConfig_t *config, json_t *device, const char *name)
+{
+	int nsubdevices = 0;
+	json_t *subdevices = json_object_get(jconfig, "subdevice");
+	if (subdevices && json_is_array(subdevices))
+	{
+		int index;
+		json_t *subdevice;
+		json_array_foreach(subdevices, index, subdevice)
+		{
+			/** load only the subdevices containing the name of the device **/
+			if (_sv4l2_isjsonsubdevice(subdevice, name))
+			{
+				if (!_v4l2_parsesubdevice(config, config->nsubdevices, subdevice))
+					nsubdevices++;
+			}
+			nsubdevices += _sv4l2_addsubdevice(config, subdevice, name);
+		}
+	}
+	else if (subdevices && json_is_object(subdevices))
+	{
+		if (config && !_v4l2_parsesubdevice(config, 0, subdevices))
+			nsubdevices++;
+	}
+	return nsubdevices;
+}
+#endif
+
 int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 {
 	json_t *jconfig = entry;
@@ -2291,25 +2336,12 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 		config->nsubdevices = 0;
 		int index;
 		json_t *subdevice;
-		json_t *name = NULL;
 		json_array_foreach(subdevices, index, subdevice)
 		{
 			/** load only the subdevices containing the name of the device **/
-			json_t *names = json_object_get(subdevice, "name");
-			if (json_is_array(names))
-			{
-				int j;
-				json_array_foreach(names, j, name)
-				{
-					if (json_is_string(name) && ! strcmp(json_string_value(name), config->parent.name))
-						break;
-				}
-			}
-			if (json_is_string(name) && ! strcmp(json_string_value(name), config->parent.name))
-			{
-				if (!_v4l2_parsesubdevice(config, config->nsubdevices, subdevice))
-					config->nsubdevices++;
-			}
+			if (_sv4l2_isjsonsubdevice(subdevice, config->parent.name) &&
+				!_v4l2_parsesubdevice(config, config->nsubdevices, subdevice))
+				config->nsubdevices++;
 		}
 	}
 	else if (subdevices && json_is_object(subdevices))
