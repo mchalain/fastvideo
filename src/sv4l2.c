@@ -1288,7 +1288,12 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e dtype, Camer
 	}
 	dbg("V4l2 settings: %dx%d, %.4s", dev->width, dev->height, (char*)&dev->fourcc);
 	if (config)
+	{
 		config->parent.dev = dev;
+		config->parent.width = width;
+		config->parent.height = height;
+		config->parent.fourcc = fourcc;
+	}
 	return dev;
 }
 
