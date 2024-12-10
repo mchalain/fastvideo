@@ -14,6 +14,9 @@
 
 #include "log.h"
 #include "sv4l2.h"
+#ifdef HAVE_LIBDRM
+#include "sdrm.h"
+#endif
 #include "smedia.h"
 
 static int all_capabilities_format = 0;
@@ -73,6 +76,7 @@ static int sys_opendev(int dirfd, const char *path)
 
 static int sys_device(const char *path, int (*sysdevice)(void *arg, const char *name, int fd), void *cbarg)
 {
+	int ret = -1;
 	int sysfd = open(path, O_DIRECTORY);
 	DIR *sys = NULL;
 	if (sysfd > 0)
@@ -90,7 +94,7 @@ static int sys_device(const char *path, int (*sysdevice)(void *arg, const char *
 					int devicefd = sys_opendev(sysfd, entity->d_name);
 					if (devicefd > 0 && sysdevice)
 					{
-						sysdevice(cbarg, entity->d_name, devicefd);
+						ret = sysdevice(cbarg, entity->d_name, devicefd);
 					}
 				}
 			}
@@ -99,13 +103,11 @@ static int sys_device(const char *path, int (*sysdevice)(void *arg, const char *
 	}
 	else
 		err("enable to open %s: %m", path);
-	return 0;
+	return ret;
 }
 
-static json_t *_device_v4l2(json_t *devices, int major, int minor, const char *name)
+static json_t *_device_v4l2(json_t *devices, int devfd, const char *path, const char *name)
 {
-	char path[32];
-	int devfd = _dev_openchar(major, minor, path, sizeof(path));
 	size_t index;
 	json_t *device = NULL;
 	json_array_foreach(devices, index, device)
@@ -207,11 +209,42 @@ int _device_links(void *arg, struct media_link_desc *link)
 	json_t *device = (json_t *)arg;
 	if (link == NULL)
 		return -1;
-	json_object_set_new(device, "sink", json_integer(link->sink.entity));
+	json_t *sink = json_object_get(device, "sink");
+	if (sink == NULL)
+	{
+		sink = json_array();
+		json_object_set(device,"sink", sink);
+	}
+	json_array_append_new(sink, json_integer(link->sink.entity));
 	return 0;
 }
 
-static int _device_video(void *arg, Media_t *media, struct media_entity_desc *entity)
+static int _video_device(void *arg, const char *name, int fd)
+{
+	json_t *devices = (json_t *)arg;
+	json_t *device = NULL;
+	char path[1024];
+	const char *devname = strrchr(name, '/');
+	if (devname == NULL)
+	{
+		snprintf(path, sizeof(path), "/dev/%", name);
+		devname = name;
+	}
+	else
+	{
+		snprintf(path, sizeof(path), "%", name);
+		devname++;
+	}
+	device = _device_v4l2(devices, fd, path, devname);
+	if (device != NULL)
+	{
+		json_array_append_new(devices, device);
+		return 0;
+	}
+	return -1;
+}
+
+static int _media_video(void *arg, Media_t *media, struct media_entity_desc *entity)
 {
 	json_t *devices = (json_t *)arg;
 	if (!json_is_array(devices))
@@ -222,7 +255,9 @@ static int _device_video(void *arg, Media_t *media, struct media_entity_desc *en
 	json_t *device = NULL;
 	if (entity->type == MEDIA_ENT_F_IO_V4L)
 	{
-		device = _device_v4l2(devices, entity->dev.major, entity->dev.minor, entity->name);
+		char path[32];
+		int devfd = _dev_openchar(entity->dev.major, entity->dev.minor, path, sizeof(path));
+		device = _device_v4l2(devices, devfd, path, entity->name);
 	}
 	if ((entity->type & MEDIA_ENT_TYPE_MASK) == MEDIA_ENT_T_V4L2_SUBDEV)
 	{
@@ -269,45 +304,70 @@ static int _devices_append(json_t *devices, json_t *device)
 	return 0;
 }
 
+#ifdef HAVE_LIBDRM
+static int _drm_device(void *arg, const char *name, int fd)
+{
+	json_t *devices = (json_t *)arg;
+	Display_t *disp = sdrm_create2(fd, name, device_output, NULL);
+	if (disp)
+		return sdrm_capabilities(disp, devices);
+	return -1;
+}
+#endif
+
 static int _media_device(void *arg, const char *name, int fd)
 {
 	json_t *devices = (json_t *)arg;
 	json_t *mediadevices = json_array();
 	Media_t *media = smedia_create2(fd, name);
-	smedia_enumentities(media, _device_video, mediadevices);
+	smedia_enumentities(media, _media_video, mediadevices);
 	smedia_destroy(media);
+	if (json_array_size(mediadevices) == 0)
+		return -1;
 	/**
 	 * This part is uncomplete and needs to be refactored.
 	 * The goal is to move the subdevices inside their sink device
 	 */
-	json_t *subdevices = NULL;
+	json_t *allsubdevices = NULL;
+	allsubdevices = json_array();
 	int sink = -1;
-	int index;
+	int i;
 	json_t *device;
 	json_t *definition = NULL;
-	json_array_foreach(mediadevices, index, device)
+	json_array_foreach(mediadevices, i, device)
 	{
 		dbg("device found %s", json_string_value(json_object_get(device, "name")));
 		if (!strcmp("subv4l", json_string_value(json_object_get(device, "type"))))
 		{
-			if (subdevices == NULL)
-			{
-				subdevices = json_array();
-			}
-			json_array_append_new(subdevices, device);
-			if (definition == NULL)
-				definition = json_object_get(device, "definition");
-			continue;
+			json_array_append_new(allsubdevices, device);
 		}
-		json_object_set_new(device,"subdevice", subdevices);
-		subdevices = NULL;
-		/**
-		 * replace the device's definition by the subdevice's definition if it exists
-		 */
-		if (definition)
-			json_object_set(device,"definition", definition);
-		definition = NULL;
-		_devices_append(devices, device);
+	}
+	json_array_foreach(mediadevices, i, device)
+	{
+		json_t *subdevices = NULL;
+		int id = json_integer_value(json_object_get(device, "id"));
+		json_t *subdevice;
+		int j;
+		json_array_foreach(allsubdevices, j, subdevice)
+		{
+			json_t *jsinks = json_object_get(subdevice, "sink");
+			json_t *jsink;
+			int k;
+			json_array_foreach(jsinks, k, jsink)
+			{
+				int sink = json_integer_value(jsink);
+				if (sink == id)
+				{
+					if (subdevices == NULL)
+						subdevices = json_array();
+					json_array_append_new(subdevices, subdevice);
+				}
+			}
+		}
+		if (subdevices != NULL)
+			json_object_set_new(device,"subdevice", subdevices);
+		if (!strcmp("v4l2", json_string_value(json_object_get(device, "type"))))
+			_devices_append(devices, device);
 	}
 	return 0;
 }
@@ -315,13 +375,17 @@ static int _media_device(void *arg, const char *name, int fd)
 int main(int argc, char *const argv[])
 {
 	const char *media = NULL;
+	const char *video = NULL;
+	const char *drm = NULL;
 	const char *output = "fastconfig.json";
 	const char sysmedia[] = "/sys/bus/media/devices";
+	const char sysvideo[] = "/sys/class/video4linux";
+	const char sysdrm[] = "/sys/class/drm";
 
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "ao:m:");
+		opt = getopt(argc, argv, "ao:m:d:v:");
 		switch (opt)
 		{
 			case 'a':
@@ -332,6 +396,12 @@ int main(int argc, char *const argv[])
 			break;
 			case 'm':
 				media = optarg;
+			break;
+			case 'v':
+				video = optarg;
+			break;
+			case 'd':
+				drm = optarg;
 			break;
 		}
 	} while(opt != -1);
@@ -348,7 +418,10 @@ int main(int argc, char *const argv[])
 		devices = json_array();
 
 	if (media == NULL)
-		sys_device(sysmedia, _media_device, devices);
+	{
+		if (sys_device(sysmedia, _media_device, devices))
+			sys_device(sysvideo, _video_device, devices);
+	}
 	else
 	{
 		int fd = open(media, O_RDWR);
@@ -359,6 +432,30 @@ int main(int argc, char *const argv[])
 		}
 		_media_device(devices, media, fd);
 	}
+	if (video)
+	{
+		int fd = open(video, O_RDWR);
+		if (fd < 0)
+		{
+			err("video %s not found %m", video);
+			return -1;
+		}
+		_video_device(devices, video, fd);
+	}
+#ifdef HAVE_LIBDRM
+	if (drm == NULL)
+		sys_device(sysdrm, _drm_device, devices);
+	else
+	{
+		int fd = open(drm, O_RDWR);
+		if (fd < 0)
+		{
+			err("drm %s not found %m", drm);
+			return -1;
+		}
+		_drm_device(devices, drm, fd);
+	}
+#endif
 	json_dump_file(devices, output, JSON_INDENT(2));
 	json_decref(devices);
 	return 0;
