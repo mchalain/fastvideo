@@ -534,6 +534,7 @@ int main(int argc, char * const argv[])
 	}
 
 #ifndef DISABLE_TRANSFER
+	choice_config(indev->config, transferdev->config);
 	transferdev->dev = transferdev->ops->create(transfer, device_transfer, transferdev->config);
 	if (transferdev->dev == NULL)
 		return -1;
@@ -550,8 +551,10 @@ int main(int argc, char * const argv[])
 		err("%s mot duplicated", transferdev->config->name);
 		return -1;
 	}
+	choice_config(transferdev->config, outdev->config);
 #else
 	FastVideoDevice_t *transferdevD = NULL;
+	choice_config(indev->config, outdev->config);
 #endif
 
 	outdev->dev = outdev->ops->create(output, device_output, outdev->config);
