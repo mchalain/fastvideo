@@ -160,6 +160,7 @@ static uint64_t sdrm_properties(Display_t *disp, uint32_t plane_id, const char *
 		dbg("sdrm: property %s", prop->name);
 		if (prop && !strcmp(prop->name, property))
 		{
+			// TODO: check if property must be freed
 			ret = props->prop_values[i];
 			break;
 		}
@@ -397,6 +398,53 @@ static void sdrm_freebuffer(Display_t *disp, DisplayBuffer_t *buffer)
 #endif
 }
 
+Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayConf_t *config)
+{
+	if (type != device_output)
+	{
+		err("sdrm: %s bad device type", config->parent.name);
+		return NULL;
+	}
+	if (drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1))
+	{
+		err("sdrm: Universal plane not supported %m");
+		return NULL;
+	}
+
+	Display_t *disp = calloc(1, sizeof(*disp));
+	disp->fd = fd;
+	disp->fourcc = FOURCC('A','R','2','4');
+	disp->type = DRM_PLANE_TYPE_PRIMARY;
+
+	if (config)
+	{
+		disp->mode.hdisplay = config->parent.width;
+		disp->mode.vdisplay = config->parent.height;
+		if (config->parent.fourcc)
+			disp->fourcc = config->parent.fourcc;
+	}
+	if (sdrm_ids(disp, &disp->connector_id, &disp->encoder_id, &disp->crtc_id, &disp->mode) == -1)
+	{
+		free(disp);
+		return NULL;
+	}
+	if (sdrm_plane(disp, &disp->plane_id) == -1)
+	{
+		free(disp);
+		return NULL;
+	}
+#ifdef HAVE_LIBKMS
+	if (kms_create(fd, &disp->kms))
+		err("sdrm: kms create error");
+#endif
+
+	if (config)
+	{
+		config->parent.dev = disp;
+	}
+	return disp;
+}
+
 Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf_t *config)
 {
 	if (type != device_output)
@@ -414,37 +462,9 @@ Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf_t *conf
 		err("device %s (%s) bad argument %m", name, config->device);
 		return NULL;
 	}
-	if (drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1))
-	{
-		err("sdrm: Universal plane not supported %m");
-		return NULL;
-	}
-
-	Display_t *disp = calloc(1, sizeof(*disp));
-	disp->fd = fd;
-	disp->fourcc = FOURCC('A','R','2','4');
-	disp->type = DRM_PLANE_TYPE_PRIMARY;
-
-	disp->mode.hdisplay = config->parent.width;
-	disp->mode.vdisplay = config->parent.height;
-	if (config->parent.fourcc)
-		disp->fourcc = config->parent.fourcc;
-	if (sdrm_ids(disp, &disp->connector_id, &disp->encoder_id, &disp->crtc_id, &disp->mode) == -1)
-	{
-		free(disp);
-		return NULL;
-	}
-	if (sdrm_plane(disp, &disp->plane_id) == -1)
-	{
-		free(disp);
-		return NULL;
-	}
-#ifdef HAVE_LIBKMS
-	if (kms_create(fd, &disp->kms))
-		err("sdrm: kms create error");
-#endif
-
-	config->parent.dev = disp;
+	Display_t *disp = sdrm_create2(fd, name, type, config);
+	if (disp == NULL)
+		close(fd);
 	return disp;
 }
 
@@ -685,8 +705,9 @@ static int sdrm_capabilities_size(Display_t *disp, json_t *capabilities)
 
 int sdrm_capabilities(Display_t *disp, json_t *capabilities)
 {
-	sdrm_capabilities_size(disp, capabilities);
-	sdrm_capabilities_fourcc(disp, capabilities);
+	if (sdrm_capabilities_size(disp, capabilities))
+		return -1;
+	return sdrm_capabilities_fourcc(disp, capabilities);
 }
 
 int sdrm_loadjsonsettings(void *arg, void *entry)
