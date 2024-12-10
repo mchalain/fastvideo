@@ -36,12 +36,24 @@ struct EGL_s
 	int nbuffers;
 };
 
+#ifndef EGL_KHR_image
+#error "this version of EGL doesn't support KHR Image"
+#endif
+#ifndef GL_OES_EGL_image
+#error "this version of GLES doesn't support EGL Image"
+#endif
+#if defined(EGL_KHR_image) && !defined(EGL_EGLEXT_PROTOTYPES)
 PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR = NULL;
 PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR = NULL;
+#endif
+#if defined(EGL_MESA_image_dma_buf_export) && !defined(EGL_EGLEXT_PROTOTYPES)
 PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC eglExportDMABUFImageQueryMESA = NULL;
 PFNEGLEXPORTDMABUFIMAGEMESAPROC eglExportDMABUFImageMESA = NULL;
+#endif
+#if defined(GL_OES_EGL_image) && !defined(EGL_EGLEXT_PROTOTYPES)
 PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
 PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
+#endif
 
 EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *config)
 {
@@ -59,6 +71,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 #ifdef HAVE_X11
 		eglnative_x11,
 #endif
+		NULL,
 	};
 	EGLNative_t *native = natives[0];
 
@@ -148,6 +161,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	dev->eglsurface = eglSurface;
 
 	dev->programs = glprog_create(config->programs);
+#ifndef EGL_EGLEXT_PROTOTYPES
 	eglCreateImageKHR = (void *) eglGetProcAddress("eglCreateImageKHR");
 	if(eglCreateImageKHR == NULL)
 	{
@@ -158,6 +172,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	{
 		return NULL;
 	}
+#if defined(EGL_MESA_image_dma_buf_export)
 	eglExportDMABUFImageQueryMESA = (void *) eglGetProcAddress("eglExportDMABUFImageQueryMESA");
 	if(eglExportDMABUFImageQueryMESA == NULL)
 	{
@@ -168,11 +183,13 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	{
 		return NULL;
 	}
+#endif
 	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
 	if(glEGLImageTargetTexture2DOES == NULL)
 	{
 		return NULL;
 	}
+#endif
 
 	glprog_setup(dev->programs, config->parent.width, config->parent.height);
 
