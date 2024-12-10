@@ -1309,7 +1309,13 @@ V4L2_t *sv4l2_create(const char *devicename, device_type_e type, CameraConfig_t 
 		return NULL;
 	}
 
-	return sv4l2_create2(fd, devicename, type, config);
+	dbg("sv4l2: try device %s", device);
+	V4L2_t *dev = sv4l2_create2(fd, devicename, type, config);
+	if (dev == NULL)
+		close(fd);
+	else
+		warn("sv4l2: device %s", device);
+	return dev;
 }
 
 V4L2_t *sv4l2_duplicate(V4L2_t *dev)
@@ -1379,7 +1385,7 @@ int sv4l2_start(V4L2_t *dev)
 	}
 	if (ioctl(dev->fd, VIDIOC_STREAMON, &type) != 0)
 		return -1;
-	dbg("sv4l2: starting");
+	dbg("sv4l2: %s starting", dev->name);
 	return 0;
 }
 
