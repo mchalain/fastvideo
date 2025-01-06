@@ -14,6 +14,7 @@
 
 #include "log.h"
 #include "sv4l2.h"
+#include "sv4l2_subdev.h"
 #ifdef HAVE_LIBDRM
 #include "sdrm.h"
 #endif
@@ -177,7 +178,7 @@ static json_t * _device_subv4l2(json_t *devices, int major, int minor, const cha
 	json_object_set_new(device, "type", json_string("subv4l"));
 #endif
 	json_object_set_new(device, "device", json_string(path));
-	V4L2Subdev_t *subdev = sv4l2_subdev_create2(devfd, NULL);
+	V4L2_t *subdev = sv4l2_subdev_create2(devfd, NULL);
 	if (subdev)
 	{
 		sv4l2_subdev_capabilities(subdev, device, all_capabilities_format);

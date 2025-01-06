@@ -91,7 +91,7 @@ int main(int argc, char * const argv[])
 	const char *input = "v4l2";
 	const char *output = "file:screem.unkown";
 
-	CameraConfig_t CAMERACONFIG(inconfig, "/dev/video0");
+	V4l2Config_t CAMERACONFIG(inconfig, "/dev/video0");
 
 	FileConfig_t FILECONFIG(outconfig, unknown);
 

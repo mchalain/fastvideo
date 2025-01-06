@@ -65,49 +65,12 @@ struct V4L2Buffer_s
 	} ops;
 };
 
-typedef struct V4L2Subdev_s V4L2Subdev_t;
-struct V4L2Subdev_s
-{
-	const char *name;
-	int fd;
-	uint32_t width;
-	uint32_t height;
-	uint32_t stride;
-	uint32_t fourcc;
-	V4L2Subdev_t *next;
-};
-
 #define MODE_CAPTURE 0x01
 #define MODE_OUTPUT 0x02
 #define MODE_MASTER 0x04
 #define MODE_META 0x08
 #define MODE_MEDIACTL 0x10
 #define MODE_MPLANE 0x80
-
-typedef struct V4L2_s V4L2_t;
-struct V4L2_s
-{
-	const char *name;
-	CameraConfig_t *config;
-	uint32_t width;
-	uint32_t height;
-	uint32_t stride;
-	uint32_t fourcc;
-	int fd;
-	V4L2Subdev_t *subdevices;
-	enum v4l2_buf_type type;
-	int nbuffers;
-	int nplanes;
-	V4L2Buffer_t *buffers;
-	int mode;
-	int ifd[2];
-	struct {
-		V4L2Buffer_t *(*createbuffers)(V4L2_t *dev, int number, enum v4l2_memory memory);
-	} ops;
-	int (*transfer)(void *, int id, const char *mem, size_t size);
-};
-
-static int _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs);
 
 static int _v4l2buffer_exportdmafd(V4L2Buffer_t *buf, int fd)
 {
@@ -808,6 +771,8 @@ int sv4l2_linkdma(V4L2_t *dev, int ntargets, int targets[], size_t size)
 int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 {
 	int ret = 0;
+	if (dev->ops.createbuffers == NULL)
+		return -1;
 	if (t & buf_type_master)
 		dev->mode |= MODE_MASTER;
 	va_list ap;
@@ -1027,16 +992,6 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 	struct v4l2_query_ext_ctrl queryctrl = {0};
 	queryctrl.id = id;
 	int ret = ioctl(ctrlfd, VIDIOC_QUERYCTRL, &queryctrl);
-	if (ret != 0 && dev->subdevices)
-	{
-		V4L2Subdev_t *it;
-		for (it = dev->subdevices; it != NULL; it = it->next)
-		{
-			ret = ioctl(it->fd, VIDIOC_QUERYCTRL, &queryctrl);
-			if (ret != 0)
-				continue;
-		}
-	}
 	if (ret != 0)
 	{
 		err("sv4l2: control %#x not supported", id);
@@ -1117,20 +1072,9 @@ static int _sv4l2_treecontrols(int ctrlfd, int (*cb)(void *arg, struct v4l2_quer
 
 int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_query_ext_ctrl *ctrl), void * arg)
 {
-	int nbctrls = 0;
 	int ret;
 	ret = _sv4l2_treecontrols(dev->fd, cb, arg);
-	nbctrls += ret;
-	V4L2Subdev_t *it;
-	for (it = dev->subdevices; it; it = it->next)
-	{
-		ret = _sv4l2_treecontrols(it->fd, cb, arg);
-		if (ret > 0)
-			nbctrls += ret;
-	}
-	if (ret < 0)
-		err("sv4l2: %s query controls error %m", dev->name);
-	return nbctrls;
+	return ret;
 }
 
 int _sv4l2_treecontrolmenu(int ctrlfd, struct v4l2_query_ext_ctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg)
@@ -1158,7 +1102,7 @@ int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_query_ext_ctrl *ctrl, int (*c
 	return _sv4l2_treecontrolmenu(sv4l2_fd(dev), ctrl, cb, arg);
 }
 
-static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, CameraConfig_t *config)
+static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config_t *config)
 {
 	/// The same device may give Stream data and meta data.
 	/// Here we want only Stream data
@@ -1193,35 +1137,21 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, CameraConf
 
 	int fps = -1;
 	if (config)
-		fps = config->definition.fps;
+		fps = config->fps;
 	_v4l2_setfps(fd, *type, fps);
 	return 0;
 }
 
-V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e dtype, CameraConfig_t *config)
+V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e dtype, V4l2Config_t *config)
 {
 	enum v4l2_buf_type type = 0;
 	int mode = 0;
-	if (config && config->definition.mode)
-		mode = config->definition.mode;
+	if (config)
+		mode = config->mode;
 	if (_v4l2_devicecapabilities(fd, devicename, &mode, dtype))
 	{
 		close(fd);
 		return NULL;
-	}
-	V4L2Subdev_t *subdev = NULL;
-
-	if (mode & MODE_MEDIACTL && config)
-	{
-		for (int i = 0; i < config->nsubdevices; i++)
-		{
-			subdev = sv4l2_subdev_create(&config->subdevices[i]);
-			if (subdev)
-			{
-				sv4l2_subdev_setpixformat(subdev, subdev->fourcc, subdev->width, subdev->height);
-				sv4l2_subdev_getpixformat(subdev, _v4l2_subdev_set_config, &config->parent);
-			}
-		}
 	}
 
 	if (mode & MODE_VERBOSE)
@@ -1269,7 +1199,6 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e dtype, Camer
 	dev->name = devicename;
 	dev->config = config;
 	dev->fd = fd;
-	dev->subdevices = subdev;
 	dev->type = type;
 	dev->mode = mode;
 	dev->width = width;
@@ -1297,7 +1226,7 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e dtype, Camer
 	return dev;
 }
 
-V4L2_t *sv4l2_create(const char *devicename, device_type_e type, CameraConfig_t *config)
+V4L2_t *sv4l2_create(const char *devicename, device_type_e type, V4l2Config_t *config)
 {
 	const char *device = devicename;
 	if (config && config->device)
@@ -1362,11 +1291,6 @@ int sv4l2_fd(V4L2_t *dev)
 int sv4l2_type(V4L2_t *dev)
 {
 	return dev->type;
-}
-
-int sv4l2_interactive(V4L2_t *dev, const char *json, size_t length)
-{
-	return write(dev->ifd[1], json, length);
 }
 
 int sv4l2_start(V4L2_t *dev)
@@ -1455,224 +1379,10 @@ void sv4l2_destroy(V4L2_t *dev)
 	free(dev);
 }
 
-#ifdef VIDIOC_SUBDEV_S_FMT
-
-static int _v4l2_subdev_fmtbus(void *arg, struct v4l2_subdev_mbus_code_enum *mbus_code)
-{
-	uint32_t code = *(uint32_t *)arg;
-	if (code == mbus_code->code)
-		return 0;
-	return -1;
-}
-
-uint32_t _v4l2_subdev_getfmtbus(int ctrlfd, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
-{
-	uint32_t ret = 0;
-	for (int i = 0; ; i++)
-	{
-		struct v4l2_subdev_mbus_code_enum mbusEnum = {0};
-		mbusEnum.pad = 0;
-		mbusEnum.index = i;
-		mbusEnum.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-
-		if (ioctl(ctrlfd, VIDIOC_SUBDEV_ENUM_MBUS_CODE, &mbusEnum) != 0)
-		{
-			dbg("sv4l2: %d supported formats", i);
-			break;
-		}
-		dbg("sv4l2: format supported %#x", mbusEnum.code);
-		if (fmtbus)
-		{
-			if (!fmtbus(cbarg, &mbusEnum))
-				ret = mbusEnum.code;
-		}
-	}
-	return ret;
-}
-
-uint32_t sv4l2_subdev_getfmtbus(V4L2Subdev_t *subdev, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
-{
-	return _v4l2_subdev_getfmtbus(subdev->fd, fmtbus, cbarg);
-}
-
-static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
-{
-	uint32_t ret = -1;
-	uint32_t code = -1;
-	switch (fourcc)
-	{
-	case V4L2_PIX_FMT_SGBRG10:
-	case V4L2_PIX_FMT_SGBRG10P:
-		code = V4L2_MBUS_FMT_SGBRG10_1X10;
-	break;
-	case V4L2_PIX_FMT_SBGGR10:
-	case V4L2_PIX_FMT_SBGGR10P:
-		code = V4L2_MBUS_FMT_SBGGR10_1X10;
-	break;
-	case V4L2_PIX_FMT_SGRBG10:
-#ifdef V4L2_PIX_FMT_SGRBG10P
-	case V4L2_PIX_FMT_SGRBG10P:
-#endif
-		code = MEDIA_BUS_FMT_SGRBG10_1X10;
-	break;
-	case V4L2_PIX_FMT_SRGGB12:
-#ifdef V4L2_PIX_FMT_SRGGB12P
-	case V4L2_PIX_FMT_SRGGB12P:
-#endif
-		code = V4L2_MBUS_FMT_SRGGB12_1X12;
-	break;
-	case V4L2_PIX_FMT_SRGGB10:
-	case V4L2_PIX_FMT_SRGGB10P:
-		code = MEDIA_BUS_FMT_SRGGB10_1X10;
-	break;
-	};
-	ret = _v4l2_subdev_getfmtbus(ctrlfd, _v4l2_subdev_fmtbus, &code);
-	return ret;
-}
-
-int sv4l2_subdev_setpixformat(V4L2Subdev_t *subdev, uint32_t fourcc, uint32_t width, uint32_t height)
-{
-	struct v4l2_subdev_format ffs = {0};
-	ffs.pad = 0;
-	ffs.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	ffs.format.width = width;
-	ffs.format.height = height;
-	ffs.format.code = sv4l2_subdev_translate_fmtbus(subdev->fd, fourcc);
-	dbg("sv4l2: subdev format request %ux%u %#x for %.4s", width, height, ffs.format.code, &fourcc);
-	if (ffs.format.code != (uint32_t)-1 && ioctl(subdev->fd, VIDIOC_SUBDEV_S_FMT, &ffs) != 0)
-	{
-		err("sv4l2: subdev set format error %m");
-		return -1;
-	}
-	return 0;
-}
-
-uint32_t sv4l2_subdev_getpixformat(V4L2Subdev_t *subdev, int (*busformat)(void *arg, struct v4l2_subdev_format *ffs), void *cbarg)
-{
-	struct v4l2_subdev_format ffs = {0};
-	ffs.pad = 0;
-	ffs.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	if (ioctl(subdev->fd, VIDIOC_SUBDEV_G_FMT, &ffs) != 0)
-	{
-		err("sv4l2: subdev get format error %m");
-		return -1;
-	}
-	dbg("sv4l2: current subdev %lu x %lu %#X", ffs.format.width, ffs.format.height, ffs.format.code);
-	if (busformat)
-		return busformat(cbarg, &ffs);
-	return 0;
-}
-
-static int _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs)
-{
-	DeviceConf_t *config = arg;
-	uint32_t fourcc = 0xFFFFFFFF;
-	switch (ffs->format.code)
-	{
-	case MEDIA_BUS_FMT_SGBRG10_1X10:
-		fourcc = V4L2_PIX_FMT_SGBRG10; // GB10
-	break;
-	case MEDIA_BUS_FMT_SBGGR10_1X10:
-		fourcc = V4L2_PIX_FMT_SBGGR10; // BG10
-	break;
-	case MEDIA_BUS_FMT_SGRBG10_1X10:
-		fourcc = V4L2_PIX_FMT_SGRBG10; // BA10
-	break;
-	case MEDIA_BUS_FMT_SRGGB10_1X10:
-		fourcc = V4L2_PIX_FMT_SRGGB10; // RG10
-	break;
-	case MEDIA_BUS_FMT_SRGGB12_1X12:
-		fourcc = V4L2_PIX_FMT_SRGGB12; // RG12
-	break;
-	case MEDIA_BUS_FMT_SBGGR16_1X16:
-		fourcc = V4L2_PIX_FMT_SRGGB16; // RG16
-	break;
-	default:
-		warn("sv4l2: subdev format %#x not supported", ffs->format.code);
-		fourcc = 0;
-	break;
-	};
-	config->fourcc = fourcc;
-	config->width = ffs->format.width;
-	config->height = ffs->format.height;
-	dbg("sv4l2: subdev format %dx%d %.4s", config->width, config->height, &config->fourcc);
-	return 0;
-}
-
-V4L2Subdev_t *sv4l2_subdev_create2(int ctrlfd, SubDevConfig_t *config)
-{
-#ifdef VIDIOC_SUBDEV_QUERYCAP
-	struct v4l2_subdev_capability caps = {0};
-	if (ioctl(ctrlfd, VIDIOC_SUBDEV_QUERYCAP, &caps) != 0)
-	{
-		warn("sv4l2: subdev control error %m");
-	}
-#ifdef V4L2_SUBDEV_CAP_STREAMS
-	if (caps.capabilities & V4L2_SUBDEV_CAP_STREAMS)
-	{
-		struct v4l2_subdev_client_capability clientCaps;
-		clientCaps.capabilities = V4L2_SUBDEV_CLIENT_CAP_STREAMS;
-
-		if (ioctl(ctrlfd, VIDIOC_SUBDEV_S_CLIENT_CAP, &clientCaps) != 0)
-		{
-			err("sv4l2: subdev control error %m");
-			close(ctrlfd);
-			return NULL;
-		}
-		warn("sv4l2: client streams capabilities");
-	}
-#endif
-	if (caps.capabilities & V4L2_SUBDEV_CAP_RO_SUBDEV)
-	{
-		warn("sv4l2: subdev read-only");
-		close(ctrlfd);
-		return NULL;
-	}
-#endif
-	V4L2Subdev_t *subdev = calloc(1, sizeof(*subdev));
-	subdev->fd = ctrlfd;
-	if (config)
-	{
-		subdev->width = config->parent.width;
-		subdev->height = config->parent.height;
-		subdev->stride = config->parent.stride;
-		subdev->fourcc = config->parent.fourcc;
-	}
-	return subdev;
-}
-
-V4L2Subdev_t *sv4l2_subdev_create(SubDevConfig_t *config)
-{
-	int ctrlfd = open(config->device, O_RDWR, 0);
-	if (ctrlfd < 0)
-	{
-		err("sv4l2: subdevice %s not exist", config->device);
-		return NULL;
-	}
-	V4L2Subdev_t *subdev = sv4l2_subdev_create2(ctrlfd, config);
-	if (subdev == NULL)
-		close(ctrlfd);
-	return subdev;
-}
-
-#else
-V4L2Subdev_t *sv4l2_subdev_create(SubDevConfig_t *config)
-{
-	err("sv4l2: subdev is not supported");
-	return NULL;
-}
-#endif
-
-void sv4L2_subdev_destroy(V4L2Subdev_t *subdev)
-{
-	close(subdev->fd);
-	free(subdev);
-}
-
 DeviceConf_t * sv4l2_createconfig()
 {
-	CameraConfig_t *devconfig = NULL;
-	devconfig = calloc(1, sizeof(CameraConfig_t));
+	V4l2Config_t *devconfig = NULL;
+	devconfig = calloc(1, sizeof(V4l2Config_t));
 	devconfig->device = sv4l2_defaultdevice;
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sv4l2_loadjsonconfiguration;
@@ -1934,48 +1644,17 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 		_v4l2_loadjsontransformation(dev, transformations);
 	}
 
-	json_t *subdevices = json_object_get(jconfig, "subdevice");
-	if (subdevices && json_is_array(subdevices))
-	{
-		for (V4L2Subdev_t *it = dev->subdevices; it; it= it->next)
-		{
-			int index;
-			json_t *subdevice;
-			json_array_foreach(subdevices, index, subdevice)
-			{
-				json_t *names = json_object_get(subdevice,"name");
-				if (json_is_array(names))
-				{
-					int index;
-					json_t *name;
-					json_array_foreach(names, index, name)
-					{
-						if (json_is_string(name) && !strcmp(json_string_value(name), it->name))
-							break;
-					}
-					names = name;
-				}
-				if (!(json_is_string(names) && !strcmp(json_string_value(names), it->name)))
-					continue;
-				json_t *jcontrols = json_object_get(subdevice,"controls");
-				if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
-				{
-					_v4l2_loadjsoncontrols(dev,jcontrols);
-				}
-			}
-		}
-	}
 	json_t *jcontrols = json_object_get(jconfig,"controls");
 	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
 		jconfig = jcontrols;
 	return _v4l2_loadjsoncontrols(dev,jconfig);
 }
 
-static int _v4l2_parsedefinition(json_t *jconfig, CameraDefinition_t *config)
+static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 {
+	int ret = -1;
 	json_t *fps = NULL;
 	json_t *mode = NULL;
-	json_t *definition = json_object_get(jconfig, "definition");
 	if (definition && json_is_array(definition))
 	{
 		json_t *field = NULL;
@@ -2005,8 +1684,8 @@ static int _v4l2_parsedefinition(json_t *jconfig, CameraDefinition_t *config)
 	}
 	else
 	{
-		fps = json_object_get(jconfig, "fps");
-		mode = json_object_get(jconfig, "mode");
+		fps = json_object_get(definition, "fps");
+		mode = json_object_get(definition, "mode");
 	}
 	if (fps && json_is_integer(fps))
 	{
@@ -2021,151 +1700,28 @@ static int _v4l2_parsedefinition(json_t *jconfig, CameraDefinition_t *config)
 		if (strstr(value,"output"))
 			config->mode |= MODE_OUTPUT;
 	}
-	return 0;
-}
-
-int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
-{
-	int ret = -1;
-	json_t *subdevice = entry;
-	SubDevConfig_t *config = (SubDevConfig_t *)arg;
-
-	if (subdevice && json_is_object(subdevice))
-	{
-		int disable = json_is_true(json_object_get(subdevice, "disable"));
-		json_t *definition = json_object_get(subdevice, "definition");
-		if (!disable)
-		{
-			if (definition == NULL)
-				definition = subdevice;
-			_v4l2_parsedefinition(definition, &config->definition);
-			subdevice = json_object_get(subdevice, "device");
-		}
-	}
-	if (subdevice && json_is_string(subdevice))
-	{
-		const char *value = json_string_value(subdevice);
-		config->device = value;
-		ret = 0;
-	}
 	return ret;
 }
-
-static int _v4l2_parsesubdevice(CameraConfig_t *config, int index, json_t *subdevice)
-{
-	int ret = -1;
-	json_t *definition = NULL;
-	if (!config_parsedevices(config->parent.name, subdevice, &config->subdevices[index].parent))
-	{
-		/** use the first defintion found inside a subdevice as defintion of the device **/
-		if (definition == NULL)
-			definition = json_object_get(subdevice, "definition");
-		if (definition != NULL)
-		{
-			config->parent.width = config->subdevices[index].parent.width;
-			config->parent.height = config->subdevices[index].parent.height;
-			config->parent.stride = config->subdevices[index].parent.stride;
-			config->parent.fourcc = config->subdevices[index].parent.fourcc;
-		}
-		/** change subdevice name with the last of the array **/
-		json_t *name = json_object_get(subdevice, "name");
-		if (name && json_is_array(name))
-			name = json_array_get(name, json_array_size(name));
-		if (name && json_is_string(name))
-			config->subdevices[index].parent.name = json_string_value(name);
-		ret = 0;
-	}
-	return ret;
-}
-
-static int _sv4l2_isjsonsubdevice(json_t *subdevice, const char *parent)
-{
-	json_t *names = json_object_get(subdevice, "name");
-	if (json_is_array(names))
-	{
-		json_t *name = NULL;
-		int j;
-		json_array_foreach(names, j, name)
-		{
-			if (json_is_string(name) && ! strcmp(json_string_value(name), parent))
-				return 1;
-		}
-	}
-	return 0;
-}
-
-#if 0
-static int _sv4l2_addsubdevice(CameraConfig_t *config, json_t *device, const char *name)
-{
-	int nsubdevices = 0;
-	json_t *subdevices = json_object_get(jconfig, "subdevice");
-	if (subdevices && json_is_array(subdevices))
-	{
-		int index;
-		json_t *subdevice;
-		json_array_foreach(subdevices, index, subdevice)
-		{
-			/** load only the subdevices containing the name of the device **/
-			if (_sv4l2_isjsonsubdevice(subdevice, name))
-			{
-				if (!_v4l2_parsesubdevice(config, config->nsubdevices, subdevice))
-					nsubdevices++;
-			}
-			nsubdevices += _sv4l2_addsubdevice(config, subdevice, name);
-		}
-	}
-	else if (subdevices && json_is_object(subdevices))
-	{
-		if (config && !_v4l2_parsesubdevice(config, 0, subdevices))
-			nsubdevices++;
-	}
-	return nsubdevices;
-}
-#endif
 
 int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 {
 	json_t *jconfig = entry;
 
-	CameraConfig_t *config = (CameraConfig_t *)arg;
+	V4l2Config_t *config = (V4l2Config_t *)arg;
 	json_t *device = json_object_get(jconfig, "device");
 	if (device && json_is_string(device))
 	{
 		const char *value = json_string_value(device);
 		config->device = value;
 	}
-	_v4l2_parsedefinition(jconfig, &config->definition);
-	json_t *subdevices = json_object_get(jconfig, "subdevice");
-	if (subdevices && json_is_array(subdevices))
-	{
-		config->subdevices = calloc(json_array_size(subdevices), sizeof(*config->subdevices));
-		for (int i = 0; i < json_array_size(subdevices); i++)
-		{
-			config->subdevices[i].parent.ops.loadconfiguration = sv4l2_subdev_loadjsonconfiguration;
-		}
-		config->nsubdevices = 0;
-		int index;
-		json_t *subdevice;
-		json_array_foreach(subdevices, index, subdevice)
-		{
-			/** load only the subdevices containing the name of the device **/
-			if (_sv4l2_isjsonsubdevice(subdevice, config->parent.name) &&
-				!_v4l2_parsesubdevice(config, config->nsubdevices, subdevice))
-				config->nsubdevices++;
-		}
-	}
-	else if (subdevices && json_is_object(subdevices))
-	{
-		config->subdevices = calloc(1, sizeof(*config->subdevices));
-		if (!_v4l2_parsesubdevice(config, 0, subdevices))
-			config->nsubdevices++;
-	}
+	json_t *definition = json_object_get(jconfig, "definition");
+	_v4l2_parsedefinition(jconfig, config);
 
 library_end:
 	return 0;
 }
 
-static const char *CTRLTYPE(enum v4l2_ctrl_type type)
+const char *sv4l2_CTRLTYPE(enum v4l2_ctrl_type type)
 {
 	switch (type)
 	{
@@ -2196,7 +1752,7 @@ static const char *CTRLTYPE(enum v4l2_ctrl_type type)
 	return "unknown";
 }
 
-static const char *CTRLNAME(uint32_t id)
+const char *sv4l2_CTRLNAME(uint32_t id)
 {
 	switch (id)
 	{
@@ -2332,7 +1888,7 @@ struct _JSONControl_Arg_s
 	int all;
 };
 
-static int _sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
+int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 {
 	_JSONControl_Arg_t *jsoncontrol_arg = (_JSONControl_Arg_t *)arg;
 	json_t *controls = jsoncontrol_arg->controls;
@@ -2353,7 +1909,7 @@ static int _sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 			{
 				json_t *classtype = json_object_get(control, "type");
 				if (classtype && json_is_string(classtype) &&
-					!strcmp(json_string_value(classtype), CTRLTYPE(V4L2_CTRL_TYPE_CTRL_CLASS)))
+					!strcmp(json_string_value(classtype), sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_CTRL_CLASS)))
 				{
 					ctrlclass = json_object_get(control, "items");
 				}
@@ -2366,7 +1922,7 @@ static int _sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 	json_object_set_new(control, "id", json_integer(ctrl->id));
 	if (jsoncontrol_arg->all)
 	{
-		json_t *type = json_string(CTRLTYPE(ctrl->type));
+		json_t *type = json_string(sv4l2_CTRLTYPE(ctrl->type));
 		json_object_set_new(control, "type", type);
 	}
 
@@ -2582,7 +2138,7 @@ static int _v4l2_capabilities_fps(V4L2_t *dev, json_t *definition, int all)
 	json_t *fps = json_object();
 	json_object_set_new(fps, "name", json_string("fps"));
 	if (all)
-		json_object_set_new(fps, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
+		json_object_set_new(fps, "type", json_string(sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
 	struct v4l2_streamparm streamparm = {0};
 	streamparm.type = sv4l2_type(dev);
 	if (ioctl(sv4l2_fd(dev), VIDIOC_G_PARM, &streamparm) == 0)
@@ -2630,9 +2186,9 @@ static int _v4l2_capabilities_imageformat(V4L2_t *dev, json_t *definition, int a
 		return 0;
 	}
 
-	json_object_set_new(pixelformat, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_STRING)));
-	json_object_set_new(width, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
-	json_object_set_new(height, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
+	json_object_set_new(pixelformat, "type", json_string(sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_STRING)));
+	json_object_set_new(width, "type", json_string(sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
+	json_object_set_new(height, "type", json_string(sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
 	json_t *items = json_array();
 	struct v4l2_fmtdesc fmtdesc = {0};
 	fmtdesc.type = sv4l2_type(dev);
@@ -2695,122 +2251,7 @@ int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 	arg.all = all;
 	arg.ctrlfd = sv4l2_fd(dev);
 	int ret;
-	ret = sv4l2_treecontrols(dev, _sv4l2_jsoncontrol_cb, &arg);
-	if (ret > 0)
-		json_object_set(capabilities, "controls", arg.controls);
-	json_decref(arg.controls);
-	return 0;
-}
-
-static int _subv4l2_capabilities_pixformat(void *arg, struct v4l2_subdev_format *ffs)
-{
-	_JSONControl_Arg_t *jsoncontrol_arg = arg;
-	json_t *definition = jsoncontrol_arg->controls;
-	DeviceConf_t config = {0};
-	_v4l2_subdev_set_config(&config, ffs);
-
-	json_t *pixelformat = json_object();
-	json_object_set_new(pixelformat, "name", json_string("fourcc"));
-
-	json_t *width = json_object();
-	json_object_set_new(width, "name", json_string("width"));
-
-	json_t *height = json_object();
-	json_object_set_new(height, "name", json_string("height"));
-
-	json_object_set_new(pixelformat, "value", json_sprintf("%.4s",&config.fourcc));
-	json_object_set_new(width, "value", json_integer(config.width));
-	json_object_set_new(height, "value", json_integer(config.height));
-
-	if (jsoncontrol_arg->all)
-	{
-		json_object_set_new(pixelformat, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_STRING)));
-		json_t *items = json_array();
-		struct v4l2_subdev_mbus_code_enum mbusEnum = {0};
-		mbusEnum.pad = ffs->pad;
-		mbusEnum.which = ffs->which;
-		for (mbusEnum.index = 0; ioctl(jsoncontrol_arg->ctrlfd, VIDIOC_SUBDEV_ENUM_MBUS_CODE, &mbusEnum) == 0; mbusEnum.index++)
-		{
-			json_array_append_new(items, json_sprintf("%.4s",&config.fourcc));
-		}
-		if (mbusEnum.index > 0)
-		{
-			json_object_set(pixelformat, "items", items);
-		}
-		json_decref(items);
-
-		json_object_set_new(width, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
-		json_object_set_new(height, "type", json_string(CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
-		json_t *items1 = json_array();
-		json_t *items2 = json_array();
-		struct v4l2_subdev_frame_size_enum framesizes = {0};
-		framesizes.pad = ffs->pad;
-		framesizes.code = ffs->format.code;
-		framesizes.which = ffs->which;
-		for (framesizes.index = 0; ioctl(jsoncontrol_arg->ctrlfd, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, &framesizes) == 0; framesizes.index++)
-		{
-			if (framesizes.min_width == framesizes.max_width)
-				json_array_append_new(items1, json_integer(framesizes.min_width));
-			else
-			{
-				json_object_set_new(width, "minimum", json_integer(framesizes.min_width));
-				json_object_set_new(width, "maximum", json_integer(framesizes.max_width));
-			}
-			if (framesizes.min_height == framesizes.max_height)
-				json_array_append_new(items2, json_integer(framesizes.min_height));
-			else
-			{
-				json_object_set_new(width, "minimum", json_integer(framesizes.min_height));
-				json_object_set_new(width, "maximum", json_integer(framesizes.max_height));
-			}
-		}
-		if (framesizes.index > 0)
-		{
-			json_object_set(width, "items", items1);
-			json_object_set(height, "items", items2);
-		}
-		json_decref(items1);
-		json_decref(items2);
-	}
-	json_array_append_new(definition, pixelformat);
-	json_array_append_new(definition, width);
-	json_array_append_new(definition, height);
-	return 0;
-}
-
-int sv4l2_subdev_capabilities(V4L2Subdev_t *subdev, json_t *capabilities, int all)
-{
-#ifdef VIDIOC_SUBDEV_QUERYCAP
-	struct v4l2_subdev_capability caps;
-	if (ioctl(subdev->fd, VIDIOC_SUBDEV_QUERYCAP, &caps) != 0)
-	{
-		err("smedia: subdev control error %m");
-		return -1;
-	}
-#ifdef V4L2_SUBDEV_CAP_STREAMS
-	if (caps.capabilities & V4L2_SUBDEV_CAP_STREAMS)
-	{
-		dbg("sv4l2: subdevice streaming");
-		json_object_set_new(capabilities, "stream", json_true());
-	}
-#endif
-	if (caps.capabilities & V4L2_SUBDEV_CAP_RO_SUBDEV)
-	{
-		warn("smedia: subdev read-only");
-		return -1;
-	}
-#endif
-	_JSONControl_Arg_t arg = {0};
-	arg.controls = json_array();
-	arg.all = all;
-	arg.ctrlfd = subdev->fd;
-	if (!sv4l2_subdev_getpixformat(subdev, _subv4l2_capabilities_pixformat, &arg))
-		json_object_set(capabilities, "definition", arg.controls);
-	json_decref(arg.controls);
-
-	arg.controls = json_array();
-	int ret;
-	ret = _sv4l2_treecontrols(subdev->fd, _sv4l2_jsoncontrol_cb, &arg);
+	ret = sv4l2_treecontrols(dev, sv4l2_jsoncontrol_cb, &arg);
 	if (ret > 0)
 		json_object_set(capabilities, "controls", arg.controls);
 	json_decref(arg.controls);
