@@ -1118,7 +1118,8 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config
 	if (_v4l2_setpixformat(fd, *type, fourcc) == -1)
 	{
 		err("pixel format error %m");
-		return -1;
+		if (errno != EBUSY)
+			return -1;
 	}
 
 	uint32_t width = 0;
@@ -1132,7 +1133,8 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config
 		_v4l2_setframesize(fd, *type, width, height) == -1)
 	{
 		err("frame size error %m");
-		return -1;
+		if (errno != EBUSY)
+			return -1;
 	}
 
 	int fps = -1;
