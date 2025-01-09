@@ -77,7 +77,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 
 	if (config->native)
 	{
-		for (int i = 0; i < sizeof(natives) / sizeof(*natives); i++)
+		for (int i = 0; i < sizeof(natives) / sizeof(*natives) && natives[i]; i++)
 		{
 			if (!strcmp(natives[i]->name, config->native))
 			{
