@@ -169,33 +169,64 @@ FastVideoDevice_t *device_duplicate(FastVideoDevice_t *dev)
 	return device;
 }
 
+typedef struct FastVideo_s FastVideo_t;
+struct FastVideo_s
+{
+	FastVideoDevice_ops_t **ops;
+	FastVideoDevice_t *device;
+	const char *name;
+};
+
+static int _config_createdevice(void *data, const char *name, const char *type, void *config)
+{
+	FastVideo_t *fastvideo = data;
+
+	/// This part allows to use option with argument
+	/// cam:width=640
+	char tmpname[256] = {0};
+	const char *end = strchr(fastvideo->name, ':');
+	int length = strlen(fastvideo->name);
+	if (end)
+		length = end - fastvideo->name;
+	if (length > 255)
+		return -1;
+	strncpy(tmpname, fastvideo->name, length);
+
+	if (strcmp(tmpname, name))
+		return -1;
+	for (int i = 0; fastvideo->ops[i] != NULL; i++)
+	{
+		if (! strcmp(fastvideo->ops[i]->name, type))
+		{
+			DeviceConf_t *devconfig = NULL;
+			devconfig = fastvideo->ops[i]->createconfig();
+			if (devconfig)
+			{
+				devconfig->name = name;
+				devconfig->type = type;
+				devconfig->entry = config;
+				if (devconfig->ops.loadconfiguration)
+					devconfig->ops.loadconfiguration(devconfig, config);
+				fastvideo->device = calloc(1, sizeof(*fastvideo->device));
+				fastvideo->device->config = devconfig;
+				fastvideo->device->ops = fastvideo->ops[i];
+			}
+			break;
+		}
+	}
+	return 0;
+}
+
 FastVideoDevice_t *config_createdevice(const char *name, const char *configfile, FastVideoDevice_ops_t *ops[])
 {
 	FastVideoDevice_t *device = NULL;
-	DeviceConf_t devconfig = {0};
-#ifdef HAVE_JANSSON
-	if (configfile != NULL)
+	FastVideo_t fastvideo = {0};
+	fastvideo.ops = ops;
+	fastvideo.name = name;
+	if (configfile != NULL &&
+		config_parseconfigfile(configfile, _config_createdevice, &fastvideo) == 0)
 	{
-		config_parseconfigfile(name, configfile, &devconfig);
-	}
-#endif
-	if (devconfig.type == NULL)
-	{
-		devconfig.type = name;
-	}
-
-	for (int i = 0; ops[i] != NULL; i++)
-	{
-		if (! strcmp(ops[i]->name, devconfig.type))
-		{
-			DeviceConf_t *config = ops[i]->createconfig();
-			config->name = name;
-			config_parseconfigfile(name, configfile, config);
-			device = calloc(1, sizeof(*device));
-			device->config = config;
-			device->ops = ops[i];
-			break;
-		}
+		device =  fastvideo.device;
 	}
 	return device;
 }

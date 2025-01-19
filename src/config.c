@@ -83,103 +83,39 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 }
 
 static const char unknown_str[] = "unknown";
-static int main_parseconfigdevice(json_t *jconfig, DeviceConf_t *devconfig)
+static int main_parseconfigdevice(json_t *jconfig, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data)
 {
-	int ret;
-	json_t *type = NULL;
+	int ret = -1;
+	json_t *jtype = NULL;
+	const char *type = unknown_str;
 
-	devconfig->entry = jconfig;
+	jtype = json_object_get(jconfig, "type");
+	if (jtype && json_is_string(jtype))
+		type = json_string_value(jtype);
 
-	type = json_object_get(jconfig, "type");
-	if (type && json_is_string(type))
-		devconfig->type = json_string_value(type);
-	else
-		devconfig->type = unknown_str;
-	json_t *definition = json_object_get(jconfig, "definition");
-	ret = scommon_loaddefinition(devconfig, definition);
-	if (ret == 0 && devconfig->ops.loadconfiguration)
+	json_t *jname = json_object_get(jconfig, "name");
+	if (jname && json_is_array(jname))
 	{
-		ret = devconfig->ops.loadconfiguration(devconfig, jconfig);
+		int index;
+		json_t *jit;
+		json_array_foreach(jname, index, jit)
+		{
+			if (jit && json_is_string(jit))
+			{
+				ret = loaddevice(data, json_string_value(jit), type, jconfig);
+				if (ret == 0)
+					break;
+			}
+		}
+	}
+	if (jname && json_is_string(jname))
+	{
+		ret = loaddevice(data, json_string_value(jname), type, jconfig);
 	}
 	return ret;
 }
 
-int config_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devconfig)
-{
-	int ret;
-	if (name == NULL)
-		return -1;
-
-	/// This part allows to use option with argument
-	/// cam:width=640
-	char tmpname[256] = {0};
-	const char *end = strchr(name, ':');
-	int length = strlen(name);
-	if (end)
-		length = end - name;
-	if (length > 255)
-		return -1;
-	strncpy(tmpname, name, length);
-
-	devconfig->name = name;
-
-	if (json_is_array(jconfig))
-	{
-		int index = 0;
-		json_t *jdevice = NULL;
-		/**
-		 * json format:
-		 * [{"name":"cam","type":"v4l2","device":"/dev/video0","controls":[{"name":"Gain","value":1000},{"name":"Exposure","value":1}]}]
-		 */
-		json_array_foreach(jconfig, index, jdevice)
-		{
-			if (!json_is_object(jdevice))
-				continue;
-			json_t *jname = json_object_get(jdevice, "name");
-			if (jname && json_is_array(jname))
-			{
-				int index;
-				json_t *jit;
-				json_array_foreach(jname, index, jit)
-				{
-					if (jit && json_is_string(jit) &&
-						!strcmp(json_string_value(jit), tmpname))
-					{
-						jname = jit;
-						break;
-					}
-				}
-			}
-			if (jname && json_is_string(jname) &&
-				!strcmp(json_string_value(jname), tmpname))
-			{
-				ret = main_parseconfigdevice(jdevice, devconfig);
-				break;
-			}
-		}
-	}
-	else if (json_is_object(jconfig))
-	{
-		/**
-		 * json format:
-		 * { "cam":{"type":"v4l2","device":"/dev/video0","Gain":1000,"Exposure":1},
-		 *   "screen":{"device":"dev/dri/card0"}
-		 * }
-		 */
-		json_t *jdevice = json_object_get(jconfig, tmpname);
-		if (jdevice && json_is_object(jdevice))
-		{
-			ret = main_parseconfigdevice(jdevice, devconfig);
-		}
-		else
-		{
-			ret = main_parseconfigdevice(jconfig, devconfig);
-		}
-	}
-	return ret;
-}
-
-int config_parseconfigfile(const char *name, const char *configfile, DeviceConf_t *devconfig)
+int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data)
 {
 	int ret = -1;
 	FILE *cf = fopen(configfile, "r");
@@ -196,17 +132,28 @@ int config_parseconfigfile(const char *name, const char *configfile, DeviceConf_
 		err("config %s:%d error %s", configfile, error.line, error.text);
 		return -1;
 	}
-	if (json_is_array(jconfig))
-	{
-		ret = config_parsedevices(name, jconfig, devconfig);
-	}
-	else if (json_is_object(jconfig))
+	if (json_is_object(jconfig))
 	{
 		json_t *devices = json_object_get(jconfig, "devices");
 		if (devices)
-			ret = config_parsedevices(name, devices, devconfig);
-		else
-			ret = config_parsedevices(name, jconfig, devconfig);
+			jconfig = devices;
+	}
+	if (json_is_array(jconfig))
+	{
+		int index = 0;
+		json_t *jdevice = NULL;
+		json_array_foreach(jconfig, index, jdevice)
+		{
+			if (!json_is_object(jdevice))
+				continue;
+			ret = main_parseconfigdevice(jdevice, loaddevice, data);
+			if (ret == 0)
+				break;
+		}
+	}
+	else if (json_is_object(jconfig))
+	{
+		ret = main_parseconfigdevice(jconfig, loaddevice, data);
 	}
 	fclose(cf);
 	return ret;

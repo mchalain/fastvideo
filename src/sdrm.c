@@ -728,6 +728,8 @@ int sdrm_loadjsonconfiguration(void *arg, void *entry)
 		const char *value = json_string_value(device);
 		config->device = value;
 	}
+	json_t *definition = json_object_get(jconfig, "definition");
+	scommon_loaddefinition(&config->parent, definition);
 	return 0;
 }
 #endif

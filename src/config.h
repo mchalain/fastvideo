@@ -85,7 +85,7 @@ struct DeviceConf_s
  */
 int scommon_loaddefinition(DeviceConf_t *config, json_t *definition);
 
-int config_parseconfigfile(const char *name, const char *configfile, DeviceConf_t *devconfig);
+int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data);
 int config_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devconfig);
 #else
 inline int config_parseconfigfile(const char *name, const char *configfile, DeviceConf_t *devconfig) {return -1;};

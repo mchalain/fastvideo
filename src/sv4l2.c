@@ -1649,12 +1649,14 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 	json_t *jcontrols = json_object_get(jconfig,"controls");
 	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
 		jconfig = jcontrols;
-	return _v4l2_loadjsoncontrols(dev,jconfig);
+	return _v4l2_loadjsoncontrols(dev, jconfig);
 }
 
 static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 {
 	int ret = -1;
+	ret = scommon_loaddefinition(&config->parent, definition);
+
 	json_t *fps = NULL;
 	json_t *mode = NULL;
 	if (definition && json_is_array(definition))
@@ -1717,7 +1719,7 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 		config->device = value;
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
-	_v4l2_parsedefinition(jconfig, config);
+	_v4l2_parsedefinition(definition, config);
 
 library_end:
 	return 0;

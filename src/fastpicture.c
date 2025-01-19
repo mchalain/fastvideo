@@ -85,6 +85,29 @@ int main_loop(V4L2_t *cam, File_t *file)
 	return 0;
 }
 
+static int _config_createdevice(void *data, const char *name, const char *type, void *config)
+{
+	DeviceConf_t *devconfig = data;
+
+	/// This part allows to use option with argument
+	/// cam:width=640
+	char tmpname[256] = {0};
+	const char *end = strchr(devconfig->name, ':');
+	int length = strlen(devconfig->name);
+	if (end)
+		length = end - devconfig->name;
+	if (length > 255)
+		return -1;
+	strncpy(tmpname, devconfig->name, length);
+
+	if (strcmp(tmpname, name))
+		return -1;
+	if (strcmp(devconfig->type, type))
+		return -1;
+	devconfig->entry = config;
+	return 0;
+}
+
 int main(int argc, char * const argv[])
 {
 	const char *configfile = NULL;
@@ -121,8 +144,12 @@ int main(int argc, char * const argv[])
 
 	if (configfile)
 	{
-		config_parseconfigfile(input, configfile, &inconfig.parent);
-		config_parseconfigfile(output, configfile, &outconfig.parent);
+		inconfig.parent.name = input;
+		inconfig.parent.type = "v4l2";
+		config_parseconfigfile(configfile, _config_createdevice, &inconfig.parent);
+		outconfig.parent.name = output;
+		outconfig.parent.type = "file";
+		config_parseconfigfile(configfile, _config_createdevice, &outconfig.parent);
 	}
 
 	V4L2_t *cam = sv4l2_create(inconfig.device, device_input, &inconfig);

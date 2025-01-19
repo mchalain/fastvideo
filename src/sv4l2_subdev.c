@@ -240,7 +240,6 @@ int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
 	if (subdevice && json_is_object(subdevice))
 	{
 		int disable = json_is_true(json_object_get(subdevice, "disable"));
-		json_t *definition = json_object_get(subdevice, "definition");
 		if (!disable)
 		{
 			sv4l2_loadjsonconfiguration(config, subdevice);
