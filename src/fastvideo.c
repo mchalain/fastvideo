@@ -25,6 +25,7 @@ typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
 typedef void *(*FastVideoDevice_create_t)(const char *devicename, device_type_e type, DeviceConf_t *config);
 typedef void *(*FastVideoDevice_duplicate_t)(void *dev);
 typedef int (*FastVideoDevice_loadsettings_t)(void *dev, void *configentry);
+typedef int (*FastVideoDevice_capabilities_t)(void *dev, void *capabilities, int all);
 typedef int (*FastVideoDevice_requestbuffer_t)(void *dev, enum buf_type_e t, ...);
 typedef int (*FastVideoDevice_eventfd_t)(void *dev);
 typedef int (*FastVideoDevice_start_t)(void *dev);
@@ -41,6 +42,7 @@ struct FastVideoDevice_ops_s
 	FastVideoDevice_create_t create;
 	FastVideoDevice_duplicate_t duplicate;
 	FastVideoDevice_loadsettings_t loadsettings;
+	FastVideoDevice_capabilities_t capabilities;
 	FastVideoDevice_requestbuffer_t requestbuffer;
 	FastVideoDevice_eventfd_t eventfd;
 	FastVideoDevice_start_t start;
@@ -56,6 +58,7 @@ FastVideoDevice_ops_t sv4l2_ops = {
 	.create = (FastVideoDevice_create_t)sv4l2_create,
 	.duplicate = (FastVideoDevice_duplicate_t)sv4l2_duplicate,
 	.loadsettings = (FastVideoDevice_loadsettings_t)sv4l2_loadsettings,
+	.capabilities = (FastVideoDevice_capabilities_t)sv4l2_capabilities,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)sv4l2_requestbuffer,
 	.eventfd = (FastVideoDevice_eventfd_t)sv4l2_fd,
 	.start = (FastVideoDevice_start_t)sv4l2_start,
