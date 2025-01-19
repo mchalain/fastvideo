@@ -275,15 +275,15 @@ static int _v4l2_devicecapabilities(int fd, const char *interface, int *mode, de
 #endif
 	if ((cap.device_caps & V4L2_CAP_VIDEO_CAPTURE ||
 		cap.device_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE) &&
-		type == device_input)
+		(type == device_input || type == device_control))
 		*mode |= MODE_CAPTURE;
 	if ((cap.device_caps & V4L2_CAP_VIDEO_M2M ||
 		cap.device_caps & V4L2_CAP_VIDEO_M2M_MPLANE) &&
-		type == device_transfer)
+		(type == device_transfer || type == device_control))
 		*mode |= (MODE_CAPTURE | MODE_OUTPUT);
 	if ((cap.device_caps & V4L2_CAP_VIDEO_OUTPUT ||
 		cap.device_caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE) &&
-		type == device_output)
+		(type == device_output || type == device_control))
 		*mode |= MODE_OUTPUT;
 	if (cap.device_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE ||
 		cap.device_caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE ||
@@ -1159,10 +1159,12 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e dtype, V4l2C
 	if (mode & MODE_VERBOSE)
 		warn("SV4l2 create %s", devicename);
 
-	if (_sv4l2_prepare(fd, &type, mode, config))
+	if (dtype != device_control && _sv4l2_prepare(fd, &type, mode, config))
 	{
 		return NULL;
 	}
+	else
+		type = _v4l2_getbuftype(type, mode);
 
 	struct v4l2_format fmt = {0};
 	fmt.type = type;

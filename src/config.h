@@ -40,6 +40,7 @@ typedef enum device_type_e
 	device_input,
 	device_output,
 	device_transfer,
+	device_control,
 } device_type_e;
 
 typedef struct ImageDefinition_s ImageDefinition_t;

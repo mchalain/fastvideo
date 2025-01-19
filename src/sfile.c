@@ -83,11 +83,17 @@ File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *co
 
 		}
 	}
-	else
+	else if (device_output)
 	{
 		mode = O_WRONLY;
 		if (faccessat(rootfd, filename, F_OK, 0) < 0)
 			mode |= O_CREAT;
+	}
+	else
+	{
+		if (rootfd != AT_FDCWD)
+			close(rootfd);
+		return NULL;
 	}
 
 	int fd = openat(rootfd, filename, mode, 0644);
