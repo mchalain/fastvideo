@@ -62,7 +62,8 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 	drmModeResPtr resources;
 	resources = drmModeGetResources(disp->fd);
 
-	uint32_t connector_id = 0;
+	int32_t connector_id = -1;
+	int32_t encoder_id = -1;
 	for(int i = 0; i < resources->count_connectors; ++i)
 	{
 		connector_id = resources->connectors[i];
@@ -72,7 +73,6 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 			drmModeModeInfo *preferred = NULL;
 			if (mode->hdisplay && mode->vdisplay)
 				preferred = mode;
-			*conn_id = connector_id;
 			for (int m = 0; m < connector->count_modes; m++)
 			{
 				dbg("sdrm: mode: %s %dx%d %s",
@@ -93,18 +93,20 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 			if (preferred == NULL || preferred == mode)
 				preferred = &connector->modes[0];
 			memcpy(mode, preferred, sizeof(*mode));
-			*enc_id = connector->encoder_id;
+			encoder_id = connector->encoder_id;
 			drmModeFreeConnector(connector);
 			break;
 		}
 		drmModeFreeConnector(connector);
 	}
 
-	if (*conn_id == 0 || *enc_id == 0)
+	if (connector_id == -1 || encoder_id == -1)
 	{
 		drmModeFreeResources(resources);
 		return -1;
 	}
+	*conn_id = connector_id;
+	*enc_id = encoder_id;
 
 	for(int i=0; i < resources->count_encoders; ++i)
 	{
@@ -113,7 +115,7 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 		if(encoder != NULL)
 		{
 			dbg("sdrm: encoder %d found", encoder->encoder_id);
-			if(encoder->encoder_id == *enc_id)
+			if(encoder->encoder_id == encoder_id)
 			{
 				*crtc_id = encoder->crtc_id;
 				drmModeFreeEncoder(encoder);
@@ -137,7 +139,7 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 	if (crtcindex == -1)
 	{
 		drmModeFreeResources(resources);
-		err("sdrm: crtc mot available");
+		err("sdrm: crtc not available");
 		return -1;
 	}
 	dbg("sdrm: screen size %ux%u", disp->mode.hdisplay, disp->mode.vdisplay);
@@ -225,19 +227,19 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	{
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
 		int type = (int)sdrm_properties(disp, plane->plane_id, "type");
-		if (type != disp->type)
-			continue;
-		dbg("sdrm: plane %s", (type == DRM_PLANE_TYPE_PRIMARY)?"primary":"overlay");
-		for (int j = 0; j < plane->count_formats; ++j)
+		if (type == disp->type)
 		{
-			uint32_t fourcc = plane->formats[j];
-			dbg("sdrm: Plane[%d] %u: 4cc %.4s", i, plane->plane_id, (char *)&fourcc);
-			if (plane->formats[j] == disp->fourcc)
+			for (int j = 0; j < plane->count_formats; ++j)
 			{
-				ret = 0;
+				uint32_t fourcc = plane->formats[j];
+				dbg("sdrm: Plane[%d] %u: 4cc %.4s", i, plane->plane_id, (char *)&fourcc);
+				if (plane->formats[j] == disp->fourcc)
+				{
+					ret = 0;
+				}
 			}
+			*plane_id = plane->plane_id;
 		}
-		*plane_id = plane->plane_id;
 		drmModeFreePlane(plane);
 		if (ret == 0)
 			break;
@@ -615,24 +617,41 @@ static int sdrm_capabilities_fourcc(Display_t *disp, json_t *capabilities)
 	planes = drmModeGetPlaneResources(disp->fd);
 	if (planes == NULL)
 		return -1;
-	json_t *pixelformat = json_object();
-	json_object_set_new(pixelformat, "name", json_string("pixelformat"));
-	json_object_set_new(pixelformat, "type", json_string("menu"));
+	json_t *pixelformat = capabilities;
+	if (json_is_array(capabilities))
+	{
+		pixelformat = json_object();
+		json_object_set_new(pixelformat, "name", json_string("pixelformat"));
+		json_object_set_new(pixelformat, "type", json_string("menu"));
+	}
 
 	json_t *items = json_array();
+	uint32_t format = 0;
 	drmModePlanePtr plane;
 	for (int i = 0; i < 1 /*planes->count_planes*/; ++i)
 	{
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
-		for (int j = 0; j < plane->count_formats; ++j)
+		if (plane->plane_id == disp->plane_id)
 		{
-			json_array_append_new(items, json_stringn((char*)&plane->formats[j], 4));
+			for (int j = 0; j < plane->count_formats; ++j)
+			{
+				json_array_append_new(items, json_stringn((char*)&plane->formats[j], 4));
+				if (format == 0)
+					format = plane->formats[0];
+			}
 		}
 		drmModeFreePlane(plane);
 	}
 	drmModeFreePlaneResources(planes);
-	json_object_set(pixelformat, "items", items);
-	json_object_set(capabilities, "fourcc", pixelformat);
+	if (format != 0)
+	{
+		json_object_set(pixelformat, "value", json_stringn((char*)&format, 4));
+	}
+	if (json_is_array(capabilities))
+	{
+		json_object_set_new(pixelformat, "items", items);
+		json_array_append_new(capabilities, pixelformat);
+	}
 	return 0;
 }
 
@@ -649,9 +668,6 @@ static int sdrm_capabilities_size(Display_t *disp, json_t *capabilities)
 	json_object_set_new(height, "name", json_string("height"));
 	json_object_set_new(height, "type", json_string("integer"));
 
-	json_t *formats = json_object();
-	json_object_set_new(height, "name", json_string("formats"));
-	json_object_set_new(height, "type", json_string("menu"));
 	json_t *items = json_array();
 	unsigned int min_height = UINT_MAX;
 	unsigned int max_height = 0;
@@ -688,26 +704,55 @@ static int sdrm_capabilities_size(Display_t *disp, json_t *capabilities)
 		}
 		drmModeFreeConnector(connector);
 	}
-	json_object_set_new(formats, "items", items);
 
-	json_object_set_new(height, "minimum", json_integer(min_height));
-	json_object_set_new(height, "maximum", json_integer(max_height));
-	json_object_set_new(height, "default", json_integer(def_height));
-	json_object_set_new(width, "minimum", json_integer(min_width));
-	json_object_set_new(width, "maximum", json_integer(max_width));
-	json_object_set_new(width, "default", json_integer(def_width));
+	if (json_is_object(capabilities))
+	{
+		json_object_set(capabilities, "width", json_integer(def_height));
+		json_object_set(capabilities, "height", json_integer(def_width));
+		json_object_set(capabilities, "formats", items);
+	}
+	else if (json_is_array(capabilities))
+	{
+		if (min_height != max_height)
+		{
+			json_object_set_new(height, "minimum", json_integer(min_height));
+			json_object_set_new(height, "maximum", json_integer(max_height));
+			json_object_set_new(height, "default", json_integer(def_height));
+		}
+		json_object_set_new(height, "value", json_integer(def_height));
+		if (min_width != max_width)
+		{
+			json_object_set_new(width, "minimum", json_integer(min_width));
+			json_object_set_new(width, "maximum", json_integer(max_width));
+			json_object_set_new(width, "default", json_integer(def_width));
+		}
+		json_object_set_new(width, "value", json_integer(def_width));
+		json_t *formats = NULL;
+		formats = json_object();
+		json_object_set_new(formats, "name", json_string("formats"));
+		json_object_set_new(formats, "type", json_string("menu"));
+		json_object_set_new(formats, "items", items);
+		json_object_set_new(formats, "value", json_array_get(items, 0));
 
-	json_object_set(capabilities, "height", height);
-	json_object_set(capabilities, "width", width);
-	json_object_set(capabilities, "formats", formats);
+		json_array_append_new(capabilities, width);
+		json_array_append_new(capabilities, height);
+		json_array_append_new(capabilities, formats);
+	}
 	return 0;
 }
 
 int sdrm_capabilities(Display_t *disp, json_t *capabilities)
 {
-	if (sdrm_capabilities_size(disp, capabilities))
+	json_t *definition = json_array();
+	if (sdrm_capabilities_size(disp, definition))
 		return -1;
-	return sdrm_capabilities_fourcc(disp, capabilities);
+	if (sdrm_capabilities_fourcc(disp, definition))
+		return -1;
+	if (json_is_object(capabilities))
+	{
+		json_object_set_new(capabilities, "definition", definition);
+	}
+	return 0;
 }
 
 int sdrm_loadjsonsettings(void *arg, void *entry)

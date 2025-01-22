@@ -303,7 +303,22 @@ static int _drm_device(void *arg, int fd, const char *path, const char *name)
 	json_t *devices = (json_t *)arg;
 	Display_t *disp = sdrm_create2(fd, name, device_output, NULL);
 	if (disp)
-		return sdrm_capabilities(disp, devices);
+	{
+		json_t *device = json_object();
+		char staticname[] = "screenX";
+		if (name == NULL)
+		{
+			name = staticname;
+			staticname[6] = (char)(0x30 + numdisplay);
+		}
+		json_object_set_new(device, "name", json_string(name));
+		json_object_set_new(device, "device", json_string(path));
+		json_object_set_new(device, "type", json_string("screen"));
+		int ret = sdrm_capabilities(disp, device);
+		if (ret == 0)
+			_devices_append(devices, device);
+		return ret;
+	}
 	return -1;
 }
 #endif
