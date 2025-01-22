@@ -230,6 +230,7 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl);
 #else
 #define sv4l2_loadsettings NULL
 #define sv4l2_loadconfiguration NULL
+#define sv4l2_capabilities NULL
 #endif
 
 #endif
