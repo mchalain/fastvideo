@@ -38,6 +38,7 @@ static int _dev_openchar(int major, int minor, char *path, int pathlen)
 		return -1;
 	snprintf(path, pathlen, "/dev%s", name);
 #endif
+	dbg("try %s", path);
 	int devfd = open(path, O_RDWR);
 	if (devfd < 0)
 	{
@@ -46,7 +47,7 @@ static int _dev_openchar(int major, int minor, char *path, int pathlen)
 	return devfd;
 }
 
-static int sys_opendev(int dirfd, const char *path)
+static int sys_opendev(int dirfd, const char *path, char *devpath, size_t devpathlen)
 {
 	dirfd = openat(dirfd, path, O_DIRECTORY, 0);
 	if (dirfd < 0)
@@ -62,20 +63,19 @@ static int sys_opendev(int dirfd, const char *path)
 	int ret = read(fd, line, sizeof(line));
 	if (ret > 0)
 	{
-		char path[32];
 		unsigned int major = 0;
 		unsigned int minor = 0;
 		ret = sscanf(line, "%u:%u", &major, &minor);
 		if (ret == 2)
 		{
-			ret = _dev_openchar(major, minor, path, sizeof(path));
+			ret = _dev_openchar(major, minor, devpath, devpathlen);
 		}
 	}
 	close(fd);
 	return ret;
 }
 
-static int sys_device(const char *path, int (*sysdevice)(void *arg, const char *name, int fd), void *cbarg)
+static int sys_device(const char *path, int (*sysdevice)(void *arg, int fd, const char *path, const char *name), void *cbarg)
 {
 	int ret = -1;
 	int sysfd = open(path, O_DIRECTORY);
@@ -92,10 +92,11 @@ static int sys_device(const char *path, int (*sysdevice)(void *arg, const char *
 			{
 				if ((entity->d_type == DT_DIR) || (entity->d_type == DT_LNK))
 				{
-					int devicefd = sys_opendev(sysfd, entity->d_name);
+					char path[256];
+					int devicefd = sys_opendev(sysfd, entity->d_name, path, sizeof(path));
 					if (devicefd > 0 && sysdevice)
 					{
-						ret = sysdevice(cbarg, entity->d_name, devicefd);
+						ret = sysdevice(cbarg, devicefd, path, entity->d_name);
 					}
 				}
 			}
@@ -155,10 +156,8 @@ static json_t *_device_v4l2(json_t *devices, int devfd, const char *path, const 
 	return device;
 }
 
-static json_t * _device_subv4l2(json_t *devices, int major, int minor, const char *name, uint32_t type)
+static json_t * _device_subv4l2(json_t *devices, int devfd, const char *path, const char *name, uint32_t type)
 {
-	char path[32];
-	int devfd = _dev_openchar(major, minor, path, sizeof(path));
 	json_t *device = json_object();
 	json_object_set_new(device, "name", json_string(name));
 #if 0
@@ -220,23 +219,11 @@ int _device_links(void *arg, struct media_link_desc *link)
 	return 0;
 }
 
-static int _video_device(void *arg, const char *name, int fd)
+static int _video_device(void *arg, int fd, const char *path, const char *name)
 {
 	json_t *devices = (json_t *)arg;
 	json_t *device = NULL;
-	char path[1024];
-	const char *devname = strrchr(name, '/');
-	if (devname == NULL)
-	{
-		snprintf(path, sizeof(path), "/dev/%", name);
-		devname = name;
-	}
-	else
-	{
-		snprintf(path, sizeof(path), "%", name);
-		devname++;
-	}
-	device = _device_v4l2(devices, fd, path, devname);
+	device = _device_v4l2(devices, fd, path, name);
 	if (device != NULL)
 	{
 		json_array_append_new(devices, device);
@@ -262,7 +249,9 @@ static int _media_video(void *arg, Media_t *media, struct media_entity_desc *ent
 	}
 	if ((entity->type & MEDIA_ENT_TYPE_MASK) == MEDIA_ENT_T_V4L2_SUBDEV)
 	{
-		device = _device_subv4l2(devices, entity->dev.major, entity->dev.minor, entity->name, entity->type);
+		char path[32];
+		int devfd = _dev_openchar(entity->dev.major, entity->dev.minor, path, sizeof(path));
+		device = _device_subv4l2(devices, devfd, path, entity->name, entity->type);
 		smedia_enumlinks(media, entity, _device_links, device);
 	}
 	if (device != NULL)
@@ -306,8 +295,11 @@ static int _devices_append(json_t *devices, json_t *device)
 }
 
 #ifdef HAVE_LIBDRM
-static int _drm_device(void *arg, const char *name, int fd)
+static int _drm_device(void *arg, int fd, const char *path, const char *name)
 {
+	static int numdisplay = 0;
+	if (numdisplay > 9)
+		return -1;
 	json_t *devices = (json_t *)arg;
 	Display_t *disp = sdrm_create2(fd, name, device_output, NULL);
 	if (disp)
@@ -316,7 +308,7 @@ static int _drm_device(void *arg, const char *name, int fd)
 }
 #endif
 
-static int _media_device(void *arg, const char *name, int fd)
+static int _media_device(void *arg, int fd, const char *path, const char *name)
 {
 	json_t *devices = (json_t *)arg;
 	json_t *mediadevices = json_array();
@@ -431,7 +423,7 @@ int main(int argc, char *const argv[])
 			err("media %s not found %m", media);
 			return -1;
 		}
-		_media_device(devices, media, fd);
+		_media_device(devices, fd, media, media);
 	}
 	if (video)
 	{
@@ -441,7 +433,7 @@ int main(int argc, char *const argv[])
 			err("video %s not found %m", video);
 			return -1;
 		}
-		_video_device(devices, video, fd);
+		_video_device(devices, fd, video, video);
 	}
 #ifdef HAVE_LIBDRM
 	if (drm == NULL)
@@ -454,7 +446,7 @@ int main(int argc, char *const argv[])
 			err("drm %s not found %m", drm);
 			return -1;
 		}
-		_drm_device(devices, drm, fd);
+		_drm_device(devices, fd, drm, drm);
 	}
 #endif
 	json_dump_file(devices, output, JSON_INDENT(2));
