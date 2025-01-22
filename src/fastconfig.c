@@ -164,13 +164,13 @@ static json_t * _device_subv4l2(json_t *devices, int devfd, const char *path, co
 	switch (type)
 	{
 	case MEDIA_ENT_T_V4L2_SUBDEV_SENSOR:
-		json_object_set_new(device, "type", json_string("sensor"));
+		json_object_set_new(device, "type", json_string("subv4l_sensor"));
 	break;
 	case MEDIA_ENT_T_V4L2_SUBDEV_FLASH:
-		json_object_set_new(device, "type", json_string("flash"));
+		json_object_set_new(device, "type", json_string("subv4l_flash"));
 	break;
 	case MEDIA_ENT_T_V4L2_SUBDEV_LENS:
-		json_object_set_new(device, "type", json_string("lens"));
+		json_object_set_new(device, "type", json_string("subv4l_lens"));
 	break;
 	}
 #else
@@ -360,6 +360,8 @@ static int _media_device(void *arg, int fd, const char *path, const char *name)
 		if (subdevices != NULL)
 			json_object_set_new(device,"subdevice", subdevices);
 		if (!strcmp("v4l2", json_string_value(json_object_get(device, "type"))))
+			_devices_append(devices, device);
+		if (!strcmp("subv4l", json_string_value(json_object_get(device, "type"))))
 			_devices_append(devices, device);
 	}
 	return 0;
