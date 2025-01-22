@@ -536,8 +536,9 @@ int main(int argc, char * const argv[])
 	transferdev = config_createdevice(transfer, configfile, fastVideoDevice_ops);
 	if (!transferdev || !transferdev->ops)
 	{
-		err("transfer not available");
-		return -1;
+		transferdev = calloc(1, sizeof(*transferdev));
+		transferdev->config = spassthrough_createconfig();
+		transferdev->ops = &spassthrough_ops;
 	}
 #else
 	FastVideoDevice_t *transferdev = NULL;
