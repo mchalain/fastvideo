@@ -3,7 +3,11 @@
 #include <unistd.h>
 #include <stdarg.h>
 
+#ifdef HAVE_NCURSES
 #include <ncurses.h>
+#else
+#define WINDOW void
+#endif
 #include <jansson.h>
 
 #include "log.h"
@@ -77,6 +81,8 @@ struct app_s
 
 #define MODE_NCURSES 0x0001
 int g_mode = 0;
+
+#ifdef HAVE_NCURSES
 /*********************
  * env_t API for ncurses
  */
@@ -127,7 +133,7 @@ env_t _ncurses_env =
 	.getc = _ncurses_getc,
 	.closewindow = _ncurses_closewindow,
 };
-
+#endif
 /*********************
  * env_t API for simple
  */
@@ -613,6 +619,7 @@ int main(int argc, char * const argv[])
 
 	app.client = client_create(serverpath);
 	app.env = &_simple_env;
+#ifdef HAVE_NCURSES
 	if (g_mode & MODE_NCURSES)
 	{
 		initscr();
@@ -621,6 +628,7 @@ int main(int argc, char * const argv[])
 		noecho();
 		app.env = &_ncurses_env;
 	}
+#endif
 	client_attach_receive(app.client, _client_receive, &app);
 	const char cmd_capabilities[] = "{\"cmd\":\"capabilities\",\"data\":{\"all\":true}}";
 	if (client_request(app.client, (void*)cmd_capabilities, sizeof(cmd_capabilities) - 1) < 0)
