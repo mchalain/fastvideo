@@ -18,6 +18,9 @@ extern EGLNative_t *eglnative_drm;
 #ifdef HAVE_X11
 extern EGLNative_t *eglnative_x11;
 #endif
+#ifdef HAVE_WAYLAND_EGL
+extern EGLNative_t *eglnative_wayland;
+#endif
 
 typedef struct EGL_s EGL_t;
 struct EGL_s
@@ -71,6 +74,9 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 #ifdef HAVE_X11
 		eglnative_x11,
 #endif
+#ifdef HAVE_WAYLAND_EGL
+		eglnative_wayland,
+#endif
 		NULL,
 	};
 	EGLNative_t *native = natives[0];
@@ -86,6 +92,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 			}
 		}
 	}
+	warn("segl: native %s", native->name);
 	ndisplay = native->display(config->device);
 	if (ndisplay == NULL)
 		return NULL;
@@ -97,12 +104,14 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	if (!eglInitialize(eglDisplay, &major, &minor))
 	{
 		err("segl: failed to initialize");
+		native->destroy(ndisplay);
 		return NULL;
 	}
 
 	if (!eglBindAPI(EGL_OPENGL_ES_API))
 	{
 		err("segl: failed to bind api EGL_OPENGL_ES_API");
+		native->destroy(ndisplay);
 		return NULL;
 	}
 #ifndef GLSLV300
@@ -124,6 +133,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	if (!eglChooseConfig(eglDisplay, config_attribs, &eglConfig, 1, &num_config))
 	{
 		err("segl: failed to choose config: %d", num_config);
+		native->destroy(ndisplay);
 		return NULL;
 	}
 
@@ -136,6 +146,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	if (eglContext == NULL)
 	{
 		err("segl: failed to create context");
+		native->destroy(ndisplay);
 		return NULL;
 	}
 
@@ -143,6 +154,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	if (eglSurface == EGL_NO_SURFACE)
 	{
 		err("segl: failed to create egl surface");
+		native->destroy(ndisplay);
 		return NULL;
 	}
 	eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext);
@@ -165,28 +177,33 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	eglCreateImageKHR = (void *) eglGetProcAddress("eglCreateImageKHR");
 	if(eglCreateImageKHR == NULL)
 	{
+		native->destroy(ndisplay);
 		return NULL;
 	}
 	eglDestroyImageKHR = (void *) eglGetProcAddress("eglDestroyImageKHR");
 	if(eglDestroyImageKHR == NULL)
 	{
+		native->destroy(ndisplay);
 		return NULL;
 	}
 #if defined(EGL_MESA_image_dma_buf_export)
 	eglExportDMABUFImageQueryMESA = (void *) eglGetProcAddress("eglExportDMABUFImageQueryMESA");
 	if(eglExportDMABUFImageQueryMESA == NULL)
 	{
+		native->destroy(ndisplay);
 		return NULL;
 	}
 	eglExportDMABUFImageMESA = (void *) eglGetProcAddress("eglExportDMABUFImageMESA");
 	if(eglExportDMABUFImageMESA == NULL)
 	{
+		native->destroy(ndisplay);
 		return NULL;
 	}
 #endif
 	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
 	if(glEGLImageTargetTexture2DOES == NULL)
 	{
+		native->destroy(ndisplay);
 		return NULL;
 	}
 #endif
