@@ -29,4 +29,9 @@
 	"type":"gpu",
 	"native":"x11",
 	"end":true
+},{
+	"name":"wayland",
+	"type":"gpu",
+	"native":"wayland",
+	"end":true
 }]

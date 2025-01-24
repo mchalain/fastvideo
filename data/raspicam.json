@@ -175,6 +175,10 @@
 		"controls":[],
 		"end":true
 	},{
+		"name":"wayland",
+		"type":"gpu",
+		"native":"wayland"
+	},{
 		"name":"gpu",
 		"type":"gpu",
 		"device":"/dev/dri/card0",
