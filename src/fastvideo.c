@@ -289,12 +289,16 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 			FastVideoDevice_t *outtr, FastVideoDevice_t *output)
 {
-	output->ops->start(output->dev);
+	if (output->ops->start(output->dev) == -1)
+		return -1;
 #ifndef DISABLE_TRANSFER
-	outtr->ops->start(outtr->dev);
-	intr->ops->start(intr->dev);
+	if (outtr->ops->start(outtr->dev) == -1)
+		return -1;
+	if (intr->ops->start(intr->dev))
+		return -1;
 #endif
-	input->ops->start(input->dev);
+	if (input->ops->start(input->dev))
+		return -1;
 	int maxfd = 0;
 	int infd = -1;
 	if (input->ops->eventfd)
