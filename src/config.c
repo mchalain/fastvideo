@@ -158,3 +158,51 @@ int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data,
 	fclose(cf);
 	return ret;
 }
+
+int scommon_isnamed(json_t *jdevice, const char *name)
+{
+	json_t *jname = json_object_get(jdevice, "name");
+	if (jname && json_is_array(jname))
+	{
+		int index = 0;
+		json_t *jit = NULL;
+		json_array_foreach(jname, index, jit)
+		{
+			if (jit && json_is_string(jit) && !strcmp(json_string_value(jit),name))
+			{
+				return 1;
+			}
+		}
+	}
+	if (jname && json_is_string(jname) && !strcmp(json_string_value(jname),name))
+		return 1;
+	return 0;
+}
+
+int scommon_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devconfig)
+{
+	if (jconfig && json_is_array(jconfig))
+	{
+		int index = 0;
+		json_t *jdevice = NULL;
+		json_array_foreach(jconfig, index, jdevice)
+		{
+			if (!json_is_object(jdevice))
+				continue;
+			if (scommon_isnamed(jdevice, name))
+			{
+				jconfig = jdevice;
+				break;
+			}
+		}
+	}
+	if (jconfig && json_is_object(jconfig))
+	{
+		if (!scommon_isnamed(jconfig, name))
+			return -1;
+		json_t *definition = json_object_get(jconfig, "definition");
+		if (definition)
+			scommon_loaddefinition(devconfig, definition);
+	}
+	return 0;
+}

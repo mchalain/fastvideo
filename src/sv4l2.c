@@ -1312,7 +1312,10 @@ int sv4l2_start(V4L2_t *dev)
 		}
 	}
 	if (ioctl(dev->fd, VIDIOC_STREAMON, &type) != 0)
+	{
+		err("sv4l2: starting error %m");
 		return -1;
+	}
 	dbg("sv4l2: %s starting", dev->name);
 	return 0;
 }
@@ -1709,6 +1712,34 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 	return ret;
 }
 
+int _v4l2_addsubdevice(V4l2Config_t *config, json_t *subdevice, const char *name)
+{
+	if (subdevice && json_is_array(subdevice))
+	{
+		json_t *field = NULL;
+		int index = 0;
+		json_array_foreach(subdevice, index, field)
+		{
+			if (json_is_object(field))
+			{
+				json_t *jname = json_object_get(field, "name");
+				if (name && json_is_string(jname) &&
+					!strcmp(json_string_value(jname), name))
+				{
+					subdevice = field;
+					break;
+				}
+			}
+		}
+	}
+	if (subdevice && json_is_object(subdevice))
+	{
+		json_t *definition = json_object_get(subdevice, "definition");
+		_v4l2_parsedefinition(definition, config);
+	}
+	return 0;
+}
+
 int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 {
 	json_t *jconfig = entry;
@@ -1722,6 +1753,9 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
 	_v4l2_parsedefinition(definition, config);
+
+	json_t *subdevice = json_object_get(jconfig, "subdevice");
+	_v4l2_addsubdevice(config, subdevice, config->parent.name);
 
 library_end:
 	return 0;

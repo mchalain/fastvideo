@@ -22,11 +22,13 @@
 
 static int all_capabilities_format = 0;
 
-static int _dev_openchar(int major, int minor, char *path, int pathlen)
+static int _dev_formatcdev_devfs(int major, int minor, char *path, int pathlen)
 {
-#if 0
-	snprintf(path, pathlen,"/dev/char/%d:%d", major, minor);
-#else
+	return (snprintf(path, pathlen,"/dev/char/%d:%d", major, minor) > 0);
+}
+
+static int _dev_formatcdev_sysfs(int major, int minor, char *path, int pathlen)
+{
 	snprintf(path, pathlen,"/sys/dev/char/%d:%d", major, minor);
 	char target[1024];
 	int ret = readlink(path, target, sizeof(target));
@@ -36,8 +38,14 @@ static int _dev_openchar(int major, int minor, char *path, int pathlen)
 	char *name = strrchr(target, '/');
 	if (name == NULL)
 		return -1;
-	snprintf(path, pathlen, "/dev%s", name);
-#endif
+	return (snprintf(path, pathlen, "/dev%s", name) > 0);
+}
+
+static int _dev_openchar(int major, int minor, char *path, int pathlen)
+{
+	if (access("/dev/char/", 0) == -1 ||
+		_dev_formatcdev_devfs(major, minor, path, pathlen))
+		_dev_formatcdev_sysfs(major, minor, path, pathlen);
 	dbg("try %s", path);
 	int devfd = open(path, O_RDWR);
 	if (devfd < 0)
