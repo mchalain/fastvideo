@@ -34,4 +34,9 @@
 	"type":"gpu",
 	"native":"wayland",
 	"end":true
+},{
+	"name":"offscreen",
+	"type":"gpu",
+	"native":"offscreen",
+	"end":true
 }]

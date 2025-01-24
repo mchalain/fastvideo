@@ -12,6 +12,7 @@
 #include "segl.h"
 #include "log.h"
 
+extern EGLNative_t *eglnative_offscreen;
 #ifdef HAVE_GBM
 extern EGLNative_t *eglnative_drm;
 #endif
@@ -82,6 +83,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 #ifdef HAVE_WAYLAND_EGL
 		eglnative_wayland,
 #endif
+		eglnative_offscreen,
 		NULL,
 	};
 	EGLNative_t *native = natives[0];
@@ -99,8 +101,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	}
 	warn("segl: native %s", native->name);
 	ndisplay = native->display(config->device);
-	if (ndisplay == NULL)
-		return NULL;
+
 	EGLNativeWindowType nwindow = native->createwindow(ndisplay, config->parent.width, config->parent.height, "segl");
 
 	EGLDisplay eglDisplay = eglGetDisplay(ndisplay);
