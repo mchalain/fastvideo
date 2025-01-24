@@ -1,7 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <fcntl.h> 
+#include <fcntl.h>
 #include <errno.h>
 
 #include <GLES2/gl2.h>
@@ -9,9 +9,9 @@
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
-#include <drm/drm.h>
-#include <drm/drm_mode.h>
-#include <drm/drm_fourcc.h>
+#include <drm.h>
+#include <drm_mode.h>
+#include <drm_fourcc.h>
 #include <gbm.h>
 
 #include "segl.h"
@@ -86,7 +86,7 @@ static int init_drm(const char *device)
 
 	drm.fd = open(device, O_RDWR);
 	dbg("segl: open %s",device);
-	
+
 	if (drm.fd < 0) {
 		err("segl: could not open drm device %s", device);
 		return -1;
@@ -218,7 +218,7 @@ static EGLNativeDisplayType native_display(const char *device)
 		device = "/dev/dri/card0";
 	if (init_drm(device))
 	{
-		return NULL;
+		return (EGLNativeDisplayType)NULL;
 	}
 	gbm.dev = gbm_create_device(drm.fd);
 
@@ -235,7 +235,7 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 			GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 	if (!gbm.surface) {
 		err("segl: failed to create gbm surface");
-		return -1;
+		return (EGLNativeWindowType)NULL;
 	}
 
 	return (EGLNativeWindowType) gbm.surface;

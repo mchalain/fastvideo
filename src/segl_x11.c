@@ -72,9 +72,8 @@ static int native_sync(EGLNativeWindowType native_win)
 	return 0;
 }
 
-static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLuint width, GLuint height, const GLchar *name)
+static EGLNativeWindowType native_createwindow(EGLNativeDisplayType native_display, GLuint width, GLuint height, const GLchar *name)
 {
-	
 	Window root = DefaultRootWindow(display);
 
 	XSetWindowAttributes swa;
