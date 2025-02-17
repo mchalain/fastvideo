@@ -12,11 +12,6 @@
 #include "log.h"
 #include "segl.h"
 
-#include <wayland-client.h>
-#include <wayland-server.h>
-#include <wayland-client-protocol.h>
-#include <wayland-egl.h>
-
 #ifndef TRUE
 #define TRUE GL_TRUE
 #define FALSE GL_FALSE
