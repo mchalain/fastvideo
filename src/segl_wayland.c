@@ -160,7 +160,6 @@ static void registry_add_object(void* data, struct wl_registry* registry, uint32
 	struct native_context_s *context = data;
 	if (!strcmp(interface, wl_compositor_interface.name))
 	{
-dbg("%s %d", __FILE__, __LINE__);
 		context->compositor = wl_registry_bind(context->registry, name, &wl_compositor_interface, 1);
 		if (context->compositor == NULL)
 			err("segl: compositor registry error %m");
@@ -168,7 +167,6 @@ dbg("%s %d", __FILE__, __LINE__);
 #ifdef WL_SHELL
 	else if (!strcmp(interface, wl_shell_interface.name))
 	{
-dbg("%s %d", __FILE__, __LINE__);
 		context->shell = wl_registry_bind(context->registry, name, &wl_shell_interface, 1);
 		if (context->shell == NULL)
 			err("segl: shell registry error %m");
@@ -177,13 +175,12 @@ dbg("%s %d", __FILE__, __LINE__);
 #ifdef XDG_WM_BASE
 	else if (!strcmp(interface, xdg_wm_base_interface.name))
 	{
-dbg("%s %d", __FILE__, __LINE__);
 		context->xdg_wm_base = wl_registry_bind(context->registry, name, &xdg_wm_base_interface, 1);
 		if (context->xdg_wm_base == NULL)
 			err("segl: xdg_wm_base registry error %m");
 	}
 #endif
-dbg("%s %d %s", __FILE__, __LINE__, interface);
+	dbg("segl: registry objects %s", interface);
 }
 
 static void registry_remove_object(void* data, struct wl_registry* registry, uint32_t name)
@@ -218,6 +215,15 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType native_displ
 
 	g_context.surface = wl_compositor_create_surface(g_context.compositor);
 
+#ifdef WL_SHELL
+	if (g_context.shell)
+	{
+		g_context.shell_surface = wl_shell_get_shell_surface(g_context.shell, g_context.surface);
+		wl_shell_surface_add_listener(g_context.shell_surface, &shell_surface_listener, &g_context);
+		wl_shell_surface_set_toplevel(g_context.shell_surface);
+	}
+	else
+#endif
 #ifdef XDG_WM_BASE
 	if (g_context.xdg_wm_base)
 	{
@@ -230,15 +236,11 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType native_displ
 		xdg_toplevel_set_title(g_context.xdg_toplevel, name);
 		xdg_toplevel_add_listener(g_context.xdg_toplevel, &xdg_toplevel_listener, &g_context);
 	}
+	else
 #endif
-#ifdef WL_SHELL
-	if (g_context.shell)
 	{
-		g_context.shell_surface = wl_shell_get_shell_surface(g_context.shell, g_context.surface);
-		wl_shell_surface_add_listener(g_context.shell_surface, &shell_surface_listener, &g_context);
-		wl_shell_surface_set_toplevel(g_context.shell_surface);
+		err("segl: surface not found");
 	}
-#endif
 	wl_surface_commit(g_context.surface);
 
 	g_context.egl_window = wl_egl_window_create(g_context.surface, width, height);
