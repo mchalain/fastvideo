@@ -11,6 +11,7 @@
 #include "sv4l2.h"
 #include "segl.h"
 #include "sdrm.h"
+static json_t *g_jconfig = NULL;
 
 int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 {
@@ -83,7 +84,7 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 }
 
 static const char unknown_str[] = "unknown";
-static int main_parseconfigdevice(json_t *jconfig, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data)
+static int main_parseconfigdevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data)
 {
 	int ret = -1;
 	json_t *jtype = NULL;
@@ -102,7 +103,7 @@ static int main_parseconfigdevice(json_t *jconfig, int (*loaddevice)(void *data,
 		{
 			if (jit && json_is_string(jit))
 			{
-				ret = loaddevice(data, json_string_value(jit), type, jconfig);
+				ret = cb(data, json_string_value(jit), type, jconfig);
 				if (ret == 0)
 					break;
 			}
@@ -110,9 +111,69 @@ static int main_parseconfigdevice(json_t *jconfig, int (*loaddevice)(void *data,
 	}
 	if (jname && json_is_string(jname))
 	{
-		ret = loaddevice(data, json_string_value(jname), type, jconfig);
+		ret = cb(data, json_string_value(jname), type, jconfig);
 	}
 	return ret;
+}
+
+static int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data)
+{
+	int ret = -1;
+	if (json_is_array(jconfig))
+	{
+		int index = 0;
+		json_t *jdevice = NULL;
+		json_array_foreach(jconfig, index, jdevice)
+		{
+			if (!json_is_object(jdevice))
+				continue;
+			ret = main_parseconfigdevice(jdevice, cb, data);
+			if (ret == 0)
+				break;
+		}
+	}
+	else if (json_is_object(jconfig))
+	{
+		ret = main_parseconfigdevice(jconfig, cb, data);
+	}
+	return ret;
+}
+
+json_t *config_getdevices(json_t *jconfig)
+{
+	if (json_is_object(jconfig))
+	{
+		json_t *devices = json_object_get(jconfig, "devices");
+		if (devices)
+			jconfig = devices;
+	}
+	return jconfig;
+}
+
+struct _common_getdevice_s
+{
+	const char *name;
+	json_t *entry;
+};
+static int _common_finddevice(void *data, const char *name, const char *type, void *config)
+{
+	int ret = -1;
+	struct _common_getdevice_s *search = data;
+	if (scommon_isnamed(config, search->name))
+	{
+		search->entry = config;
+		ret = 0;
+	}
+	return ret;
+}
+
+json_t *scommon_getdevice(const char *name)
+{
+	struct _common_getdevice_s search = {0};
+	search.name = name;
+	if (g_jconfig)
+		config_loaddevice(g_jconfig, _common_finddevice, &search);
+	return	search.entry;
 }
 
 int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data)
@@ -132,29 +193,9 @@ int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data,
 		err("config %s:%d error %s", configfile, error.line, error.text);
 		return -1;
 	}
-	if (json_is_object(jconfig))
-	{
-		json_t *devices = json_object_get(jconfig, "devices");
-		if (devices)
-			jconfig = devices;
-	}
-	if (json_is_array(jconfig))
-	{
-		int index = 0;
-		json_t *jdevice = NULL;
-		json_array_foreach(jconfig, index, jdevice)
-		{
-			if (!json_is_object(jdevice))
-				continue;
-			ret = main_parseconfigdevice(jdevice, loaddevice, data);
-			if (ret == 0)
-				break;
-		}
-	}
-	else if (json_is_object(jconfig))
-	{
-		ret = main_parseconfigdevice(jconfig, loaddevice, data);
-	}
+	jconfig = config_getdevices(jconfig);
+	ret = config_loaddevice(jconfig, loaddevice, data);
+	g_jconfig = jconfig;
 	fclose(cf);
 	return ret;
 }

@@ -199,7 +199,7 @@ V4L2_t *sv4l2_subdev_create2(int ctrlfd, V4l2Config_t *config)
 	return subdev;
 }
 
-V4L2_t *sv4l2_subdev_create(V4l2Config_t *config)
+V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Config_t *config)
 {
 	int ctrlfd = open(config->device, O_RDWR, 0);
 	if (ctrlfd < 0)
@@ -225,7 +225,7 @@ DeviceConf_t * sv4l2_subdev_createconfig()
 	devconfig = calloc(1, sizeof(V4l2Config_t));
 	devconfig->device = sv4l2_subdev_defaultdevice;
 #ifdef HAVE_JANSSON
-	devconfig->parent.ops.loadconfiguration = sv4l2_loadjsonconfiguration;
+	devconfig->parent.ops.loadconfiguration = sv4l2_subdev_loadjsonconfiguration;
 #endif
 	return (DeviceConf_t *)devconfig;
 }

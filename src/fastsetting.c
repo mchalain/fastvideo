@@ -14,6 +14,7 @@
 #include "log.h"
 #include "daemonize.h"
 #include "sv4l2.h"
+#include "sv4l2_subdev.h"
 #include "spassthrough.h"
 #include "sdrm.h"
 #include "segl.h"
@@ -71,6 +72,21 @@ FastVideoDevice_ops_t sv4l2_ops = {
 	.dequeue = (FastVideoDevice_dequeue_t)sv4l2_dequeue,
 	.queue = (FastVideoDevice_queue_t)sv4l2_queue,
 	.destroy = (FastVideoDevice_destroy_t)sv4l2_destroy,
+};
+FastVideoDevice_ops_t subdev_ops = {
+	.name = "subv4l",
+	.createconfig = sv4l2_subdev_createconfig,
+	.create = (FastVideoDevice_create_t)sv4l2_subdev_create,
+	.duplicate = NULL,
+	.loadsettings = (FastVideoDevice_loadsettings_t)sv4l2_loadsettings,
+	.capabilities = (FastVideoDevice_capabilities_t)sv4l2_subdev_capabilities,
+	.requestbuffer = NULL,
+	.eventfd = (FastVideoDevice_eventfd_t)sv4l2_fd,
+	.start = NULL,
+	.stop = NULL,
+	.dequeue = NULL,
+	.queue = NULL,
+	.destroy = (FastVideoDevice_destroy_t)sv4L2_subdev_destroy,
 };
 #ifdef SDVB
 FastVideoDevice_ops_t sdvb_ops = {
@@ -151,6 +167,7 @@ int _createdevices(void *data, const char *name, const char *type, void *config)
 	FastVideoDevice_ops_t *fastVideoDevice_ops[] =
 	{
 		&sv4l2_ops,
+		&subdev_ops,
 #ifdef SDVB
 		&sdvb_ops,
 #endif

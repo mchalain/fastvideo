@@ -7,6 +7,7 @@
 #include "config.h"
 #include "sv4l2.h"
 
+DeviceConf_t * sv4l2_subdev_createconfig();
 /**
  * @brief create a video subdevice and check capabilities
  *
@@ -14,7 +15,7 @@
  *
  * @return the new obejct or NULL
  */
-V4L2_t *sv4l2_subdev_create(V4l2Config_t *config);
+V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Config_t *config);
 V4L2_t *sv4l2_subdev_create2(int ctrlfd, V4l2Config_t *config);
 
 /**
