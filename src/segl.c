@@ -40,6 +40,10 @@ struct EGL_s
 	int nbuffers;
 };
 
+#ifndef GL_TEXTURE_EXTERNAL_OES
+#define GL_TEXTURE_EXTERNAL_OES GL_TEXTURE_2D;
+#endif
+
 #ifndef EGL_KHR_image
 #error "this version of EGL doesn't support KHR Image"
 #endif
@@ -233,7 +237,20 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	return dev;
 }
 
-static int link_texturedma(EGL_t *dev, int dma_fd, size_t size)
+static GLuint texture_create(EGL_t *dev, GLenum textype)
+{
+	GLuint dma_texture;
+	glGenTextures(1, &dma_texture);
+
+	glBindTexture(textype, dma_texture);
+	glTexParameteri(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	return dma_texture;
+}
+
+static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t size)
 {
 	uint32_t stride = size / dev->config->parent.height;
 	EGLImageKHR dma_image;
@@ -259,26 +276,13 @@ static int link_texturedma(EGL_t *dev, int dma_fd, size_t size)
 		err("segl: Image creation error");
 		return -1;
 	}
-	GLuint dma_texture;
-	glGenTextures(1, &dma_texture);
-
-#ifdef GLSLV300
-	GLenum textype = GL_TEXTURE_2D;
-#else
-	GLenum textype = GL_TEXTURE_EXTERNAL_OES;
-#endif
-	glBindTexture(textype, dma_texture);
-	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glEGLImageTargetTexture2DOES(textype, dma_image);
-	eglDestroyImageKHR(dev->egldisplay, dma_image);
 
 	dev->buffers[dev->nbuffers].size = size;
 	dev->buffers[dev->nbuffers].pitch = stride;
 	dev->buffers[dev->nbuffers].dma_fd = dma_fd;
 	dev->buffers[dev->nbuffers].dma_texture = dma_texture;
-	dev->buffers[dev->nbuffers].dma_image = NULL;
-	dev->buffers[dev->nbuffers].textype = textype;
+	dev->buffers[dev->nbuffers].dma_image = dma_image;
+	dev->buffers[dev->nbuffers].textype = GL_TEXTURE_EXTERNAL_OES;
 	dev->nbuffers++;
 
 	return 0;
@@ -298,7 +302,12 @@ int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 			size_t size = va_arg(ap, size_t);
 			for (int i = 0; i < ntargets; i++)
 			{
-				ret = link_texturedma(dev, targets[i], size);
+				GLuint dma_texture = -1;
+				dma_texture = texture_create(dev, GL_TEXTURE_EXTERNAL_OES);
+				ret = texturedma_link(dev, dma_texture, targets[i], size);
+				glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, dev->buffers[i].dma_image);
+				eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
+				dev->buffers[i].dma_image = 0;
 				if (ret)
 					break;
 			}
