@@ -58,11 +58,6 @@ PFNEGLEXPORTDMABUFIMAGEMESAPROC eglExportDMABUFImageMESA = NULL;
 PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
 PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
 #endif
-EGLint pbufferAttribs[] = {
-	EGL_WIDTH, 1920,
-	EGL_HEIGHT, 720,
-	EGL_NONE,
-};
 
 EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *config)
 {
@@ -163,8 +158,14 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	}
 	else
 	{
-		pbufferAttribs[1] = config->parent.width;
-		pbufferAttribs[3] = config->parent.height;
+		EGLint pbufferAttribs[] = {
+			EGL_WIDTH, config->parent.width,
+			EGL_HEIGHT, config->parent.height,
+			EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
+			EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
+			EGL_NONE,
+		};
+
 		eglSurface = eglCreatePbufferSurface(eglDisplay, eglConfig, pbufferAttribs);
 	}
 	if (eglSurface == EGL_NO_SURFACE)
