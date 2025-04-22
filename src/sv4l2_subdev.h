@@ -50,7 +50,7 @@ uint32_t sv4l2_subdev_getfmtbus(V4L2_t *subdev, int(*fmtbus)(void *arg, struct v
  *
  * @param subdev the instance of the object
  */
-void sv4L2_subdev_destroy(V4L2_t *subdev);
+void sv4l2_subdev_destroy(V4L2_t *subdev);
 
 #ifdef HAVE_JANSSON
 int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry);

@@ -213,8 +213,9 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 	return subdev;
 }
 
-void sv4L2_subdev_destroy(V4L2_t *subdev)
+void sv4l2_subdev_destroy(V4L2_t *subdev)
 {
+	dbg("sv4l2: subdev %s destroying", subdev->name);
 	close(subdev->fd);
 	free(subdev);
 }

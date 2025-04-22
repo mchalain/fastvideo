@@ -86,7 +86,7 @@ FastVideoDevice_ops_t subdev_ops = {
 	.stop = NULL,
 	.dequeue = NULL,
 	.queue = NULL,
-	.destroy = (FastVideoDevice_destroy_t)sv4L2_subdev_destroy,
+	.destroy = (FastVideoDevice_destroy_t)sv4l2_subdev_destroy,
 };
 #ifdef SDVB
 FastVideoDevice_ops_t sdvb_ops = {
