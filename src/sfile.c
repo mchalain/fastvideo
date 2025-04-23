@@ -21,7 +21,8 @@ typedef struct File_s File_t;
 struct File_s
 {
 	const char *path;
-	int fd;
+	void *ctx;
+	File_ops_t *ops;
 	device_type_e type;
 	uint32_t fourcc;
 	uint32_t width;
@@ -35,6 +36,7 @@ struct File_s
 
 File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
 {
+	File_ops_t *ops = &_passthrough_ops;
 	if (type == device_transfer)
 	{
 		err("sfile: %s bad device type", config->parent.name);
@@ -96,15 +98,16 @@ File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *co
 		return NULL;
 	}
 
-	int fd = openat(rootfd, filename, mode, 0644);
-	if (fd < 0)
+	void *ctx = ops->open(rootfd, filename, mode);
+	if (ctx == NULL)
 	{
 		err("file \"%s\" opening error %m", filename);
 		return NULL;
 	}
 	close(rootfd);
 	File_t *dev = calloc(1, sizeof(*dev));
-	dev->fd = fd;
+	dev->ctx = ctx;
+	dev->ops = ops;
 	dev->size = fsize;
 	dev->type = type;
 	dev->fourcc = config->parent.fourcc;
@@ -172,27 +175,13 @@ int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 
 int sfile_fd(File_t *dev)
 {
-	return dev->fd;
+	return dev->ops->fd(dev);
 }
 
 int sfile_start(File_t *dev)
 {
 	dev->lastbufferid = 0;
-	if (dev->type & device_output)
-	{
-		switch (dev->fourcc)
-		{
-			case FOURCC('R','G', 'B', 'A'):
-				dprintf(dev->fd, "P7 WIDTH %d HEIGHT %d DEPTH %d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR", dev->width, dev->height, dev->stride / dev->width);
-			break;
-			case FOURCC('J','P','E','G'):
-			case FOURCC('M','J','P','G'):
-			break;
-			default:
-			break;
-		}
-	}
-	else
+	if (dev->type & device_input)
 	{
 		dbg("start buffers enqueuing");
 		for (int i = 0; i < dev->nbuffers; i++)
@@ -245,7 +234,7 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
 			buffer->mem = mmap(NULL, buffer->size, PROT_READ, MAP_SHARED, buffer->dma_buf, 0 );
 		}
-		ssize_t ret = write(dev->fd, buffer->mem, bytesused);
+		ssize_t ret = dev->ops->write(dev, buffer->mem, bytesused);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
@@ -268,7 +257,7 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
 			buffer->mem = mmap(NULL, buffer->size, PROT_WRITE, MAP_SHARED, buffer->dma_buf, 0 );
 		}
-		ssize_t ret = read(dev->fd, buffer->mem, bytesused);
+		ssize_t ret = dev->ops->read(dev, buffer->mem, bytesused);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
@@ -287,7 +276,7 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 
 void sfile_destroy(File_t *dev)
 {
-	close(dev->fd);
+	dev->ops->close(dev);
 	if (dev->nbuffers > 0)
 		free(dev->buffers);
 	free(dev);

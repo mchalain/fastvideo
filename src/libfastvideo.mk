@@ -3,6 +3,7 @@ fastvideo_SOURCES+=sv4l2.c
 fastvideo_SOURCES+=sv4l2_subdev.c
 fastvideo_SOURCES-$(DVB)+=sdvb.c
 fastvideo_SOURCES+=sfile.c
+fastvideo_SOURCES+=sfile_passthrough.c
 fastvideo_SOURCES+=smedia.c
 fastvideo_SOURCES-$(HAVE_JANSSON)+=config.c
 fastvideo_SOURCES-$(HAVE_LIBDRM)+=sdrm.c

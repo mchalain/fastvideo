@@ -41,4 +41,23 @@ int sfile_loadjsonconfiguration(void *arg, void *entry);
 #else
 # define sfile_loadconfiguration NULL
 #endif
+
+typedef void *(*File_ops_open_t)(int atfd, const char *name, int mode);
+typedef int (*File_ops_fd_t)(File_t *dev);
+typedef ssize_t (*File_ops_read_t)(File_t *dev, void *mem, size_t size);
+typedef ssize_t (*File_ops_write_t)(File_t *dev, void *mem, size_t size);
+typedef void (*File_ops_close_t)(File_t *dev);
+
+typedef struct File_ops_s File_ops_t;
+struct File_ops_s
+{
+	const char *name;
+	File_ops_open_t open;
+	File_ops_fd_t fd;
+	File_ops_read_t read;
+	File_ops_write_t write;
+	File_ops_close_t close;
+};
+extern File_ops_t _passthrough_ops;
+
 #endif
