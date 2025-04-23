@@ -1251,7 +1251,7 @@ V4L2_t *sv4l2_create(const char *devicename, device_type_e type, V4l2Config_t *c
 	return dev;
 }
 
-V4L2_t *sv4l2_duplicate(V4L2_t *dev)
+V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 {
 	V4L2_t *dup = NULL;
 	if ((dev->mode & (MODE_OUTPUT | MODE_CAPTURE)) !=  (MODE_OUTPUT | MODE_CAPTURE))
@@ -1264,7 +1264,7 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev)
 		return NULL;
 	memcpy(dup, dev, sizeof(*dup));
 	enum v4l2_buf_type type = -1;
-	if (_sv4l2_prepare(dup->fd, &type, dev->mode, dev->config))
+	if (_sv4l2_prepare(dup->fd, &type, dev->mode, *pconfig))
 	{
 		close(dup->fd);
 		return NULL;

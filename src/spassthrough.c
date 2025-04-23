@@ -53,12 +53,13 @@ void *spassthrough_create(const char *devicename, device_type_e type, DeviceConf
 	dev->name = name1_str;
 	return dev;
 }
-void *spassthrough_duplicate(Passthrough_t *dev)
+void *spassthrough_duplicate(Passthrough_t *dev, DeviceConf_t **pconfig)
 {
 	Passthrough_t *dup = calloc(1, sizeof(*dup));
 	dup->name = name2_str;
 	dup->dup = dev;
 	dev->dup = dup;
+	dev->config = *pconfig;
 	return dup;
 }
 int spassthrough_loadsettings(Passthrough_t *dev, void *configentry)

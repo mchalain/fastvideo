@@ -23,7 +23,7 @@
 
 typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
 typedef void *(*FastVideoDevice_create_t)(const char *devicename, device_type_e type, DeviceConf_t *config);
-typedef void *(*FastVideoDevice_duplicate_t)(void *dev);
+typedef void *(*FastVideoDevice_duplicate_t)(void *dev, DeviceConf_t **pconfig);
 typedef int (*FastVideoDevice_loadsettings_t)(void *dev, void *configentry);
 typedef int (*FastVideoDevice_capabilities_t)(void *dev, void *capabilities, int all);
 typedef int (*FastVideoDevice_requestbuffer_t)(void *dev, enum buf_type_e t, ...);
@@ -161,11 +161,12 @@ FastVideoDevice_t *device_duplicate(FastVideoDevice_t *dev)
 		return NULL;
 	}
 	void *ndev = NULL;
-	ndev = dev->ops->duplicate(dev->dev);
+	DeviceConf_t *config = dev->config;
+	ndev = dev->ops->duplicate(dev->dev, &config);
 	if (ndev)
 	{
 		device = calloc(1, sizeof(*device));
-		device->config = dev->config;
+		device->config = config;
 		device->ops = dev->ops;
 		device->dev = ndev;
 	}
@@ -590,7 +591,7 @@ int main(int argc, char * const argv[])
 		err("%s mot duplicated", transferdev->config->name);
 		return -1;
 	}
-	choice_config(transferdev->config, outdev->config);
+	choice_config(transferdevD->config, outdev->config);
 #else
 	FastVideoDevice_t *transferdevD = NULL;
 	choice_config(indev->config, outdev->config);

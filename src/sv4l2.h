@@ -77,7 +77,7 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e type, V4l2Co
  *
  * @return V4L2_t object.
  */
-V4L2_t *sv4l2_duplicate(V4L2_t *dev);
+V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig);
 
 /**
  * @brief select and create a type of buffers.
