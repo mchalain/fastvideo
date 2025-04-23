@@ -7,6 +7,8 @@
 #include "config.h"
 #include "spassthrough.h"
 
+static const char spassthrough[] = "spassthrough";
+
 typedef struct PassBuffer_s PassBuffer_t;
 struct PassBuffer_s
 {
@@ -39,8 +41,10 @@ struct Passthrough_s
 DeviceConf_t * spassthrough_createconfig(void)
 {
 	DeviceConf_t *config = calloc(1, sizeof(*config));
+	config->name = spassthrough;
 	return config;
 }
+
 void *spassthrough_create(const char *devicename, device_type_e type, DeviceConf_t *config)
 {
 	if (type != device_transfer)
@@ -53,6 +57,7 @@ void *spassthrough_create(const char *devicename, device_type_e type, DeviceConf
 	dev->name = name1_str;
 	return dev;
 }
+
 void *spassthrough_duplicate(Passthrough_t *dev, DeviceConf_t **pconfig)
 {
 	Passthrough_t *dup = calloc(1, sizeof(*dup));
@@ -62,10 +67,12 @@ void *spassthrough_duplicate(Passthrough_t *dev, DeviceConf_t **pconfig)
 	dev->config = *pconfig;
 	return dup;
 }
+
 int spassthrough_loadsettings(Passthrough_t *dev, void *configentry)
 {
 	return 0;
 }
+
 static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems, int *dmabufs, size_t size)
 {
 	dev->nbuffers = nmems;
@@ -84,6 +91,7 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 	dev->size = size;
 	return nmems;
 }
+
 int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 {
 	int ret = -1;
@@ -157,18 +165,22 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 	va_end(ap);
 	return ret;
 }
+
 int spassthrough_fd(Passthrough_t *dev)
 {
 	return -1;
 }
+
 int spassthrough_start(Passthrough_t *dev)
 {
 	return 0;
 }
+
 int spassthrough_stop(Passthrough_t *dev)
 {
 	return 0;
 }
+
 int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused)
 {
 	PassBuffer_t *last = dev->fifo;
@@ -188,6 +200,7 @@ int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused)
 		*mem = last->mem;
 	return last->index;
 }
+
 int spassthrough_queue(Passthrough_t *dev, int index, size_t bytesused)
 {
 	dev = dev->dup;
@@ -202,6 +215,7 @@ int spassthrough_queue(Passthrough_t *dev, int index, size_t bytesused)
 	dev->fifo = &dev->buffers[index];
 	return 0;
 }
+
 void spassthrough_destroy(Passthrough_t *dev)
 {
 	free(dev->config);
