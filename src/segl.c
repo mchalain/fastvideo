@@ -340,6 +340,15 @@ int segl_stop(EGL_t *dev)
 	return 0;
 };
 
+void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo)
+{
+	glClearColor(0.5, 0.5, 0.5, 1.0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glprog_run(dev->programs, (int)id);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 int segl_queue(EGL_t *dev, int id, size_t bytesused)
 {
 	if (eglSwapBuffers(dev->egldisplay, dev->eglsurface) == EGL_FALSE)
@@ -353,16 +362,12 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 	}
 	if (dev->curbufferid != -1)
 	{
-		err("segl: device not ready %d", dev->curbufferid);
+		err("segl: device %s not ready %d", dev->config->parent.name, dev->curbufferid);
 		return -1;
 	}
 
-	glClearColor(0.5, 0.5, 0.5, 1.0);
-
-	glprog_run(dev->programs, (int)id);
-
-	dev->curbufferid = (int)id;
-
+	segl_queue_output(dev, id, bytesused, 0);
+	dev->curbufferid = id;
 	return dev->native->flush(dev->native_window);
 }
 

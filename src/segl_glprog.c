@@ -503,7 +503,6 @@ int glprog_run(GLProgram_t *program, int bufid)
 			//return -1;
 		}
 		//glFramebufferTexture2D to disable the texture is an invalid operation
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 	programid++;
 	if (program->next)
