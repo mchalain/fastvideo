@@ -36,6 +36,9 @@ struct File_s
 
 File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
 {
+	const char *start = strchr(filename, ':');
+	if (start)
+		filename = start + 1;
 	File_ops_t *ops = &_passthrough_ops;
 	if (type == device_transfer)
 	{
