@@ -152,6 +152,57 @@ struct FastVideoDevice_s
 	FastVideoDevice_ops_t *ops;
 };
 
+typedef struct FastVideoPipe_s FastVideoPipe_t;
+struct FastVideoPipe_s
+{
+	FastVideoDevice_t *input;
+	FastVideoDevice_t *output;
+};
+
+typedef struct FastVideoList_s FastVideoList_t;
+struct FastVideoList_s
+{
+	void *entity;
+	FastVideoList_t *next;
+	FastVideoList_t *previous;
+	FastVideoList_t *last;
+	int fd;
+};
+
+FastVideoList_t *fastvideolist_append(FastVideoList_t *list, void *device)
+{
+	FastVideoList_t *entry = NULL;
+	entry = calloc(1, sizeof(*entry));
+	entry->entity = device;
+	entry->next = list;
+	if (list == NULL)
+		entry->last = entry;
+	else
+	{
+		list->previous = entry;
+		entry->last = list->last;
+	}
+	return entry;
+}
+
+FastVideoList_t *fastvideolist_insert(FastVideoList_t *list, void *device)
+{
+	FastVideoList_t *entry = NULL;
+	entry = calloc(1, sizeof(*entry));
+	entry->entity = device;
+	if (list)
+	{
+		entry->previous = list->last;
+		list->last->next = entry;
+	}
+	else
+	{
+		list = entry;
+	}
+	list->last = entry;
+	return list;
+}
+
 FastVideoDevice_t *device_duplicate(FastVideoDevice_t *dev)
 {
 	FastVideoDevice_t *device = NULL;
@@ -287,48 +338,26 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 	return 0;
 }
 
-int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
-			FastVideoDevice_t *outtr, FastVideoDevice_t *output)
+int main_loop(FastVideoList_t *pipes)
 {
-	if (output->ops->start(output->dev) == -1)
-		return -1;
-#ifndef DISABLE_TRANSFER
-	if (outtr->ops->start(outtr->dev) == -1)
-		return -1;
-	if (intr->ops->start(intr->dev))
-		return -1;
-#endif
-	if (input->ops->start(input->dev))
-		return -1;
 	int maxfd = 0;
-	int infd = -1;
-	if (input->ops->eventfd)
+	for(FastVideoList_t *entry = pipes; entry != NULL; entry = entry->next)
 	{
-		infd = input->ops->eventfd(input->dev);
-		maxfd = (infd > maxfd)?infd:maxfd;
-	}
-#ifndef DISABLE_TRANSFER
-	int intrfd = -1;
-	if (intr->ops->eventfd)
-	{
-		intrfd = intr->ops->eventfd(intr->dev);
-		maxfd = (intrfd > maxfd)?intrfd:maxfd;
-	}
-	int outtrfd = -1;
-	if (outtr->ops->eventfd)
-	{
-		outtrfd = outtr->ops->eventfd(outtr->dev);
-		maxfd = (outtrfd > maxfd)?outtrfd:maxfd;
-	}
-#else
-	int intrfd = -1;
-	int outtrfd = -1;
-#endif
-	int outfd = -1;
-	if (output->ops->eventfd)
-	{
-		outfd = output->ops->eventfd(output->dev);
-		maxfd = (outfd > maxfd)?outfd:maxfd;
+		FastVideoPipe_t *pipe = entry->entity;
+		if (pipe->output->ops->start(pipe->output->dev) == -1)
+			return -1;
+		if (pipe->output->ops->eventfd)
+		{
+			int fd = pipe->output->ops->eventfd(pipe->output->dev);
+			maxfd = (fd > maxfd)?fd:maxfd;
+		}
+		if (pipe->input->ops->start(pipe->input->dev) == -1)
+			return -1;
+		if (pipe->input->ops->eventfd)
+		{
+			int fd = pipe->input->ops->eventfd(pipe->input->dev);
+			maxfd = (fd > maxfd)?fd:maxfd;
+		}
 	}
 	int timerfd = timerfd_create(CLOCK_REALTIME, 0);
 	struct itimerspec timeout = {
@@ -345,16 +374,21 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 		fd_set wfds;
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
-		if (infd > 0)
-			FD_SET(infd, &rfds);
-		if (intrfd > 0)
-			FD_SET(intrfd, &wfds);
-		if (outtrfd > 0)
-			FD_SET(outtrfd, &rfds);
-		if (outfd > 0)
+		for(FastVideoList_t *entry = pipes; entry != NULL; entry = entry->next)
 		{
-			FD_SET(outfd, &rfds);
-			FD_SET(outfd, &wfds);
+			FastVideoPipe_t *pipe = entry->entity;
+			if (pipe->output->ops->eventfd)
+			{
+				int fd = pipe->output->ops->eventfd(pipe->output->dev);
+				FD_SET(fd, &rfds);
+				FD_SET(fd, &wfds);
+			}
+			if (pipe->input->ops->eventfd)
+			{
+				int fd = pipe->input->ops->eventfd(pipe->input->dev);
+				FD_SET(fd, &rfds);
+				FD_SET(fd, &wfds);
+			}
 		}
 		if (timerfd > 0)
 			FD_SET(timerfd, &rfds);
@@ -379,66 +413,51 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *intr,
 			continue;
 		}
 		ret = 0;
-		if (infd < 0 ||
-			FD_ISSET(infd, &rfds))
+		for(FastVideoList_t *entry = pipes; entry != NULL; entry = entry->next)
 		{
-#ifndef DISABLE_TRANSFER
-			if (main_transferbuffer(input, intr))
-#else
-			if (main_transferbuffer(input, output))
-#endif
+			FastVideoPipe_t *pipe = entry->entity;
+			int infd = -1;
+			if (pipe->input->ops->eventfd)
+				infd = pipe->input->ops->eventfd(pipe->input->dev);
+			if (infd < 0 ||
+				FD_ISSET(infd, &rfds))
 			{
-				killdaemon(NULL);
-				break;
+				ret = main_transferbuffer(pipe->input, pipe->output);
+				if (ret && infd > 0)
+				{
+					killdaemon(NULL);
+					break;
+				}
 			}
-#ifndef DISABLE_TRANSFER
-			ret = 1;
 		}
-		if ((outtrfd < 0 && ret == 1) ||
-			FD_ISSET(outtrfd, &rfds))
+		for(FastVideoList_t *entry = pipes->last; entry != NULL; entry = entry->previous)
 		{
-			if (main_transferbuffer(outtr, output))
+			FastVideoPipe_t *pipe = entry->entity;
+			int outfd = -1;
+			if (pipe->output->ops->eventfd)
+				outfd = pipe->output->ops->eventfd(pipe->output->dev);
+			if (outfd < 0 ||
+				FD_ISSET(outfd, &wfds) ||
+				FD_ISSET(outfd, &rfds))
 			{
-				killdaemon(NULL);
-				break;
+				ret = main_transferbuffer(pipe->output, pipe->input);
+				if (ret && outfd > 0)
+				{
+					killdaemon(NULL);
+					break;
+				}
+				if (!ret && entry == pipes->last)
+					count++;
 			}
-#endif
-			ret = 2;
-		}
-		if ((outfd < 0 && ret == 2) ||
-			FD_ISSET(outfd, &wfds) ||
-			FD_ISSET(outfd, &rfds))
-		{
-#ifndef DISABLE_TRANSFER
-			if (main_transferbuffer(output, outtr))
-#else
-			if (main_transferbuffer(output, input))
-#endif
-			{
-				killdaemon(NULL);
-				break;
-			}
-			count++;
-#ifndef DISABLE_TRANSFER
-			ret = 3;
-		}
-		if ((intrfd < 0 && ret == 3) ||
-			FD_ISSET(intrfd, &wfds))
-		{
-			if (main_transferbuffer(intr, input))
-			{
-				killdaemon(NULL);
-				break;
-			}
-#endif
+
 		}
 	}
-	input->ops->stop(input->dev);
-#ifndef DISABLE_TRANSFER
-	intr->ops->stop(intr->dev);
-	outtr->ops->stop(outtr->dev);
-#endif
-	output->ops->stop(output->dev);
+	for(FastVideoList_t *entry = pipes; entry != NULL; entry = entry->next)
+	{
+		FastVideoPipe_t *pipe = entry->entity;
+		pipe->output->ops->stop(pipe->output->dev);
+		pipe->input->ops->stop(pipe->input->dev);
+	}
 	return 0;
 }
 
@@ -455,6 +474,7 @@ int main(int argc, char * const argv[])
 	unsigned int mode = 0;
 	const char *logfile = "-";
 	const char *cwd = NULL;
+	FastVideoList_t *pipes = NULL;
 
 	int opt;
 	do
@@ -572,6 +592,9 @@ int main(int argc, char * const argv[])
 		dbg("loadsettings");
 		indev->ops->loadsettings(indev->dev, indev->config->entry);
 	}
+	FastVideoPipe_t *pipe = NULL;
+	pipe = calloc(1, sizeof(*pipe));
+	pipe->input = indev;
 
 #ifndef DISABLE_TRANSFER
 	choice_config(indev->config, transferdev->config);
@@ -583,6 +606,8 @@ int main(int argc, char * const argv[])
 		dbg("loadsettings");
 		transferdev->ops->loadsettings(transferdev->dev, transferdev->config->entry);
 	}
+	pipe->output = transferdev;
+	pipes = fastvideolist_insert(pipes, pipe);
 
 	FastVideoDevice_t *transferdevD = NULL;
 	transferdevD = device_duplicate(transferdev);
@@ -591,9 +616,10 @@ int main(int argc, char * const argv[])
 		err("%s mot duplicated", transferdev->config->name);
 		return -1;
 	}
+	pipe = calloc(1, sizeof(*pipe));
+	pipe->input = transferdevD;
 	choice_config(transferdevD->config, outdev->config);
 #else
-	FastVideoDevice_t *transferdevD = NULL;
 	choice_config(indev->config, outdev->config);
 #endif
 
@@ -605,37 +631,33 @@ int main(int argc, char * const argv[])
 		dbg("loadsettings");
 		outdev->ops->loadsettings(outdev->dev, outdev->config->entry);
 	}
+	pipe->output = outdev;
+	pipes = fastvideolist_insert(pipes, pipe);
 
-	int *dma_bufs = {0};
-	size_t size = 0;
-	int nbbufs = 0;
-	if (indev->ops->requestbuffer(indev->dev, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
+	for(FastVideoList_t *entry = pipes; entry != NULL; entry = entry->next)
 	{
-		err("%s dma buffer not allowed", indev->config->name);
-		return -1;
-	}
-#ifndef DISABLE_TRANSFER
-	if (transferdev->ops->requestbuffer(transferdev->dev, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
-	{
-		err("%s dma buffers not linked", transferdev->config->name);
-		return -1;
-	}
-	if (transferdevD->ops->requestbuffer(transferdevD->dev, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
-	{
-		err("%s dma buffer not allowed", transferdevD->config->name);
-		return -1;
-	}
-#endif
-	if (outdev->ops->requestbuffer(outdev->dev, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
-	{
-		err("%s dma buffers not linked", outdev->config->name);
-		return -1;
+		FastVideoPipe_t *pipe = entry->entity;
+		int *dma_bufs = {0};
+		size_t size = 0;
+		int nbbufs = 0;
+		FastVideoDevice_t *input = pipe->input;
+		FastVideoDevice_t *output = pipe->output;
+		if (input->ops->requestbuffer(input->dev, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
+		{
+			err("%s dma buffer not allowed", input->config->name);
+			return -1;
+		}
+		if (output->ops->requestbuffer(output->dev, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
+		{
+			err("%s dma buffers not linked", output->config->name);
+			return -1;
+		}
 	}
 
 	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
 
 	if ((mode & MODE_INITIALIZE) == 0)
-		main_loop(indev, transferdev, transferdevD, outdev);
+		main_loop(pipes);
 
 	killdaemon(pidfile);
 	indev->ops->destroy(indev->dev);
