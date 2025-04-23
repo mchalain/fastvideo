@@ -116,4 +116,5 @@ int glprog_loadjsonconfiguration(void *arg, void *entry);
 #define segl_loadconfiguration NULL
 #endif
 
+extern FastVideoDevice_ops_t segl_ops;
 #endif

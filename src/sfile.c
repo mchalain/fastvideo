@@ -334,3 +334,18 @@ DeviceConf_t * sfile_createconfig()
 #endif
 	return (DeviceConf_t *)devconfig;
 }
+
+FastVideoDevice_ops_t sfile_ops = {
+	.name = "file",
+	.createconfig = sfile_createconfig,
+	.create = (FastVideoDevice_create_t)sfile_create,
+	.duplicate = (FastVideoDevice_duplicate_t)NULL,
+	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)sfile_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)NULL,
+	.start = (FastVideoDevice_start_t)sfile_start,
+	.stop = (FastVideoDevice_stop_t)sfile_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)sfile_dequeue,
+	.queue = (FastVideoDevice_queue_t)sfile_queue,
+	.destroy = (FastVideoDevice_destroy_t)sfile_destroy,
+};

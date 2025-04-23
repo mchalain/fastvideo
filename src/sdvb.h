@@ -40,4 +40,7 @@ int sdvb_loadjsonconfiguration(void *config, void *jconfig);
 #define sdvb_loadsettings NULL
 #define sdvb_loadconfiguration NULL
 #endif
+
+extern FastVideoDevice_ops_t sdvb_ops;
+
 #endif

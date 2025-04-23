@@ -21,6 +21,7 @@
 
 #include "log.h"
 #include "sv4l2.h"
+#include "sv4l2_subdev.h"
 
 /**
  * TODO split this file
@@ -2299,3 +2300,19 @@ int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 }
 
 #endif
+
+FastVideoDevice_ops_t sv4l2_ops = {
+	.name = "v4l2",
+	.createconfig = sv4l2_createconfig,
+	.create = (FastVideoDevice_create_t)sv4l2_create,
+	.duplicate = (FastVideoDevice_duplicate_t)sv4l2_duplicate,
+	.loadsettings = (FastVideoDevice_loadsettings_t)sv4l2_loadsettings,
+	.capabilities = (FastVideoDevice_capabilities_t)sv4l2_capabilities,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)sv4l2_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)sv4l2_fd,
+	.start = (FastVideoDevice_start_t)sv4l2_start,
+	.stop = (FastVideoDevice_stop_t)sv4l2_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)sv4l2_dequeue,
+	.queue = (FastVideoDevice_queue_t)sv4l2_queue,
+	.destroy = (FastVideoDevice_destroy_t)sv4l2_destroy,
+};

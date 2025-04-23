@@ -378,3 +378,19 @@ int sv4l2_subdev_capabilities(V4L2_t *subdev, json_t *capabilities, int all)
 }
 
 #endif
+
+FastVideoDevice_ops_t subdev_ops = {
+	.name = "subv4l",
+	.createconfig = sv4l2_subdev_createconfig,
+	.create = (FastVideoDevice_create_t)sv4l2_subdev_create,
+	.duplicate = NULL,
+	.loadsettings = (FastVideoDevice_loadsettings_t)sv4l2_loadsettings,
+	.capabilities = (FastVideoDevice_capabilities_t)sv4l2_subdev_capabilities,
+	.requestbuffer = NULL,
+	.eventfd = (FastVideoDevice_eventfd_t)sv4l2_fd,
+	.start = NULL,
+	.stop = NULL,
+	.dequeue = NULL,
+	.queue = NULL,
+	.destroy = (FastVideoDevice_destroy_t)sv4l2_subdev_destroy,
+};

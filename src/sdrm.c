@@ -802,3 +802,18 @@ DeviceConf_t * sdrm_createconfig()
 #endif
 	return (DeviceConf_t *)devconfig;
 }
+
+FastVideoDevice_ops_t sdrm_ops = {
+	.name = "screen",
+	.createconfig = sdrm_createconfig,
+	.create = (FastVideoDevice_create_t)sdrm_create,
+	.duplicate = (FastVideoDevice_duplicate_t)NULL,
+	.loadsettings = (FastVideoDevice_loadsettings_t)sdrm_loadsettings,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)sdrm_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)NULL,
+	.start = (FastVideoDevice_start_t)sdrm_start,
+	.stop = (FastVideoDevice_stop_t)sdrm_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)sdrm_dequeue,
+	.queue = (FastVideoDevice_queue_t)sdrm_queue,
+	.destroy = (FastVideoDevice_destroy_t)sdrm_destroy,
+};

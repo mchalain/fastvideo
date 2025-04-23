@@ -44,4 +44,5 @@ int sdrm_loadjsonconfiguration(void *config, void *jconfig);
 #define sdrm_loadconfiguration NULL
 #endif
 
+extern FastVideoDevice_ops_t sdrm_ops;
 #endif

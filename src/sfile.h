@@ -60,4 +60,5 @@ struct File_ops_s
 };
 extern File_ops_t _passthrough_ops;
 
+extern FastVideoDevice_ops_t sfile_ops;
 #endif

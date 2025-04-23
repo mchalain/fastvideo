@@ -221,3 +221,18 @@ void spassthrough_destroy(Passthrough_t *dev)
 	free(dev->config);
 	free(dev);
 }
+
+FastVideoDevice_ops_t spassthrough_ops = {
+	.name = "passthrough",
+	.createconfig = spassthrough_createconfig,
+	.create = (FastVideoDevice_create_t)spassthrough_create,
+	.duplicate = (FastVideoDevice_duplicate_t)spassthrough_duplicate,
+	.loadsettings = (FastVideoDevice_loadsettings_t)spassthrough_loadsettings,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)spassthrough_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)spassthrough_fd,
+	.start = (FastVideoDevice_start_t)spassthrough_start,
+	.stop = (FastVideoDevice_stop_t)spassthrough_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)spassthrough_dequeue,
+	.queue = (FastVideoDevice_queue_t)spassthrough_queue,
+	.destroy = (FastVideoDevice_destroy_t)spassthrough_destroy,
+};

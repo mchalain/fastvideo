@@ -481,3 +481,18 @@ int segl_capabilities(EGL_t *dev, json_t *capabilities, int all)
 }
 
 #endif //HAVE_JANSSON
+
+FastVideoDevice_ops_t segl_ops = {
+	.name = "gpu",
+	.createconfig = segl_createconfig,
+	.create = (FastVideoDevice_create_t)segl_create,
+	.duplicate = (FastVideoDevice_duplicate_t)NULL,
+	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)segl_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)segl_fd,
+	.start = (FastVideoDevice_start_t)segl_start,
+	.stop = (FastVideoDevice_stop_t)segl_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)segl_dequeue,
+	.queue = (FastVideoDevice_queue_t)segl_queue,
+	.destroy = (FastVideoDevice_destroy_t)segl_destroy,
+};

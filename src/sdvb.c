@@ -290,3 +290,18 @@ int sdvb_loadjsonconfiguration(void *arg, void *entry)
 	return 0;
 }
 #endif
+
+FastVideoDevice_ops_t sdvb_ops = {
+	.name = "dvb",
+	.createconfig = sdvb_createconfig,
+	.create = (FastVideoDevice_create_t)sdvb_create,
+	.duplicate = (FastVideoDevice_duplicate_t)NULL,
+	.loadsettings = (FastVideoDevice_loadsettings_t)sdvb_loadsettings,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)sdvb_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)sdvb_fd,
+	.start = (FastVideoDevice_start_t)sdvb_start,
+	.stop = (FastVideoDevice_stop_t)sdvb_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)sdvb_dequeue,
+	.queue = (FastVideoDevice_queue_t)sdvb_queue,
+	.destroy = (FastVideoDevice_destroy_t)sdvb_destroy,
+};

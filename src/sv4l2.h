@@ -233,4 +233,5 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl);
 #define sv4l2_capabilities NULL
 #endif
 
+extern FastVideoDevice_ops_t sv4l2_ops;
 #endif

@@ -57,4 +57,5 @@ int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry);
 int sv4l2_subdev_capabilities(V4L2_t *subdev, json_t *capabilities, int all);
 #endif
 
+extern FastVideoDevice_ops_t subdev_ops;
 #endif
