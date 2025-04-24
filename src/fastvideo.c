@@ -432,6 +432,18 @@ int main(int argc, char * const argv[])
 		err("input not available");
 		return -1;
 	}
+	indev->dev = indev->ops->create(input, device_input, indev->config);
+	if (indev->dev == NULL)
+		return -1;
+	if (indev->ops->loadsettings && indev->config->entry)
+	{
+		dbg("loadsettings");
+		indev->ops->loadsettings(indev->dev, indev->config->entry);
+	}
+
+	FastVideoPipe_t *pipe = NULL;
+	pipe = calloc(1, sizeof(*pipe));
+	pipe->input = indev;
 
 #ifndef DISABLE_TRANSFER
 	FastVideoDevice_t *transferdev = NULL;
@@ -442,39 +454,8 @@ int main(int argc, char * const argv[])
 		transferdev->config = spassthrough_createconfig();
 		transferdev->ops = &spassthrough_ops;
 	}
-#else
-	FastVideoDevice_t *transferdev = NULL;
-#endif
+	choice_config(pipe->input->config, transferdev->config);
 
-	FastVideoDevice_t *outdev = NULL;
-	outdev = config_createdevice(output, configfile, fastVideoDevice_ops);
-	if (!outdev || !outdev->ops)
-	{
-		err("output not available");
-		return -1;
-	}
-
-#ifndef DISABLE_TRANSFER
-	choice_config(indev->config, transferdev->config);
-	choice_config(transferdev->config, outdev->config);
-#else
-	choice_config(indev->config, outdev->config);
-#endif
-
-	indev->dev = indev->ops->create(input, device_input, indev->config);
-	if (indev->dev == NULL)
-		return -1;
-	if (indev->ops->loadsettings && indev->config->entry)
-	{
-		dbg("loadsettings");
-		indev->ops->loadsettings(indev->dev, indev->config->entry);
-	}
-	FastVideoPipe_t *pipe = NULL;
-	pipe = calloc(1, sizeof(*pipe));
-	pipe->input = indev;
-
-#ifndef DISABLE_TRANSFER
-	choice_config(indev->config, transferdev->config);
 	transferdev->dev = transferdev->ops->create(transfer, device_transfer, transferdev->config);
 	if (transferdev->dev == NULL)
 		return -1;
@@ -495,10 +476,16 @@ int main(int argc, char * const argv[])
 	}
 	pipe = calloc(1, sizeof(*pipe));
 	pipe->input = transferdevD;
-	choice_config(transferdevD->config, outdev->config);
-#else
-	choice_config(indev->config, outdev->config);
 #endif
+
+	FastVideoDevice_t *outdev = NULL;
+	outdev = config_createdevice(output, configfile, fastVideoDevice_ops);
+	if (!outdev || !outdev->ops)
+	{
+		err("output not available");
+		return -1;
+	}
+	choice_config(pipe->input->config, outdev->config);
 
 	outdev->dev = outdev->ops->create(output, device_output, outdev->config);
 	if (outdev->dev == NULL)
