@@ -2,6 +2,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <errno.h>
 
 #include "log.h"
 #include "config.h"
@@ -19,6 +20,11 @@ struct PassBuffer_s
 	size_t bytesused;
 	PassBuffer_t *next;
 	PassBuffer_t *previous;
+	enum
+	{
+		PassBuffer_free_e,
+		PassBuffer_fill_e,
+	} state;
 };
 
 static const char name1_str[] = "input";
@@ -184,8 +190,12 @@ int spassthrough_stop(Passthrough_t *dev)
 int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused)
 {
 	PassBuffer_t *last = dev->fifo;
+	errno = EAGAIN;
 	if (last == NULL)
 		return -1;
+	if (last->state == PassBuffer_free_e)
+		return -1;
+	last->state = PassBuffer_free_e;
 	/** the real fifo is useless as the entry is immediately pushed **/
 #if 0
 	while (last->next) last = last->next;
@@ -205,6 +215,7 @@ int spassthrough_queue(Passthrough_t *dev, int index, size_t bytesused)
 {
 	dev = dev->dup;
 	dev->buffers[index].bytesused = bytesused;
+	dev->buffers[index].state = PassBuffer_fill_e;
 #if 0
 	/** prepare fifo's items **/
 	dev->buffers[index].next = dev->fifo;
