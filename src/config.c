@@ -104,7 +104,7 @@ static int main_parseconfigdevice(json_t *jconfig, int (*cb)(void *data, const c
 			if (jit && json_is_string(jit))
 			{
 				ret = cb(data, json_string_value(jit), type, jconfig);
-				if (ret == 0)
+				if (ret >= 0)
 					break;
 			}
 		}
