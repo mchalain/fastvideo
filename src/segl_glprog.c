@@ -762,7 +762,7 @@ int glprog_loadjsonsetting(GLProgram_t *program, void *entry)
 	return 0;
 }
 
-int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jconfig)
+static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jconfig)
 {
 	json_t *disable = json_object_get(jconfig, "disable");
 	if (disable && json_is_boolean(disable) && json_is_true(disable))
@@ -834,18 +834,29 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 		json_array_foreach(jconfig, i, jfield)
 		{
 			EGLConfig_Program_t *config = calloc(1, sizeof(*config));
+			if (_glprog_loadjsonconfiguration(config, jfield))
+			{
+				free(config);
+				continue;
+			}
 			if (first == NULL)
 				first = config;
 			if (previous)
 				previous->next = config;
 			previous = config;
-			_glprog_loadjsonconfiguration(config, jfield);
 		}
 	}
 	else if (jconfig && json_is_object(jconfig))
 	{
-		first = calloc(1, sizeof(*first));
-		_glprog_loadjsonconfiguration(first, jconfig);
+		EGLConfig_Program_t *config = calloc(1, sizeof(*first));
+		if(_glprog_loadjsonconfiguration(config, jconfig))
+		{
+			free(config);
+		}
+		else
+		{
+			first = config;
+		}
 	}
 	if (arg != NULL)
 	{
