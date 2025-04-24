@@ -237,24 +237,27 @@ static GLuint loadShaders(GLenum shadertype, const char *shaderfiles[MAX_SHADERS
 		return 0;
 
 	GLint nbShaderSources = 0;
-	GLchar* shaderSources[4] = {0};
-	GLuint shaderSizes[4] = {0};
+	GLchar* shaderSources[MAX_SHADERS] = {0};
+	GLuint shaderSizes[MAX_SHADERS] = {0};
 
-	for (int i = 0; i < MAX_SHADERS; i++)
+	for (int i = 0; i < MAX_SHADERS && shaderfiles[i]; i++)
 	{
-		if (shaderfiles[i])
+		shaderSizes[i] = readFile(shaderfiles[i], &shaderSources[i]);
+		if (shaderSources[i] == NULL)
 		{
-			shaderSizes[i] = readFile(shaderfiles[i], &shaderSources[i]);
-			if (shaderSources[i] == NULL)
-				return 0;
-			warn("load dynamic shader:\n%s<=", shaderSources[i]);
-			nbShaderSources++;
+			err("shader %s not loaded", shaderfiles[i]);
+			break;
 		}
+		warn("load dynamic shader:\n%s<=", shaderSources[i]);
+		nbShaderSources++;
 	}
 	glShaderSource(shaderID, nbShaderSources, (const char *const*)shaderSources, shaderSizes);
 	glCompileShader(shaderID);
 	GLint compilationStatus = 0;
-
+	for (int i = 0; i < MAX_SHADERS && shaderSources[i]; i++)
+	{
+		free(shaderSources[i]);
+	}
 	glGetShaderiv(shaderID, GL_COMPILE_STATUS, &compilationStatus);
 	if ( compilationStatus != GL_TRUE )
 	{
