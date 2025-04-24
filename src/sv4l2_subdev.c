@@ -20,7 +20,7 @@ static int _v4l2_subdev_fmtbus(void *arg, struct v4l2_subdev_mbus_code_enum *mbu
 	return -1;
 }
 
-uint32_t _v4l2_subdev_getfmtbus(int ctrlfd, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
+static uint32_t _v4l2_subdev_getfmtbus(int ctrlfd, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
 {
 	uint32_t ret = 0;
 	for (int i = 0; ; i++)
@@ -121,7 +121,7 @@ uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, int (*busformat)(void *arg, s
 	return 0;
 }
 
-static int _v4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs)
+int sv4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs)
 {
 	DeviceConf_t *config = arg;
 	uint32_t fourcc = 0xFFFFFFFF;
