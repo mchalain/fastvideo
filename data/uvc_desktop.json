@@ -35,8 +35,17 @@
 	"native":"wayland",
 	"end":true
 },{
+	"name":"drm",
+	"type":"gpu",
+	"native":"drm",
+	"end":true
+},{
 	"name":"offscreen",
 	"type":"gpu",
 	"native":"offscreen",
+	"end":true
+},{
+	"name":"passthrough",
+	"type":"passthrough",
 	"end":true
 }]
