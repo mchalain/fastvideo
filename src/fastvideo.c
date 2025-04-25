@@ -7,6 +7,7 @@
 #include <sys/timerfd.h>
 #include <fcntl.h>
 
+#include "fastvideo.h"
 #include "log.h"
 #include "daemonize.h"
 #include "sv4l2.h"
@@ -35,50 +36,6 @@ struct FastVideoPipe_s
 	FastVideoDevice_t *input;
 	FastVideoDevice_t *output;
 };
-
-typedef struct FastVideoList_s FastVideoList_t;
-struct FastVideoList_s
-{
-	void *entity;
-	FastVideoList_t *next;
-	FastVideoList_t *previous;
-	FastVideoList_t *last;
-	int fd;
-};
-
-FastVideoList_t *fastvideolist_append(FastVideoList_t *list, void *device)
-{
-	FastVideoList_t *entry = NULL;
-	entry = calloc(1, sizeof(*entry));
-	entry->entity = device;
-	entry->next = list;
-	if (list == NULL)
-		entry->last = entry;
-	else
-	{
-		list->previous = entry;
-		entry->last = list->last;
-	}
-	return entry;
-}
-
-FastVideoList_t *fastvideolist_insert(FastVideoList_t *list, void *device)
-{
-	FastVideoList_t *entry = NULL;
-	entry = calloc(1, sizeof(*entry));
-	entry->entity = device;
-	if (list)
-	{
-		entry->previous = list->last;
-		list->last->next = entry;
-	}
-	else
-	{
-		list = entry;
-	}
-	list->last = entry;
-	return list;
-}
 
 FastVideoDevice_t *device_duplicate(FastVideoDevice_t *dev)
 {
@@ -218,9 +175,9 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 int main_loop(FastVideoList_t *pipes)
 {
 	int maxfd = 0;
-	for(FastVideoList_t *entry = pipes; entry != NULL; entry = entry->next)
+	for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+			pipe != NULL; pipe = fastvideolist_next(pipes))
 	{
-		FastVideoPipe_t *pipe = entry->entity;
 		if (pipe->output->ops->start(pipe->output->dev) == -1)
 			return -1;
 		if (pipe->output->ops->eventfd)
@@ -251,9 +208,9 @@ int main_loop(FastVideoList_t *pipes)
 		fd_set wfds;
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
-		for(FastVideoList_t *entry = pipes; entry != NULL; entry = entry->next)
+		for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+				pipe != NULL; pipe = fastvideolist_next(pipes))
 		{
-			FastVideoPipe_t *pipe = entry->entity;
 			if (pipe->output->ops->eventfd)
 			{
 				int fd = pipe->output->ops->eventfd(pipe->output->dev);
@@ -290,9 +247,9 @@ int main_loop(FastVideoList_t *pipes)
 			continue;
 		}
 		ret = 0;
-		for(FastVideoList_t *entry = pipes; entry != NULL; entry = entry->next)
+		for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+				pipe != NULL; pipe = fastvideolist_next(pipes))
 		{
-			FastVideoPipe_t *pipe = entry->entity;
 			int infd = -1;
 			if (pipe->input->ops->eventfd)
 				infd = pipe->input->ops->eventfd(pipe->input->dev);
@@ -307,9 +264,10 @@ int main_loop(FastVideoList_t *pipes)
 				}
 			}
 		}
-		for(FastVideoList_t *entry = pipes->last; entry != NULL; entry = entry->previous)
+
+		for (FastVideoPipe_t *pipe = fastvideolist_previous(pipes);
+					pipe != NULL; pipe = fastvideolist_previous(pipes))
 		{
-			FastVideoPipe_t *pipe = entry->entity;
 			int outfd = -1;
 			if (pipe->output->ops->eventfd)
 				outfd = pipe->output->ops->eventfd(pipe->output->dev);
@@ -323,15 +281,15 @@ int main_loop(FastVideoList_t *pipes)
 					killdaemon(NULL);
 					break;
 				}
-				if (!ret && entry == pipes->last)
+				if (!ret && fastvideolist_islast(pipes, pipe))
 					count++;
 			}
-
 		}
 	}
-	for(FastVideoList_t *entry = pipes; entry != NULL; entry = entry->next)
+	for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+			pipe != NULL; pipe = fastvideolist_next(pipes))
 	{
-		FastVideoPipe_t *pipe = entry->entity;
+
 		pipe->output->ops->stop(pipe->output->dev);
 		pipe->input->ops->stop(pipe->input->dev);
 	}
@@ -498,9 +456,9 @@ int main(int argc, char * const argv[])
 	pipe->output = outdev;
 	pipes = fastvideolist_insert(pipes, pipe);
 
-	for(FastVideoList_t *entry = pipes; entry != NULL; entry = entry->next)
+	for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+			pipe != NULL; pipe = fastvideolist_next(pipes))
 	{
-		FastVideoPipe_t *pipe = entry->entity;
 		int *dma_bufs = {0};
 		size_t size = 0;
 		int nbbufs = 0;
@@ -524,7 +482,11 @@ int main(int argc, char * const argv[])
 		main_loop(pipes);
 
 	killdaemon(pidfile);
-	indev->ops->destroy(indev->dev);
-	outdev->ops->destroy(outdev->dev);
+	for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+			pipe != NULL; pipe = fastvideolist_next(pipes))
+	{
+		pipe->input->ops->destroy(pipe->input->dev);
+		pipe->output->ops->destroy(pipe->output->dev);
+	}
 	return 0;
 }
