@@ -28,10 +28,13 @@ struct EGL_s
 {
 	EGLConfig_t *config;
 	EGLNative_t *native;
+	device_type_e type;
 	EGLDisplay egldisplay;
 	EGLConfig eglconfig;
 	EGLContext eglcontext;
 	EGLSurface eglsurface;
+	GLuint fbo;
+	EGL_t *dup;
 	EGLNativeDisplayType native_display;
 	EGLNativeWindowType native_window;
 	GLProgram_t *programs;
@@ -65,7 +68,7 @@ PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorag
 
 EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *config)
 {
-	if (type != device_output)
+	if (type != device_output && type != device_transfer)
 	{
 		err("segl: %s bad device type", config->parent.name);
 		return NULL;
@@ -234,6 +237,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	dev->native_window = nwindow;
 	dev->native_display = ndisplay;
 	dev->curbufferid = -1;
+	dev->type = type;
 	return dev;
 }
 
@@ -288,6 +292,42 @@ static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t si
 	return 0;
 }
 
+static int texturedma_get(EGL_t *dev, GLuint dma_texture)
+{
+	EGLImage image = eglCreateImage(dev->egldisplay, dev->eglcontext, EGL_GL_TEXTURE_2D, (void *)(long)dma_texture, NULL);
+
+	if (image == EGL_NO_IMAGE)
+		return -1;
+
+#if 1
+	PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC eglExportDMABUFImageQueryMESA =
+		(PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC)eglGetProcAddress("eglExportDMABUFImageQueryMESA");
+	PFNEGLEXPORTDMABUFIMAGEMESAPROC eglExportDMABUFImageMESA =
+		(PFNEGLEXPORTDMABUFIMAGEMESAPROC)eglGetProcAddress("eglExportDMABUFImageMESA");
+#endif
+	int numplanes = 0;
+	EGLint stride[5] = {0};
+	EGLint offset[5] = {0};
+	int fourcc = 0;
+	int dma_buf[5] = {0};
+
+	eglExportDMABUFImageQueryMESA(dev->egldisplay, image,
+								&fourcc, &numplanes, NULL);
+	if (numplanes < 5)
+	{
+		eglExportDMABUFImageMESA(dev->egldisplay, image, &dma_buf[0], &stride[0], &offset[0]);
+	}
+	dev->config->parent.fourcc = fourcc;
+
+	dev->buffers[dev->nbuffers].size = stride[0] * dev->config->parent.height;
+	dev->buffers[dev->nbuffers].pitch = stride[0];
+	dev->buffers[dev->nbuffers].dma_fd = dma_buf[0];
+	dev->buffers[dev->nbuffers].dma_texture = dma_texture;
+	dev->buffers[dev->nbuffers].dma_image = 0;
+	dev->buffers[dev->nbuffers].textype = GL_TEXTURE_2D;
+	return 0;
+}
+
 int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 {
 	va_list ap;
@@ -313,6 +353,24 @@ int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 			}
 		}
 		break;
+		case buf_type_dmabuf | buf_type_master:
+		{
+			int *ntargets = va_arg(ap, int *);
+			int **targets = va_arg(ap, int **);
+			size_t *size = va_arg(ap, size_t *);
+			if (ntargets != NULL)
+				*ntargets = dev->nbuffers;
+			if (targets != NULL)
+			{
+				*targets = calloc(dev->nbuffers, sizeof(int));
+				for (int i = 0; i < dev->nbuffers; i++)
+					(*targets)[i] = dev->buffers[i].dma_fd;
+			}
+			if (size != NULL)
+				*size = dev->buffers[0].size;
+			ret = (dev->nbuffers == 0);
+		}
+		break;
 		default:
 			err("segl: support only dmabuf");
 			va_end(ap);
@@ -322,8 +380,62 @@ int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 	return ret;
 }
 
+EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
+{
+	EGL_t *dup = NULL;
+	if (dev->type != device_transfer)
+	{
+		err("segl: device may not support duplication");
+		return NULL;
+	}
+	dup = malloc(sizeof(*dup));
+	if (!dup)
+		return NULL;
+	memcpy(dup, dev, sizeof(*dup));
+	*pconfig = malloc(sizeof(*(dup->config)));
+	memcpy(*pconfig, dev->config, sizeof(*(dup->config)));
+	dup->config = *pconfig;
+	dup->type = device_input;
+	dev->dup = dup;
+
+	GLuint glget = 0;
+	glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &glget);
+	if (glget <= dup->config->parent.width)
+		warn("segl: width to large max %d", glget);
+	if (glget <= dup->config->parent.height)
+		warn("segl: width to height max %d", glget);
+
+	/*  Framebuffer */
+	glGenFramebuffers(1, &dup->fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, dup->fbo);
+	for (int i = 0; i < MAX_BUFFERS; i++)
+	{
+		GLuint dma_texture = -1;
+		dma_texture = texture_create(dev, GL_TEXTURE_2D);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+				dup->config->parent.width, dup->config->parent.height, 0,
+				GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, NULL);
+		if (texturedma_get(dup, dma_texture))
+			break;
+		dup->nbuffers++;
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+			GL_TEXTURE_2D, dup->buffers[i].dma_texture, 0);
+	}
+	/* Sanity check. */
+	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (ret != GL_FRAMEBUFFER_COMPLETE)
+	{
+		err("segl: offscreen generator failed");
+		return NULL;
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	return dup;
+}
+
 int segl_start(EGL_t *dev)
 {
+	if (dev->type == device_input)
+		return 0;
 	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
 
 	// initialize the first program with the input stream
@@ -336,6 +448,8 @@ int segl_start(EGL_t *dev)
 
 int segl_stop(EGL_t *dev)
 {
+	if (dev->type == device_input)
+		return 0;
 	eglMakeCurrent(dev->egldisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 	return 0;
 };
@@ -351,6 +465,11 @@ void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo)
 
 int segl_queue(EGL_t *dev, int id, size_t bytesused)
 {
+	if (dev->type == device_input)
+	{
+		dev->curbufferid = -1;
+		return 0;
+	}
 	if (eglSwapBuffers(dev->egldisplay, dev->eglsurface) == EGL_FALSE)
 		err("EGL swapbuffers error %m");
 	// errno is set to EAGAIN after eglSwapBuffers
@@ -368,6 +487,8 @@ int segl_queue(EGL_t *dev, int id, size_t bytesused)
 
 	segl_queue_output(dev, id, bytesused, 0);
 	dev->curbufferid = id;
+	if (dev->dup)
+		dev->dup->curbufferid = dev->curbufferid;
 	return dev->native->flush(dev->native_window);
 }
 
@@ -375,6 +496,14 @@ int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
 {
 	int id = dev->curbufferid;
 	dev->curbufferid = -1;
+	if (dev->type == device_input)
+	{
+		*bytesused = dev->buffers[0].size;
+		segl_queue_output(dev, id, *bytesused, dev->fbo);
+		if (id == -1)
+			errno = EAGAIN;
+		return id;
+	}
 	glUseProgram(0);
 	glBindTexture(dev->buffers[0].textype, 0);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -391,10 +520,13 @@ int segl_fd(EGL_t *dev)
 
 void segl_destroy(EGL_t *dev)
 {
-	glprog_destroy(dev->programs);
-	eglDestroySurface(dev->egldisplay, dev->eglsurface);
-	eglDestroyContext(dev->egldisplay, dev->eglcontext);
-	dev->native->destroy(dev->native_display);
+	if (dev->type != device_input)
+	{
+		glprog_destroy(dev->programs);
+		eglDestroySurface(dev->egldisplay, dev->eglsurface);
+		eglDestroyContext(dev->egldisplay, dev->eglcontext);
+		dev->native->destroy(dev->native_display);
+	}
 	free(dev);
 }
 
@@ -435,6 +567,7 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 		const char *value = json_string_value(device);
 		config->device = value;
 	}
+	config->parent.fourcc = FOURCC('R','G', 'B', 'A');
 	json_t *definition = json_object_get(jconfig, "definition");
 	scommon_loaddefinition(&config->parent, definition);
 library_end:
@@ -486,7 +619,7 @@ FastVideoDevice_ops_t segl_ops = {
 	.name = "gpu",
 	.createconfig = segl_createconfig,
 	.create = (FastVideoDevice_create_t)segl_create,
-	.duplicate = (FastVideoDevice_duplicate_t)NULL,
+	.duplicate = (FastVideoDevice_duplicate_t)segl_duplicate,
 	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)segl_requestbuffer,
 	.eventfd = (FastVideoDevice_eventfd_t)segl_fd,

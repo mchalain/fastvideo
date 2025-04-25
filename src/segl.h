@@ -70,6 +70,7 @@ struct EGLConfig_s
 typedef struct EGL_s EGL_t;
 
 EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *config);
+EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig);
 int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...);
 int segl_queue(EGL_t *dev, int id, size_t bytesused);
 int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused);

@@ -312,7 +312,7 @@ static int native_sync(EGLNativeWindowType native_win)
 	while (drm.waiting_for_flip) {
 		int ret = select(drm.fd + 1, &fds, NULL, NULL, NULL);
 		if (ret < 0) {
-			err("glmotor: select err: %m");
+			err("select err: %m");
 			return ret;
 		} else if (ret == 0) {
 			warn("select timeout!");

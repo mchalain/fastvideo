@@ -165,7 +165,7 @@ static GLint readFile(const char* fileName, char** fileContent)
 	if (fread(*fileContent, fileSize, 1, pFile) < 0)
 	{
 		fclose(pFile);
-		err("glmotor: File loading error %m");
+		err("File loading error %m");
 	}
 	(*fileContent)[fileSize] = '\0';
 
