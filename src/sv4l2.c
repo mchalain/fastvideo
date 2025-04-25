@@ -2316,3 +2316,16 @@ FastVideoDevice_ops_t sv4l2_ops = {
 	.queue = (FastVideoDevice_queue_t)sv4l2_queue,
 	.destroy = (FastVideoDevice_destroy_t)sv4l2_destroy,
 };
+
+#include <dlfcn.h>
+
+static void __attribute__ ((constructor)) sskeleton_init()
+{
+	fastvideodevice_ops_append_t _fastvideodevice_ops_append;
+	void *hdl = dlopen(NULL, RTLD_NOW | RTLD_GLOBAL);
+	_fastvideodevice_ops_append = dlsym(hdl, "fastvideodevice_ops_append");
+	if (_fastvideodevice_ops_append)
+	{
+		_fastvideodevice_ops_append(&sv4l2_ops);
+	}
+}

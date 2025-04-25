@@ -5,3 +5,5 @@ fastvideo_SOURCES+=spassthrough.c
 fastvideo_SOURCES+=daemonize.c
 fastvideo_LIBS+=fastvideo
 fastvideo_LIBRARY+=jansson
+fastvideo_CFLAGS+=-fPIC -rdynamic
+fastvideo_LDFLAGS+=-fPIC -rdynamic

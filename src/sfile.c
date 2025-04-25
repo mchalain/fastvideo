@@ -352,3 +352,16 @@ FastVideoDevice_ops_t sfile_ops = {
 	.queue = (FastVideoDevice_queue_t)sfile_queue,
 	.destroy = (FastVideoDevice_destroy_t)sfile_destroy,
 };
+
+#include <dlfcn.h>
+
+static void __attribute__ ((constructor)) sfile_init()
+{
+	fastvideodevice_ops_append_t _fastvideodevice_ops_append;
+	void *hdl = dlopen(NULL, RTLD_NOW);
+	_fastvideodevice_ops_append = dlsym(hdl, "fastvideodevice_ops_append");
+	if (_fastvideodevice_ops_append)
+	{
+		_fastvideodevice_ops_append(&sfile_ops);
+	}
+}

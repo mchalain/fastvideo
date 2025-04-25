@@ -390,14 +390,6 @@ int main(int argc, char * const argv[])
 	FastVideoList_t *pipes = NULL;
 	FastVideoPipe_t *pipe = NULL;
 
-	fastvideodevice_ops_append(&sv4l2_ops);
-#ifdef SDVB
-	fastvideodevice_ops_append(&sdvb_ops);
-#endif
-#ifdef HAVE_LIBDRM
-	fastvideodevice_ops_append(&sdrm_ops);
-#endif
-	fastvideodevice_ops_append(&sfile_ops);
 	fastvideodevice_ops_append(&spassthrough_ops);
 
 	int opt;

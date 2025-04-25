@@ -821,3 +821,16 @@ FastVideoDevice_ops_t sdrm_ops = {
 	.queue = (FastVideoDevice_queue_t)sdrm_queue,
 	.destroy = (FastVideoDevice_destroy_t)sdrm_destroy,
 };
+
+#include <dlfcn.h>
+
+static void __attribute__ ((constructor)) sdrm_init()
+{
+	fastvideodevice_ops_append_t _fastvideodevice_ops_append;
+	void *hdl = dlopen(NULL, RTLD_NOW);
+	_fastvideodevice_ops_append = dlsym(hdl, "fastvideodevice_ops_append");
+	if (_fastvideodevice_ops_append)
+	{
+		_fastvideodevice_ops_append(&sdrm_ops);
+	}
+}
