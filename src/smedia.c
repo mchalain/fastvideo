@@ -7,6 +7,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
+#include "fastvideo.h"
 #include "log.h"
 #include "smedia.h"
 

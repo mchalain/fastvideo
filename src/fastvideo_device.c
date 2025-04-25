@@ -102,3 +102,18 @@ void *fastvideolist_previous(FastVideoList_t *list)
 
 	return entity;
 }
+
+static FastVideoList_t *g_FastVideoDevice_ops = NULL;
+
+void fastvideodevice_ops_append(FastVideoDevice_ops_t *ops)
+{
+	g_FastVideoDevice_ops = fastvideolist_append(g_FastVideoDevice_ops, ops);
+}
+
+FastVideoDevice_ops_t *fastvideodevice_ops_next(FastVideoDevice_ops_t *ops)
+{
+	if (ops == NULL)
+		g_FastVideoDevice_ops->iterator = NULL;
+	ops = fastvideolist_next(g_FastVideoDevice_ops);
+	return ops;
+}

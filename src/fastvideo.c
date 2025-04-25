@@ -83,12 +83,13 @@ static int _config_createdevice(void *data, const char *name, const char *type, 
 
 	if (strcmp(tmpname, name))
 		return -1;
-	for (int i = 0; fastvideo->ops[i] != NULL; i++)
+	for (FastVideoDevice_ops_t *ops = fastvideodevice_ops_next(NULL);
+		ops != NULL; ops = fastvideodevice_ops_next(ops))
 	{
-		if (! strcmp(fastvideo->ops[i]->name, type))
+		if (! strcmp(ops->name, type))
 		{
 			DeviceConf_t *devconfig = NULL;
-			devconfig = fastvideo->ops[i]->createconfig();
+			devconfig = ops->createconfig();
 			if (devconfig)
 			{
 				devconfig->name = name;
@@ -98,7 +99,7 @@ static int _config_createdevice(void *data, const char *name, const char *type, 
 					devconfig->ops.loadconfiguration(devconfig, config);
 				fastvideo->device = calloc(1, sizeof(*fastvideo->device));
 				fastvideo->device->config = devconfig;
-				fastvideo->device->ops = fastvideo->ops[i];
+				fastvideo->device->ops = ops;
 			}
 			break;
 		}
@@ -106,11 +107,10 @@ static int _config_createdevice(void *data, const char *name, const char *type, 
 	return 0;
 }
 
-FastVideoDevice_t *config_createdevice(const char *name, const char *configfile, FastVideoDevice_ops_t *ops[])
+FastVideoDevice_t *config_createdevice(const char *name, const char *configfile)
 {
 	FastVideoDevice_t *device = NULL;
 	FastVideo_t fastvideo = {0};
-	fastvideo.ops = ops;
 	fastvideo.name = name;
 	if (configfile != NULL &&
 		config_parseconfigfile(configfile, _config_createdevice, &fastvideo) == 0)
@@ -296,6 +296,84 @@ int main_loop(FastVideoList_t *pipes)
 	return 0;
 }
 
+FastVideoDevice_t *main_createdevice(const char *name, const char *configfile, device_type_e type, DeviceConf_t *choiceconfig)
+{
+	if (configfile == NULL)
+	{
+		err("load json file first");
+		return NULL;
+	}
+	FastVideoDevice_t *device = NULL;
+	device = config_createdevice(name, configfile);
+	if (!device)
+	{
+		err("device %s not available", name);
+		return NULL;
+	}
+	if (choiceconfig)
+		choice_config(choiceconfig, device->config);
+
+	device->dev = device->ops->create(name, type, device->config);
+	if (device->dev == NULL)
+		return NULL;
+	if (device->ops->loadsettings && device->config->entry)
+	{
+		dbg("loadsettings");
+		device->ops->loadsettings(device->dev, device->config->entry);
+	}
+	return device;
+}
+
+FastVideoPipe_t *main_createinput(const char *name, const char *configfile)
+{
+	FastVideoPipe_t *pipe = NULL;
+	pipe = calloc(1, sizeof(*pipe));
+	FastVideoDevice_t *indev = NULL;
+	indev = main_createdevice(name, configfile, device_input, NULL);
+	if (!indev)
+	{
+		free(pipe);
+		return NULL;
+	}
+	pipe->input = indev;
+	return pipe;
+}
+
+FastVideoPipe_t *main_createtransfer(const char *name, const char *configfile, FastVideoPipe_t *pipe)
+{
+	FastVideoDevice_t *transferdev = NULL;
+	transferdev = main_createdevice(name, configfile, device_transfer, pipe->input->config);
+	if (!transferdev)
+	{
+		return NULL;
+	}
+	pipe->output = transferdev;
+
+	pipe = calloc(1, sizeof(*pipe));
+	FastVideoDevice_t *transferdevD = NULL;
+	transferdevD = device_duplicate(transferdev);
+	if (!transferdevD)
+	{
+		err("%s not duplicated", transferdev->config->name);
+		free(pipe);
+		return NULL;
+	}
+	pipe->input = transferdevD;
+	return pipe;
+}
+
+int main_createoutput(const char *name, const char *configfile, FastVideoPipe_t *pipe)
+{
+	FastVideoDevice_t *outdev = NULL;
+	outdev = main_createdevice(name, configfile, device_output, pipe->input->config);
+	if (!outdev)
+	{
+		return -1;
+	}
+	pipe->output = outdev;
+	return 0;
+}
+
 int main(int argc, char * const argv[])
 {
 	const char *owner = NULL;
@@ -310,6 +388,17 @@ int main(int argc, char * const argv[])
 	const char *logfile = "-";
 	const char *cwd = NULL;
 	FastVideoList_t *pipes = NULL;
+	FastVideoPipe_t *pipe = NULL;
+
+	fastvideodevice_ops_append(&sv4l2_ops);
+#ifdef SDVB
+	fastvideodevice_ops_append(&sdvb_ops);
+#endif
+#ifdef HAVE_LIBDRM
+	fastvideodevice_ops_append(&sdrm_ops);
+#endif
+	fastvideodevice_ops_append(&sfile_ops);
+	fastvideodevice_ops_append(&spassthrough_ops);
 
 	int opt;
 	do
@@ -318,13 +407,26 @@ int main(int argc, char * const argv[])
 		switch (opt)
 		{
 			case 'i':
-				input = optarg;
+				pipe = main_createinput(optarg, configfile);
+				if (pipe == NULL)
+				{
+					return -1;
+				}
 			break;
 			case 'o':
-				output = optarg;
+				if (main_createoutput(optarg, configfile, pipe))
+				{
+					return -1;
+				}
+				pipes = fastvideolist_insert(pipes, pipe);
 			break;
 			case 't':
-				transfer = optarg;
+				pipes = fastvideolist_insert(pipes, pipe);
+				pipe = main_createtransfer(optarg, configfile, pipe);
+				if (pipe == NULL)
+				{
+					return -1;
+				}
 			break;
 			case 'j':
 				configfile = optarg;
@@ -345,27 +447,11 @@ int main(int argc, char * const argv[])
 				logfile = optarg;
 			break;
 			case 'W':
-				cwd = optarg;
+				if (chdir(optarg) != 0)
+					err("main: working directory %m");
 			break;
 		}
 	} while(opt != -1);
-
-	FastVideoDevice_ops_t *fastVideoDevice_ops[] =
-	{
-		&sv4l2_ops,
-#ifdef SDVB
-		&sdvb_ops,
-#endif
-#ifdef HAVE_EGL
-		&segl_ops,
-#endif
-#ifdef HAVE_LIBDRM
-		&sdrm_ops,
-#endif
-		&sfile_ops,
-		&spassthrough_ops,
-		NULL
-	};
 
 	if (strcmp(logfile,"-"))
 	{
@@ -379,82 +465,6 @@ int main(int argc, char * const argv[])
 		else
 			err("log file error %m");
 	}
-
-	if (cwd != NULL && chdir(cwd) != 0)
-		err("main: working directory %m");
-
-	FastVideoDevice_t *indev = NULL;
-	indev = config_createdevice(input, configfile, fastVideoDevice_ops);
-	if (!indev || !indev->ops)
-	{
-		err("input not available");
-		return -1;
-	}
-	indev->dev = indev->ops->create(input, device_input, indev->config);
-	if (indev->dev == NULL)
-		return -1;
-	if (indev->ops->loadsettings && indev->config->entry)
-	{
-		dbg("loadsettings");
-		indev->ops->loadsettings(indev->dev, indev->config->entry);
-	}
-
-	FastVideoPipe_t *pipe = NULL;
-	pipe = calloc(1, sizeof(*pipe));
-	pipe->input = indev;
-
-#ifndef DISABLE_TRANSFER
-	FastVideoDevice_t *transferdev = NULL;
-	transferdev = config_createdevice(transfer, configfile, fastVideoDevice_ops);
-	if (!transferdev || !transferdev->ops)
-	{
-		transferdev = calloc(1, sizeof(*transferdev));
-		transferdev->config = spassthrough_createconfig();
-		transferdev->ops = &spassthrough_ops;
-	}
-	choice_config(pipe->input->config, transferdev->config);
-
-	transferdev->dev = transferdev->ops->create(transfer, device_transfer, transferdev->config);
-	if (transferdev->dev == NULL)
-		return -1;
-	if (transferdev->ops->loadsettings && transferdev->config->entry)
-	{
-		dbg("loadsettings");
-		transferdev->ops->loadsettings(transferdev->dev, transferdev->config->entry);
-	}
-	pipe->output = transferdev;
-	pipes = fastvideolist_insert(pipes, pipe);
-
-	FastVideoDevice_t *transferdevD = NULL;
-	transferdevD = device_duplicate(transferdev);
-	if (!transferdevD)
-	{
-		err("%s mot duplicated", transferdev->config->name);
-		return -1;
-	}
-	pipe = calloc(1, sizeof(*pipe));
-	pipe->input = transferdevD;
-#endif
-
-	FastVideoDevice_t *outdev = NULL;
-	outdev = config_createdevice(output, configfile, fastVideoDevice_ops);
-	if (!outdev || !outdev->ops)
-	{
-		err("output not available");
-		return -1;
-	}
-	choice_config(pipe->input->config, outdev->config);
-
-	outdev->dev = outdev->ops->create(output, device_output, outdev->config);
-	if (outdev->dev == NULL)
-		return -1;
-	if (outdev->ops->loadsettings && outdev->config->entry)
-	{
-		dbg("loadsettings");
-		outdev->ops->loadsettings(outdev->dev, outdev->config->entry);
-	}
-	pipe->output = outdev;
-	pipes = fastvideolist_insert(pipes, pipe);
 
 	for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
 			pipe != NULL; pipe = fastvideolist_next(pipes))

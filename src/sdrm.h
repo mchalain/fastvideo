@@ -1,6 +1,7 @@
 #ifndef __SDRM_H__
 #define __SDRM_H__
 
+#include "fastvideo.h"
 #include "config.h"
 
 #define DISPLAYCONFIG(name, defaultdevice) name = { \

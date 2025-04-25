@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <linux/videodev2.h>
 
+#include "fastvideo.h"
 #include "config.h"
 
 #define MODE_VERBOSE 0x01

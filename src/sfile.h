@@ -2,6 +2,7 @@
 #define __SFILE_H__
 
 #include <stdint.h>
+#include "fastvideo.h"
 #include "config.h"
 
 #define FILECONFIG(config, ...) config = { \

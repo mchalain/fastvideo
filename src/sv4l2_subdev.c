@@ -7,6 +7,7 @@
 #include <jansson.h>
 #endif
 
+#include "fastvideo.h"
 #include "log.h"
 #include "sv4l2_subdev.h"
 
