@@ -193,7 +193,8 @@ static void deleteShader(GLuint programID, GLuint fragmentID, GLuint vertexID)
 
 static GLuint loadShader(GLenum shadertype, const char *shaderfile, const char *defaultshader)
 {
-	GLchar* shaderSource = NULL;
+	const GLchar* shaderSource = NULL;
+	GLchar* shaderSourceDyn = NULL;
 	GLuint shaderID = glCreateShader(shadertype);
 	if (shaderID == 0)
 		return 0;
@@ -201,9 +202,10 @@ static GLuint loadShader(GLenum shadertype, const char *shaderfile, const char *
 	GLuint shaderSize = 0;
 	if (shaderfile)
 	{
-		shaderSize = readFile(shaderfile, &shaderSource);
-		if (shaderSource == NULL)
+		shaderSize = readFile(shaderfile, &shaderSourceDyn);
+		if (shaderSourceDyn == NULL)
 			return 0;
+		shaderSource = shaderSourceDyn;
 		warn("load dynamic shader:\n%s<=", shaderSource);
 	}
 	else
@@ -217,8 +219,8 @@ static GLuint loadShader(GLenum shadertype, const char *shaderfile, const char *
 	glShaderSource(shaderID, 1, (const GLchar**)(&shaderSource), &shaderSize);
 	glCompileShader(shaderID);
 	GLint compilationStatus = 0;
-	if (shaderSource != defaultshader)
-		free(shaderSource);
+	if (shaderSourceDyn)
+		free(shaderSourceDyn);
 
 	glGetShaderiv(shaderID, GL_COMPILE_STATUS, &compilationStatus);
 	if ( compilationStatus != GL_TRUE )

@@ -1454,14 +1454,14 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 	if (ctrl->type == V4L2_CTRL_TYPE_INTEGER && json_is_integer(jvalue))
 	{
 		int value = json_integer_value(jvalue);
-		value = (int)sv4l2_control(dev, ctrl->id, (void*)value);
+		value = (long)sv4l2_control(dev, ctrl->id, (void*)(long)value);
 		if (value != -1)
 			warn("%s => %d", ctrl->name, value);
 		return value;
 	}
 	else if (ctrl->type == V4L2_CTRL_TYPE_BOOLEAN && json_is_boolean(jvalue))
 	{
-		int value = (int)sv4l2_control(dev, ctrl->id, (void*)json_is_true(jvalue));
+		int value = (long)sv4l2_control(dev, ctrl->id, (void*)(long)json_is_true(jvalue));
 		if (value != -1)
 			warn("%s => %s", ctrl->name, value?"on":"off");
 		return value;
@@ -1469,14 +1469,14 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 	else if (ctrl->type == V4L2_CTRL_TYPE_MENU && json_is_integer(jvalue))
 	{
 		int value = json_integer_value(jvalue);
-		value = (int)sv4l2_control(dev, ctrl->id, (void*)value);
+		value = (long)sv4l2_control(dev, ctrl->id, (void*)(long)value);
 		if (value != -1)
 			warn("%s => %d", ctrl->name, value);
 		return value;
 	}
 	else if (ctrl->type == V4L2_CTRL_TYPE_BUTTON)
 	{
-		int value = (int)sv4l2_control(dev, ctrl->id, (void*)0);
+		int value = (long)sv4l2_control(dev, ctrl->id, NULL);
 		if (value != -1)
 			warn("%s => done", ctrl->name);
 		return value;
@@ -1490,9 +1490,9 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 		{
 			if (!strcmp(querymenu.name, value))
 			{
-				if (sv4l2_control(dev, ctrl->id, (void*)querymenu.index) != (void *)-1)
+				if (sv4l2_control(dev, ctrl->id, (void*)(long)querymenu.index) != (void *)-1)
 					warn("%s => %s", ctrl->name, value);
-				return (int)value;
+				return (long)value;
 			}
 		}
 	}
@@ -1500,9 +1500,9 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 	{
 		const char *value = json_string_value(jvalue);
 		value = sv4l2_control(dev, ctrl->id, (void*)value);
-		if (value != (void *)-1)
+		if (value != (void *)(long)-1)
 			warn("%s => %s", ctrl->name, value);
-		return (int)value;
+		return (long)value;
 	}
 	else if (ctrl->type == V4L2_CTRL_TYPE_U8 && json_is_array(jvalue))
 	{
@@ -1514,10 +1514,10 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 			u8[index] = (uint8_t)json_integer_value(ju8);
 		}
 		void *value = sv4l2_control(dev, ctrl->id, (void*)u8);
-		if (value != (void *)-1)
+		if (value != (void *)(long)-1)
 			warn("%s => array", ctrl->name);
 		free(u8);
-		return (int)value;
+		return (long)value;
 	}
 	else if (ctrl->type == V4L2_CTRL_TYPE_U16 && json_is_array(jvalue))
 	{
@@ -1529,10 +1529,10 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 			u16[index] = (uint16_t)json_integer_value(ju16);
 		}
 		void *value = sv4l2_control(dev, ctrl->id, (void*)u16);
-		if (value != (void *)-1)
+		if (value != (void *)(long)-1)
 			warn("%s => array", ctrl->name);
 		free(u16);
-		return (int)value;
+		return (long)value;
 	}
 	else if (ctrl->type == V4L2_CTRL_TYPE_U32 && json_is_array(jvalue))
 	{
@@ -1544,15 +1544,15 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 			u32[index] = (uint32_t)json_integer_value(ju32);
 		}
 		void *value = sv4l2_control(dev, ctrl->id, (void*)u32);
-		if (value != (void *)-1)
+		if (value != (void *)(long)-1)
 			warn("%s => array", ctrl->name);
 		free(u32);
-		return (int)value;
+		return (long)value;
 	}
 	else
 	{
 		int value = json_integer_value(jvalue);
-		value = (int)sv4l2_control(dev, ctrl->id, (void*)value);
+		value = (long)sv4l2_control(dev, ctrl->id, (void*)(long)value);
 		if (value != -1)
 			warn("%s => %d", ctrl->name, value);
 		return value;
@@ -1971,7 +1971,7 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 	{
 	case V4L2_CTRL_TYPE_INTEGER:
 	{
-		json_object_set_new(control, "value", json_integer((int) value));
+		json_object_set_new(control, "value", json_integer((long) value));
 		if (jsoncontrol_arg->all)
 		{
 			json_object_set_new(control, "minimum", json_integer(ctrl->minimum));
@@ -1982,7 +1982,7 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 	}
 	break;
 	case V4L2_CTRL_TYPE_BOOLEAN:
-		json_object_set_new(control, "value", json_boolean((int) value));
+		json_object_set_new(control, "value", json_boolean((long) value));
 		if (jsoncontrol_arg->all)
 		{
 			json_object_set_new(control, "default_value", json_integer(ctrl->default_value));
@@ -1990,7 +1990,7 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 	break;
 	case V4L2_CTRL_TYPE_MENU:
 	{
-		json_t *jvalue = json_integer((int) value);
+		json_t *jvalue = json_integer((long) value);
 		json_object_set(control, "value", jvalue);
 		if (jsoncontrol_arg->all)
 		{
@@ -2007,7 +2007,7 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 	break;
 	case V4L2_CTRL_TYPE_INTEGER_MENU:
 	{
-		json_t *jvalue = json_integer((int) value);
+		json_t *jvalue = json_integer((long) value);
 		json_object_set(control, "value", jvalue);
 		if (jsoncontrol_arg->all)
 		{
@@ -2025,7 +2025,7 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 	case V4L2_CTRL_TYPE_BUTTON:
 	break;
 	case V4L2_CTRL_TYPE_INTEGER64:
-		json_object_set_new(control, "value", json_integer((int) value));
+		json_object_set_new(control, "value", json_integer((long) value));
 		if (jsoncontrol_arg->all)
 		{
 			json_object_set_new(control, "default_value", json_integer(ctrl->default_value));

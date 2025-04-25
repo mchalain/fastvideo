@@ -26,19 +26,19 @@ static void *_passthrough_open(int atfd, const char *name, int mode)
 	fd = openat(atfd, name, mode, 0644);
 	if (fd <= 0)
 		return NULL;
-	return (void *)fd;
+	return (void *)(long)fd;
 }
 
 static int _passthrough_fd(File_t *dev)
 {
-	int fd = (int)dev->ctx;
+	int fd = (long)dev->ctx;
 	return fd;
 }
 
 static ssize_t _passthrough_write(File_t *dev, void *mem, size_t size)
 {
 	ssize_t ret = 0;
-	int fd = (int)dev->ctx;
+	int fd = (long)dev->ctx;
 	if (fd > 0)
 	{
 		switch (dev->fourcc)
@@ -64,7 +64,7 @@ static ssize_t _passthrough_write(File_t *dev, void *mem, size_t size)
 
 static ssize_t _passthrough_read(File_t *dev, void *mem, size_t size)
 {
-	int fd = (int)dev->ctx;
+	int fd = (long)dev->ctx;
 	if (fd > 0)
 		return read(fd, mem, size);
 	return 0;
@@ -72,7 +72,7 @@ static ssize_t _passthrough_read(File_t *dev, void *mem, size_t size)
 
 static void _passthrough_close(File_t *dev)
 {
-	int fd = (int)dev->ctx;
+	int fd = (long)dev->ctx;
 	if (fd > 0)
 		close(fd);
 }
