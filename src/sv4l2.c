@@ -1724,7 +1724,21 @@ int _v4l2_addsubdevice(V4l2Config_t *config, json_t *subdevice, const char *name
 			if (json_is_object(field))
 			{
 				json_t *jname = json_object_get(field, "name");
-				if (name && json_is_string(jname) &&
+				if (jname && json_is_array(jname))
+				{
+					json_t *it = NULL;
+					int i = 0;
+					json_array_foreach(jname, i, it)
+					{
+						if (json_is_string(it) &&
+							!strcmp(json_string_value(it), name))
+						{
+							jname = it;
+							break;
+						}
+					}
+				}
+				if (jname && json_is_string(jname) &&
 					!strcmp(json_string_value(jname), name))
 				{
 					subdevice = field;
