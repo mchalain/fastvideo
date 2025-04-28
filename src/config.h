@@ -101,10 +101,17 @@ inline int config_parseconfigfile(const char *name, const char *configfile, Devi
 typedef struct FrameBuffer_s FrameBuffer_t;
 struct FrameBuffer_s
 {
+	int id;
 	void *mem;
+	size_t offset;
 	int dma_buf;
 	size_t size;
 	size_t bytesused;
+	enum {
+		invalid,
+		dequeued,
+		queued,
+	} state;
 	FrameBuffer_t *next;
 };
 
