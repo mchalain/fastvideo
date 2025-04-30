@@ -24,7 +24,7 @@
 // X11 related local variables
 static Display *display = NULL;
 
-static EGLNativeDisplayType native_display(const char *device)
+static EGLNativeDisplayType native_display(EGLConfig_t *config)
 {
 	if (display == NULL)
 		/** environment management */

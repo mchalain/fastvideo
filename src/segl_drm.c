@@ -212,8 +212,9 @@ static void page_flip_handler(int fd, unsigned int frame,
 	*waiting_for_flip = 0;
 }
 
-static EGLNativeDisplayType native_display(const char *device)
+static EGLNativeDisplayType native_display(EGLConfig_t *config)
 {
+	const char *device = config->device;
 	if (device == NULL)
 		device = "/dev/dri/card0";
 	if (init_drm(device))

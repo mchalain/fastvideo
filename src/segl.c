@@ -102,7 +102,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 		}
 	}
 	warn("segl: native %s", native->name);
-	ndisplay = native->display(config->device);
+	ndisplay = native->display(config);
 
 	EGLNativeWindowType nwindow = native->createwindow(ndisplay, config->parent.width, config->parent.height, "segl");
 
@@ -165,6 +165,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	}
 	else
 	{
+		warn("segl: surface on pbuffer");
 		EGLint pbufferAttribs[] = {
 			EGL_WIDTH, config->parent.width,
 			EGL_HEIGHT, config->parent.height,
@@ -277,7 +278,7 @@ static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t si
 
 	if(dma_image == EGL_NO_IMAGE_KHR)
 	{
-		err("segl: Image creation error");
+		err("segl: Image creation error %#x", eglGetError());
 		return -1;
 	}
 
@@ -567,7 +568,6 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 		const char *value = json_string_value(device);
 		config->device = value;
 	}
-	config->parent.fourcc = FOURCC('R','G', 'B', 'A');
 	json_t *definition = json_object_get(jconfig, "definition");
 	scommon_loaddefinition(&config->parent, definition);
 library_end:

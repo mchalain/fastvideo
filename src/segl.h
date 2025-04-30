@@ -83,7 +83,7 @@ typedef struct EGLNative_s EGLNative_t;
 struct EGLNative_s
 {
 	const char *name;
-	EGLNativeDisplayType (*display)(const char *device);
+	EGLNativeDisplayType (*display)(EGLConfig_t *config);
 	EGLNativeWindowType (*createwindow)(EGLNativeDisplayType native_display,
 							GLuint width, GLuint height, const GLchar *name);
 	int (*fd)(EGLNativeWindowType native_win);

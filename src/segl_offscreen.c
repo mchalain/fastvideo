@@ -17,7 +17,7 @@
 #define FALSE GL_FALSE
 #endif
 
-static EGLNativeDisplayType native_display(const char *device)
+static EGLNativeDisplayType native_display(EGLConfig_t *config)
 {
 	return (EGLNativeDisplayType)EGL_DEFAULT_DISPLAY;
 }

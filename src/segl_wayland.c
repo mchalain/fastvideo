@@ -49,7 +49,7 @@ static struct native_context_s {
 	int run;
 } g_context = {0};
 
-static EGLNativeDisplayType native_display(const char *device)
+static EGLNativeDisplayType native_display(EGLConfig_t *config)
 {
 	if (g_context.display == NULL)
 		/** environment management */
