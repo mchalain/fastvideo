@@ -8,6 +8,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <linux/dma-buf.h>
+#include <errno.h>
 
 #ifdef HAVE_JANSSON
 #include <jansson.h>
@@ -205,12 +206,18 @@ int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
 {
 	int ret = dev->lastbufferid;
 	FrameBuffer_t *buffer = &dev->buffers[dev->lastbufferid];
+	if (buffer->state != queued)
+	{
+		errno = EAGAIN;
+		return -1;
+	}
 	if (bytesused)
 		*bytesused = buffer->bytesused;
 	if (mem && buffer->mem)
 		*mem = buffer->mem;
 	dev->lastbufferid++;
 	dev->lastbufferid %= dev->nbuffers;
+	buffer->state = dequeued;
 	return ret;
 }
 
@@ -277,6 +284,7 @@ int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused)
 		}
 		buffer->bytesused = ret;
 	}
+	buffer->state = queued;
 	return 0;
 }
 
