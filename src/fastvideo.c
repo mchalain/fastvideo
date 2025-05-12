@@ -467,16 +467,54 @@ int main(int argc, char * const argv[])
 		int nbbufs = 0;
 		FastVideoDevice_t *input = pipe->input;
 		FastVideoDevice_t *output = pipe->output;
-		if (input->ops->requestbuffer(input->dev, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
+		struct
 		{
-			err("%s dma buffer not allowed", input->config->name);
-			return -1;
-		}
-		if (output->ops->requestbuffer(output->dev, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
+			FastVideoDevice_t *master;
+			FastVideoDevice_t *slave;
+			enum buf_type_e buf_type;
+		} device_list[] = {
+			{
+				.master = input,
+				.slave = output,
+				.buf_type = buf_type_dmabuf,
+			},
+			{
+				.master = input,
+				.slave = output,
+				.buf_type = buf_type_memory,
+			},
+			{
+				.master = output,
+				.slave = input,
+				.buf_type = buf_type_dmabuf,
+			},
+			{
+				.master = output,
+				.slave = input,
+				.buf_type = buf_type_memory,
+			},
+		};
+		int ret = -1;
+		for (int i = 0; i < sizeof(device_list)/sizeof(*device_list); i++)
 		{
-			err("%s dma buffers not linked", output->config->name);
-			return -1;
+			enum buf_type_e buf_type = device_list[i].buf_type;
+			FastVideoDevice_t *master = device_list[i].master;
+			if (master->ops->requestbuffer(master->dev, buf_type | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
+			{
+				err("%s buffers[%d] not allowed", master->config->name, buf_type);
+				continue;
+			}
+			FastVideoDevice_t *slave = device_list[i].slave;
+			if (slave->ops->requestbuffer(slave->dev,buf_type, nbbufs, dma_bufs, size, NULL) < 0)
+			{
+				err("%s buffers[%d] not linked", slave->config->name, buf_type);
+				continue;
+			}
+			ret = 0;
+			break;
 		}
+		if (ret)
+			return -1;
 	}
 
 	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
