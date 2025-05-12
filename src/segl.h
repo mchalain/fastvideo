@@ -64,6 +64,7 @@ struct EGLConfig_s
 	DeviceConf_t parent;
 	const char *native;
 	const char *device;
+	uint32_t transfer;
 	EGLConfig_Program_t *programs;
 };
 

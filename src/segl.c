@@ -309,7 +309,7 @@ static int texturedma_get(EGL_t *dev, GLuint dma_texture)
 	int numplanes = 0;
 	EGLint stride[5] = {0};
 	EGLint offset[5] = {0};
-	int fourcc = 0;
+	int fourcc = dev->config->parent.fourcc;
 	int dma_buf[5] = {0};
 
 	eglExportDMABUFImageQueryMESA(dev->egldisplay, image,
@@ -318,6 +318,8 @@ static int texturedma_get(EGL_t *dev, GLuint dma_texture)
 	{
 		eglExportDMABUFImageMESA(dev->egldisplay, image, &dma_buf[0], &stride[0], &offset[0]);
 	}
+	if (dev->config->parent.fourcc && dev->config->parent.fourcc != fourcc)
+		err("segl: requests %.4s, obtains %.4s", &dev->config->parent.fourcc, &fourcc);
 	dev->config->parent.fourcc = fourcc;
 
 	dev->buffers[dev->nbuffers].size = stride[0] * dev->config->parent.height;
@@ -396,6 +398,7 @@ EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	*pconfig = malloc(sizeof(*(dup->config)));
 	memcpy(*pconfig, dev->config, sizeof(*(dup->config)));
 	dup->config = *pconfig;
+	dup->config->parent.fourcc = dup->config->transfer;
 	dup->type = device_input;
 	dev->dup = dup;
 
@@ -570,6 +573,15 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
 	scommon_loaddefinition(&config->parent, definition);
+	if (definition && json_is_object(definition))
+	{
+		json_t *transfer = json_object_get(definition, "transfer");
+		if (transfer && json_is_string(transfer))
+		{
+			const char *value = json_string_value(transfer);
+			config->transfer = FOURCC(value[0], value[1], value[2], value[3]);
+		}
+	}
 library_end:
 	return 0;
 }
