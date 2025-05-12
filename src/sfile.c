@@ -189,7 +189,7 @@ int sfile_start(File_t *dev)
 		dbg("start buffers enqueuing");
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
-			if (sfile_queue(dev, i, 0))
+			if (sfile_queue(dev, i, NULL, 0))
 				return -1;
 		}
 	}
@@ -214,7 +214,7 @@ int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
 	return ret;
 }
 
-int sfile_queue(File_t *dev, int index, size_t bytesused)
+int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused)
 {
 	if (index > dev->nbuffers)
 	{
@@ -235,12 +235,15 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 			struct dma_buf_sync sync = { 0 };
 			sync.flags = DMA_BUF_SYNC_READ | DMA_BUF_SYNC_START;
 			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
-			buffer->mem = mmap(NULL, buffer->size, PROT_READ, MAP_SHARED, buffer->dma_buf, 0 );
+			mem = mmap(NULL, buffer->size, PROT_READ, MAP_SHARED, buffer->dma_buf, 0 );
 		}
-		ssize_t ret = dev->ops->write(dev, buffer->mem, bytesused);
+		if (mem == NULL)
+			mem = buffer->mem;
+		ssize_t ret = dev->ops->write(dev, mem, bytesused);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
+			munmap(mem, buffer->size);
 			sync.flags = DMA_BUF_SYNC_READ | DMA_BUF_SYNC_END;
 			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
 		}

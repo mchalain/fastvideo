@@ -171,7 +171,7 @@ int skeleton_fd(Dev_t *dev)
 	return -1;
 }
 
-int skeleton_queue(Dev_t *dev, int id)
+int skeleton_queue(Dev_t *dev, int id, void *mem, size_t size)
 {
 	dev->buffers[id].state = queued;
 	/**

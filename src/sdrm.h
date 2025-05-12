@@ -25,7 +25,7 @@ Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf_t *conf
 Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayConf_t *config);
 int sdrm_requestbuffer(Display_t *dev, enum buf_type_e t, ...);
 int sdrm_fd(Display_t *disp);
-int sdrm_queue(Display_t *disp, int id);
+int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused);
 int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused);
 int sdrm_start(Display_t *disp);
 int sdrm_stop(Display_t *disp);

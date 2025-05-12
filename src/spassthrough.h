@@ -15,7 +15,7 @@ int spassthrough_fd(Passthrough_t *dev);
 int spassthrough_start(Passthrough_t *dev);
 int spassthrough_stop(Passthrough_t *dev);
 int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused);
-int spassthrough_queue(Passthrough_t *dev, int index, size_t bytesused);
+int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused);
 void spassthrough_destroy(Passthrough_t *dev);
 
 extern FastVideoDevice_ops_t spassthrough_ops;

@@ -460,11 +460,11 @@ void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo)
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-	glprog_run(dev->programs, (int)id);
+	glprog_run(dev->programs, id);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-int segl_queue(EGL_t *dev, int id, size_t bytesused)
+int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused)
 {
 	if (dev->type == device_input)
 	{

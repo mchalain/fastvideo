@@ -226,7 +226,7 @@ int sdvb_dequeue(DVB_t *dev, void **mem, size_t *bytesused)
 	return buffer.index;
 }
 
-int sdvb_queue(DVB_t *dev, int index, size_t bytesused)
+int sdvb_queue(DVB_t *dev, int index, void *mem, size_t bytesused)
 {
 	struct dmx_buffer buffer;
 	buffer.index = index;

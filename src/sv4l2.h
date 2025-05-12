@@ -139,11 +139,12 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused);
  *
  * @param dev the V4L2_t object.
  * @param id the index of the buffer to push.
+ * @param mem userptr buffer.
  * @param bytesused the size of data.
  *
  * @return -1 on error, 0 otherwise.
  */
-int sv4l2_queue(V4L2_t *dev, int index, size_t bytesused);
+int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused);
 /**
  * @brief set a rectaongle inseide the image to treat.
  *

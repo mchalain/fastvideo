@@ -574,7 +574,7 @@ static void page_flip_handler(int fd, unsigned int frame,
 	disp->buffers[(int)id].queued = 0;
 }
 
-int sdrm_queue(Display_t *disp, int id)
+int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused)
 {
 	if (disp->buffers[id].queued)
 		return -1;

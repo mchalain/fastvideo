@@ -211,9 +211,11 @@ int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused)
 	return last->index;
 }
 
-int spassthrough_queue(Passthrough_t *dev, int index, size_t bytesused)
+int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused)
 {
 	dev = dev->dup;
+	if (mem)
+		dev->buffers[index].mem = mem;
 	dev->buffers[index].bytesused = bytesused;
 	dev->buffers[index].state = PassBuffer_fill_e;
 #if 0

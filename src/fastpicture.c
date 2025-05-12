@@ -43,7 +43,8 @@ int main_loop(V4L2_t *cam, File_t *file)
 		{
 			int index = 0;
 			size_t bytesused = 0;
-			if ((index = sv4l2_dequeue(cam, NULL, &bytesused)) < 0)
+			void *mem = NULL;
+			if ((index = sv4l2_dequeue(cam, &mem, &bytesused)) < 0)
 			{
 				err("camera buffer dequeuing error %m");
 				if (errno == EAGAIN)
@@ -52,7 +53,7 @@ int main_loop(V4L2_t *cam, File_t *file)
 				break;
 			}
 
-			if (sfile_queue(file, index, bytesused) < 0)
+			if (sfile_queue(file, index, mem, bytesused) < 0)
 			{
 				err("file buffer queuing error %m");
 				if (errno == EAGAIN)
@@ -68,7 +69,7 @@ int main_loop(V4L2_t *cam, File_t *file)
 				run = 0;
 				break;
 			}
-			if (sv4l2_queue(cam, index, 0) < 0)
+			if (sv4l2_queue(cam, index, NULL, 0) < 0)
 			{
 				err("camera buffer queuing error %m");
 				if (errno == EAGAIN)

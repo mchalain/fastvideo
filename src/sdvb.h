@@ -28,7 +28,7 @@ int sdvb_fd(DVB_t *dev);
 int sdvb_start(DVB_t *dev);
 int sdvb_stop(DVB_t *dev);
 int sdvb_dequeue(DVB_t *dev, void **mem, size_t *bytesused);
-int sdvb_queue(DVB_t *dev, int index, size_t bytesused);
+int sdvb_queue(DVB_t *dev, int index, void *mem, size_t bytesused);
 void sdvb_destroy(DVB_t *dev);
 DeviceConf_t * sdvb_createconfig();
 

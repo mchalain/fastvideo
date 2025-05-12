@@ -32,7 +32,7 @@ int sfile_fd(File_t *dev);
 int sfile_start(File_t *dev);
 int sfile_stop(File_t *dev);
 int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused);
-int sfile_queue(File_t *dev, int index, size_t bytesused);
+int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused);
 void sfile_destroy(File_t *dev);
 
 #ifdef HAVE_JANSSON

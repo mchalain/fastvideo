@@ -1308,7 +1308,7 @@ int sv4l2_start(V4L2_t *dev)
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
 			dbg_buffer((&dev->buffers[i].v4l2));
-			if (sv4l2_queue(dev, i, 0))
+			if (sv4l2_queue(dev, i, NULL, 0))
 				return -1;
 		}
 	}
@@ -1344,7 +1344,7 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused)
 	ret = ioctl(dev->fd, VIDIOC_DQBUF, &buf);
 	if (ret)
 	{
-		err("sv4l2: %s dequeueing error %m", dev->config->parent.name);
+		err("sv4l2: %s dequeueing error %m", dev->name);
 		dbg_buffer((&buf));
 		return -1;
 	}
@@ -1361,16 +1361,18 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused)
 	return buf.index;
 }
 
-int sv4l2_queue(V4L2_t *dev, int index, size_t bytesused)
+int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused)
 {
 	int ret = 0;
 	if (bytesused > 0)
 		dev->buffers[index].v4l2.bytesused = bytesused;
+	if (mem && dev->buffers[0].v4l2.memory == V4L2_MEMORY_USERPTR)
+		dev->buffers[index].ops.setmem(&dev->buffers[index], mem, bytesused);
 	ret = ioctl(dev->fd, VIDIOC_QBUF, &dev->buffers[index].v4l2);
 	if (ret)
 	{
+		err("sv4l2: %s queueing error %m", dev->name);
 		dbg_buffer((&dev->buffers[index].v4l2));
-		err("sv4l2: %s queueing error %m", dev->config->parent.name);
 	}
 	return ret;
 }
