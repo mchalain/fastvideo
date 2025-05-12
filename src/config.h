@@ -112,6 +112,7 @@ struct FrameBuffer_s
 		dequeued,
 		queued,
 	} state;
+	void *private;
 	FrameBuffer_t *next;
 };
 
