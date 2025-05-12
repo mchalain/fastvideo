@@ -138,11 +138,11 @@ int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 	{
 		inconfig->height = outconfig->height = 480;
 	}
-	if (inconfig->fourcc)
+	if (inconfig->fourcc && !outconfig->fourcc)
 		outconfig->fourcc = inconfig->fourcc;
-	else if (outconfig->fourcc)
+	else if (outconfig->fourcc && !inconfig->fourcc)
 		inconfig->fourcc = outconfig->fourcc;
-	else
+	else if (!inconfig->fourcc && !outconfig->fourcc)
 		inconfig->fourcc = outconfig->fourcc = FOURCC('A','B','2','4');
 	return 0;
 }
