@@ -331,17 +331,31 @@ uint32_t sv4l2_getpixformat(V4L2_t *dev, int (*pixformat)(void *arg, struct v4l2
 	else
 #endif
 		pixelformat = fmt.fmt.pix.pixelformat;
+	if (dev->mode & MODE_MPLANE)
+	{
+		dev->width = fmt.fmt.pix_mp.width;
+		dev->height = fmt.fmt.pix_mp.height;
+		dev->fourcc = fmt.fmt.pix_mp.pixelformat;
+		dev->stride = fmt.fmt.pix_mp.plane_fmt[0].bytesperline;
+		dev->nplanes = fmt.fmt.pix_mp.num_planes;
+	}
+	else
+	{
+		dev->width = fmt.fmt.pix.width;
+		dev->height = fmt.fmt.pix.height;
+		dev->fourcc = fmt.fmt.pix.pixelformat;
+		dev->stride = fmt.fmt.pix.bytesperline;
+	}
 
 	struct v4l2_fmtdesc fmtdesc = {0};
 	fmtdesc.type = dev->type;
 	dbg("Formats:");
-	while (ioctl(dev->fd, VIDIOC_ENUM_FMT, &fmtdesc) == 0)
+	while (pixformat && ioctl(dev->fd, VIDIOC_ENUM_FMT, &fmtdesc) == 0)
 	{
 		dbg("\t%.4s => %s", (char*)&fmtdesc.pixelformat,
 				fmtdesc.description);
 		fmtdesc.index++;
-		if (pixformat)
-			pixformat(cbarg, &fmtdesc, (fmtdesc.pixelformat == pixelformat));
+		pixformat(cbarg, &fmtdesc, (fmtdesc.pixelformat == pixelformat));
 	}
 	return pixelformat;
 }
@@ -360,9 +374,7 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 #ifdef HAS_V4L2_META
 	if (type == V4L2_BUF_TYPE_META_CAPTURE || type == V4L2_BUF_TYPE_META_OUTPUT)
 		pixelformat = fmt.fmt.meta.dataformat;
-	else
 #endif
-		pixelformat = fmt.fmt.pix.pixelformat;
 
 	struct v4l2_fmtdesc fmtdesc = {0};
 	fmtdesc.type = type;
@@ -380,16 +392,17 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 		}
 		int i = 0;
 		while (formats[i].fourcc != 0 && formats[i].fourcc != fmtdesc.pixelformat) i++;
-		if (formats[i].fourcc != 0)
+		if (!pixelformat && formats[i].fourcc != 0)
 		{
 			pixelformat = formats[i].fourcc;
 		}
 	}
 #ifdef HAS_V4L2_META
-	if (type == V4L2_BUF_TYPE_META_CAPTURE || type == V4L2_BUF_TYPE_META_OUTPUT)
+	if ((pixelformat) && (type == V4L2_BUF_TYPE_META_CAPTURE || type == V4L2_BUF_TYPE_META_OUTPUT))
 		fmt.fmt.meta.dataformat = pixelformat;
 	else
 #endif
+	if (pixelformat)
 		fmt.fmt.pix.pixelformat = pixelformat;
 	if (ioctl(fd, VIDIOC_S_FMT, &fmt) != 0)
 	{
@@ -531,9 +544,6 @@ static int _v4l2_setfps(int fd, enum v4l2_buf_type type, int fps)
 	{
 		fps = streamparm.parm.capture.timeperframe.denominator /
 				streamparm.parm.capture.timeperframe.numerator;
-		dbg("Frame per second:");
-		dbg("\t%d / %d %u", streamparm.parm.capture.timeperframe.denominator,
-					streamparm.parm.capture.timeperframe.numerator, fps);
 	}
 	else if (fps >= 0 && fps != streamparm.parm.capture.timeperframe.denominator)
 	{
@@ -1167,66 +1177,28 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e dtype, V4l2C
 	else
 		type = _v4l2_getbuftype(type, mode);
 
-	struct v4l2_format fmt = {0};
-	fmt.type = type;
-	fmt.fmt.pix.field = V4L2_FIELD_ANY;
-	if (ioctl(fd, VIDIOC_G_FMT, &fmt) != 0)
-	{
-		err("FMT not found %m");
-		return NULL;
-	}
-	uint32_t width = 0;
-	uint32_t height = 0;
-	uint32_t fourcc = 0;
-	uint32_t stride = 0;
-	uint32_t sizeimage = 0;
-	if (mode & MODE_MPLANE)
-	{
-		width = fmt.fmt.pix_mp.width;
-		height = fmt.fmt.pix_mp.height;
-		fourcc = fmt.fmt.pix_mp.pixelformat;
-		stride = fmt.fmt.pix_mp.plane_fmt[0].bytesperline;
-		sizeimage = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
-	}
-	else
-	{
-		width = fmt.fmt.pix.width;
-		height = fmt.fmt.pix.height;
-		fourcc = fmt.fmt.pix.pixelformat;
-		stride = fmt.fmt.pix.bytesperline;
-		sizeimage = fmt.fmt.pix.sizeimage;
-	}
-
-	if (!stride && sizeimage)
-		stride = sizeimage / height;
-
 	V4L2_t *dev = calloc(1, sizeof(*dev));
 	dev->name = devicename;
 	dev->config = config;
 	dev->fd = fd;
 	dev->type = type;
 	dev->mode = mode;
-	dev->width = width;
-	dev->stride = stride;
-	dev->height = height;
-	dev->fourcc = fourcc;
-
 	if (mode & MODE_VERBOSE)
 		warn("sv4l2: create %s", devicename);
 	dev->ops.createbuffers = createbuffers_splane;
-	dev->nplanes = 1;
 	if (mode & MODE_MPLANE)
 	{
 		dev->ops.createbuffers = createbuffers_mplane;
-		dev->nplanes = fmt.fmt.pix_mp.num_planes;
 	}
-	dbg("V4l2 settings: %dx%d, %.4s", dev->width, dev->height, (char*)&dev->fourcc);
+	sv4l2_getpixformat(dev, NULL, NULL);
+
+	dbg("sv4l2: %s %dx%d, %.4s", dev->name, dev->width, dev->height, (char*)&dev->fourcc);
 	if (config)
 	{
 		config->parent.dev = dev;
-		config->parent.width = width;
-		config->parent.height = height;
-		config->parent.fourcc = fourcc;
+		config->parent.width = dev->width;
+		config->parent.height = dev->height;
+		config->parent.fourcc = dev->fourcc;
 	}
 	return dev;
 }
@@ -1264,26 +1236,20 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	if (!dup)
 		return NULL;
 	memcpy(dup, dev, sizeof(*dup));
-	enum v4l2_buf_type type = -1;
-	if (_sv4l2_prepare(dup->fd, &type, dev->mode, *pconfig))
-	{
-		close(dup->fd);
-		return NULL;
-	}
-	dup->type = type;
+	dup->mode &= ~MODE_OUTPUT;
+	dup->type = -1;
+	dup->config = malloc(sizeof(*dev->config));
+	memmove(dup->config, *pconfig, sizeof(*dev->config));
+	dup->config->parent.fourcc = dup->config->transfer;
 
-	struct v4l2_format fmt;
-	fmt.type = dup->type;
-	fmt.fmt.pix.field = V4L2_FIELD_ANY;
-	if (ioctl(dup->fd, VIDIOC_G_FMT, &fmt) != 0)
+	if (_sv4l2_prepare(dup->fd, &dup->type, dup->mode, dup->config))
 	{
-		err("sv4l2: FMT not found %m");
 		close(dup->fd);
 		return NULL;
 	}
-	dbg("sv4l2: duplicated settings: %dx%d, %.4s", fmt.fmt.pix_mp.width,
-												fmt.fmt.pix_mp.height,
-												&fmt.fmt.pix_mp.pixelformat);
+
+	sv4l2_getpixformat(dup, NULL, NULL);
+	dbg("sv4l2: %s(dup) %dx%d, %.4s", dup->name, dup->width, dup->height, (char*)&dup->fourcc);
 
 	return dup;
 }
