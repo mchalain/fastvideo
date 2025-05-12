@@ -31,6 +31,7 @@ struct V4l2Config_s
 	const char *device;
 	int mode;
 	int fps;
+	uint32_t transfer;
 };
 
 typedef struct V4L2Buffer_s V4L2Buffer_t;

@@ -1637,6 +1637,7 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 
 	json_t *fps = NULL;
 	json_t *mode = NULL;
+	json_t *transfer = NULL;
 	if (definition && json_is_array(definition))
 	{
 		json_t *field = NULL;
@@ -1656,6 +1657,11 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 				{
 					mode = json_object_get(field, "value");
 				}
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "transfer"))
+				{
+					transfer = json_object_get(field, "value");
+				}
 			}
 		}
 	}
@@ -1663,16 +1669,19 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 	{
 		fps = json_object_get(definition, "fps");
 		mode = json_object_get(definition, "mode");
-	}
-	else
-	{
-		fps = json_object_get(definition, "fps");
-		mode = json_object_get(definition, "mode");
+		transfer = json_object_get(definition, "transfer");
 	}
 	if (fps && json_is_integer(fps))
 	{
 		int value = json_integer_value(fps);
 		config->fps = value;
+	}
+	else
+		config->fps = -1;
+	if (transfer && json_is_string(transfer))
+	{
+		const char *value = json_string_value(transfer);
+		config->transfer = FOURCC(value[0], value[1], value[2], value[3]);
 	}
 	if (mode && json_is_string(mode))
 	{
