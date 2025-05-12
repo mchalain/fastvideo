@@ -23,6 +23,7 @@ static struct {
 } gbm;
 
 static struct drm_s {
+	uint32_t fourcc;
 	int fd;
 	drmModeModeInfo *mode;
 	uint32_t crtc_id;
@@ -223,6 +224,84 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	}
 	gbm.dev = gbm_create_device(drm.fd);
 
+	uint32_t formats[] =
+	{
+		GBM_FORMAT_C8		,
+		GBM_FORMAT_R8		,
+		GBM_FORMAT_GR88		,
+		GBM_FORMAT_RGB332	,
+		GBM_FORMAT_BGR233	,
+		GBM_FORMAT_XRGB4444	,
+		GBM_FORMAT_XBGR4444	,
+		GBM_FORMAT_RGBX4444	,
+		GBM_FORMAT_BGRX4444	,
+		GBM_FORMAT_ARGB4444	,
+		GBM_FORMAT_ABGR4444	,
+		GBM_FORMAT_RGBA4444	,
+		GBM_FORMAT_BGRA4444	,
+		GBM_FORMAT_XRGB1555	,
+		GBM_FORMAT_XBGR1555	,
+		GBM_FORMAT_RGBX5551	,
+		GBM_FORMAT_BGRX5551	,
+		GBM_FORMAT_ARGB1555	,
+		GBM_FORMAT_ABGR1555	,
+		GBM_FORMAT_RGBA5551	,
+		GBM_FORMAT_BGRA5551	,
+		GBM_FORMAT_RGB565	,
+		GBM_FORMAT_BGR565	,
+		GBM_FORMAT_RGB888	,
+		GBM_FORMAT_BGR888	,
+		GBM_FORMAT_XRGB8888	,
+		GBM_FORMAT_XBGR8888	,
+		GBM_FORMAT_RGBX8888	,
+		GBM_FORMAT_BGRX8888	,
+		GBM_FORMAT_ARGB8888	,
+		GBM_FORMAT_ABGR8888	,
+		GBM_FORMAT_RGBA8888	,
+		GBM_FORMAT_BGRA8888	,
+		GBM_FORMAT_XRGB2101010	,
+		GBM_FORMAT_XBGR2101010	,
+		GBM_FORMAT_RGBX1010102	,
+		GBM_FORMAT_BGRX1010102	,
+		GBM_FORMAT_ARGB2101010	,
+		GBM_FORMAT_ABGR2101010	,
+		GBM_FORMAT_RGBA1010102	,
+		GBM_FORMAT_BGRA1010102	,
+		GBM_FORMAT_XBGR16161616F,
+		GBM_FORMAT_ABGR16161616F,
+		GBM_FORMAT_YUYV,
+		GBM_FORMAT_YVYU,
+		GBM_FORMAT_UYVY,
+		GBM_FORMAT_VYUY,
+		GBM_FORMAT_AYUV,
+		GBM_FORMAT_NV12,
+		GBM_FORMAT_NV21,
+		GBM_FORMAT_NV16,
+		GBM_FORMAT_NV61,
+		GBM_FORMAT_YUV410,
+		GBM_FORMAT_YVU410,
+		GBM_FORMAT_YUV411,
+		GBM_FORMAT_YVU411,
+		GBM_FORMAT_YUV420,
+		GBM_FORMAT_YVU420,
+		GBM_FORMAT_YUV422,
+		GBM_FORMAT_YVU422,
+		GBM_FORMAT_YUV444,
+		GBM_FORMAT_YVU444,
+	};
+
+	drm.fourcc = GBM_FORMAT_XRGB8888;
+	dbg("segl: screen formats:");
+	for (int i = 0; i < sizeof(formats)/sizeof(*formats); i++)
+	{
+		int ret = gbm_device_is_format_supported(gbm.dev, formats[i], GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+#ifdef DEBUG
+		if (ret)
+			dbg("\t%.4s", &formats[i]);
+#endif
+		if (ret && config->parent.fourcc && config->parent.fourcc == formats[i])
+			drm.fourcc = formats[i];
+	}
 	return (EGLNativeDisplayType)gbm.dev;
 }
 
@@ -232,10 +311,10 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 
 	gbm.surface = gbm_surface_create(gbm.dev,
 			drm.mode->hdisplay, drm.mode->vdisplay,
-			GBM_FORMAT_XRGB8888,
+			drm.fourcc,
 			GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 	if (!gbm.surface) {
-		err("segl: failed to create gbm surface");
+		err("segl: failed to create gbm surface %.4s", &drm.fourcc);
 		return (EGLNativeWindowType)NULL;
 	}
 
