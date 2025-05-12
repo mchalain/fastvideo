@@ -50,12 +50,10 @@ static ssize_t _passthrough_write(File_t *dev, void *mem, size_t size)
 			break;
 			case FOURCC('J','P','E','G'):
 			case FOURCC('M','J','P','G'):
-				ret = write(fd, mem, size);
-			break;
 			case FOURCC('Y','U','Y','V'):
+			default:
 				ret = write(fd, mem, size);
 			break;
-			default:
 			break;
 		}
 	}
@@ -73,6 +71,7 @@ static ssize_t _passthrough_read(File_t *dev, void *mem, size_t size)
 static void _passthrough_close(File_t *dev)
 {
 	int fd = (long)dev->ctx;
+	fsync(fd);
 	if (fd > 0)
 		close(fd);
 }
