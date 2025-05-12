@@ -409,6 +409,25 @@ EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	if (glget <= dup->config->parent.height)
 		warn("segl: width to height max %d", glget);
 
+	int index = 4;
+	GLint formats[] =
+	{
+		GL_ALPHA,
+		GL_LUMINANCE,
+		GL_LUMINANCE_ALPHA,
+		GL_RGB,
+		GL_RGBA,
+	};
+	GLenum type = GL_UNSIGNED_BYTE;
+	switch (dup->config->parent.fourcc)
+	{
+		case FOURCC('R','G','B', 'P'):
+			index = 3;
+			type = GL_UNSIGNED_SHORT_5_6_5;
+		break;
+		default:
+		break;
+	}
 	/*  Framebuffer */
 	glGenFramebuffers(1, &dup->fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, dup->fbo);
@@ -416,9 +435,9 @@ EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	{
 		GLuint dma_texture = -1;
 		dma_texture = texture_create(dev, GL_TEXTURE_2D);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+		glTexImage2D(GL_TEXTURE_2D, 0, formats[index],
 				dup->config->parent.width, dup->config->parent.height, 0,
-				GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, NULL);
+				formats[index], type, NULL);
 		if (texturedma_get(dup, dma_texture))
 			break;
 		dup->nbuffers++;
