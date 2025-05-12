@@ -558,13 +558,16 @@ static int _v4l2_setfps(int fd, enum v4l2_buf_type type, int fps)
 	else if (fps < 0 && -fps != streamparm.parm.capture.timeperframe.numerator)
 	{
 		streamparm.parm.capture.timeperframe.denominator = 1;
-		streamparm.parm.capture.timeperframe.numerator = fps;
+		streamparm.parm.capture.timeperframe.numerator = -fps;
 		if (ioctl(fd, VIDIOC_S_PARM, &streamparm) == -1)
 		{
 			err("FPS setting error %m");
 			return -1;
 		}
 	}
+	dbg("Frame rate: %d/%d fps",
+			streamparm.parm.capture.timeperframe.denominator,
+			streamparm.parm.capture.timeperframe.numerator);
 	return fps;
 }
 
@@ -871,6 +874,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 		dbg_buffer((&dev->buffers[i].v4l2));
 	}
 #endif
+	dbg("sv4l2: %s %dx%d, %.4s %lu", dev->name, dev->width, dev->height, (char*)&dev->fourcc, dev->buffers[0].ops.getsize(&dev->buffers[0]));
 	return ret;
 }
 
