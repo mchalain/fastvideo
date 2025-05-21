@@ -314,6 +314,12 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 			config->filename = filepath;
 		}
 	}
+	json_t *filename = json_object_get(jconfig, "filename");
+	if (filename && json_is_string(filename))
+	{
+		const char *value = json_string_value(filename);
+		config->filename = value;
+	}
 	json_t *path = json_object_get(jconfig, "path");
 	if (path && json_is_string(path))
 	{
