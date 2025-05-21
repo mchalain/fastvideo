@@ -4,11 +4,12 @@
 #include "fastvideo.h"
 #include "config.h"
 
+typedef struct Passthrough_config_s Passthrough_config_t;
 typedef struct Passthrough_s Passthrough_t;
 
 DeviceConf_t * spassthrough_createconfig(void);
-void *spassthrough_create(const char *devicename, device_type_e type, DeviceConf_t *config);
-void *spassthrough_duplicate(Passthrough_t *dev, DeviceConf_t **pconfig);
+void *spassthrough_create(const char *devicename, device_type_e type, Passthrough_config_t *config);
+void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **pconfig);
 int spassthrough_loadsettings(Passthrough_t *dev, void *configentry);
 int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...);
 int spassthrough_fd(Passthrough_t *dev);

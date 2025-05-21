@@ -2,11 +2,13 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include <errno.h>
 
 #include "log.h"
 #include "config.h"
 #include "spassthrough.h"
+#include "sfile.h"
 
 static const char spassthrough[] = "spassthrough";
 
@@ -27,14 +29,21 @@ struct PassBuffer_s
 	} state;
 };
 
-static const char name1_str[] = "input";
-static const char name2_str[] = "output";
+#define MODE_SHOOT 0x01
+#define MODE_SHOOTING 0x10
+
+struct Passthrough_config_s
+{
+	DeviceConf_t parent;
+	int mode;
+	DeviceConf_t shoot;
+};
 
 typedef struct Passthrough_s Passthrough_t;
 struct Passthrough_s
 {
-	const char *name;
-	DeviceConf_t *config;
+	device_type_e type;
+	Passthrough_config_t *config;
 	Passthrough_t *dup;
 	int nbuffers;
 	void **mems;
@@ -42,35 +51,72 @@ struct Passthrough_s
 	size_t size;
 	PassBuffer_t *buffers;
 	PassBuffer_t *fifo;
+	int state;
+	struct
+	{
+		DeviceConf_t *config;
+		void *dev;
+		FastVideoDevice_ops_t *ops;
+	} shoot;
 };
+
+int spassthrough_loadjsonconfiguration(void *arg, void *entry);
 
 DeviceConf_t * spassthrough_createconfig(void)
 {
-	DeviceConf_t *config = calloc(1, sizeof(*config));
-	config->name = spassthrough;
-	return config;
+	Passthrough_config_t *config = calloc(1, sizeof(*config));
+	config->parent.name = spassthrough;
+#ifdef HAVE_JANSSON
+	config->parent.ops.loadconfiguration = spassthrough_loadjsonconfiguration;
+#endif
+	return &config->parent;
 }
 
-void *spassthrough_create(const char *devicename, device_type_e type, DeviceConf_t *config)
+void *spassthrough_create(const char *devicename, device_type_e type, Passthrough_config_t *config)
 {
 	if (type != device_transfer)
 	{
-		err("spassthrough: %s bad device type", config->name);
+		err("spassthrough: %s bad device type", config->parent.name);
 		return NULL;
 	}
 	Passthrough_t *dev = calloc(1, sizeof(*dev));
 	dev->config = config;
-	dev->name = name1_str;
+	dev->type = device_output;
 	return dev;
 }
 
-void *spassthrough_duplicate(Passthrough_t *dev, DeviceConf_t **pconfig)
+void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **pconfig)
 {
 	Passthrough_t *dup = calloc(1, sizeof(*dup));
-	dup->name = name2_str;
+	dup->type = device_input;
 	dup->dup = dev;
 	dev->dup = dup;
 	dev->config = *pconfig;
+	if (dev->config->mode & MODE_SHOOT)
+	{
+		FastVideoDevice_ops_t *opss[] = {
+			&sfile_ops,
+			NULL,
+		};
+		for (int i = 0; opss[i] != NULL; i++)
+		{
+			if (! strcmp(dev->config->shoot.type, opss[i]->name))
+				dev->shoot.ops = opss[i];
+		}
+		DeviceConf_t *devconfig = NULL;
+		if (dev->shoot.ops)
+			dev->shoot.ops->createconfig();
+		if (devconfig)
+		{
+			devconfig->name = dev->config->shoot.name;
+			devconfig->type = dev->config->shoot.type;
+			devconfig->entry = dev->config->shoot.entry;
+			if (devconfig->ops.loadconfiguration)
+				devconfig->ops.loadconfiguration(devconfig, devconfig->entry);
+			dev->shoot.config = devconfig;
+			dev->shoot.dev = dev->shoot.ops->create(devconfig->name, device_output, dev->shoot.config);
+		}
+	}
 	return dup;
 }
 
@@ -115,6 +161,11 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 			_passthrough_createbuffers(dev, ntargets, targets, NULL, size);
 			_passthrough_createbuffers(dev->dup, ntargets, targets, NULL, size);
 			ret = 0;
+			if (dev->type == device_input && dev->shoot.dev)
+			{
+				dev->shoot.ops->destroy(dev->shoot.dev);
+				dev->shoot.dev = NULL;
+			}
 		}
 		break;
 		case (buf_type_memory | buf_type_master):
@@ -133,6 +184,10 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 			if (size != NULL)
 				*size = dev->size;
 			ret = 0;
+			if (dev->type == device_input && dev->shoot.dev)
+			{
+				dev->shoot.ops->requestbuffer(dev->shoot.dev, buf_type_memory, dev->nbuffers, dev->mems, dev->size, NULL);
+			}
 		}
 		break;
 		case buf_type_dmabuf:
@@ -145,6 +200,11 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 			_passthrough_createbuffers(dev, ntargets, NULL, targets, size);
 			_passthrough_createbuffers(dev->dup, ntargets, NULL, targets, size);
 			ret = 0;
+			if (dev->type == device_input && dev->shoot.dev)
+			{
+				dev->shoot.ops->destroy(dev->shoot.dev);
+				dev->shoot.dev = NULL;
+			}
 		}
 		break;
 		case buf_type_dmabuf | buf_type_master:
@@ -163,6 +223,10 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 			if (size != NULL)
 				*size = dev->size;
 			ret = 0;
+			if (dev->type == device_input && dev->shoot.dev)
+			{
+				dev->shoot.ops->requestbuffer(dev->shoot.dev, buf_type_dmabuf, dev->nbuffers, dev->dmabufs, dev->size, NULL);
+			}
 		}
 		break;
 		default:
@@ -179,11 +243,19 @@ int spassthrough_fd(Passthrough_t *dev)
 
 int spassthrough_start(Passthrough_t *dev)
 {
+	if (dev->type == device_input && dev->shoot.dev)
+	{
+		dev->shoot.ops->start(dev->shoot.dev);
+	}
 	return 0;
 }
 
 int spassthrough_stop(Passthrough_t *dev)
 {
+	if (dev->type == device_input && dev->shoot.dev)
+	{
+		dev->shoot.ops->stop(dev->shoot.dev);
+	}
 	return 0;
 }
 
@@ -195,6 +267,12 @@ int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused)
 		return -1;
 	if (last->state == PassBuffer_free_e)
 		return -1;
+	if (dev->type == device_input && dev->state == MODE_SHOOTING)
+	{
+		int index = dev->shoot.ops->dequeue(dev->shoot.dev, mem, bytesused);
+		if (index == last->index)
+			dev->state = 0;
+	}
 	last->state = PassBuffer_free_e;
 	/** the real fifo is useless as the entry is immediately pushed **/
 #if 0
@@ -226,13 +304,48 @@ int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesuse
 #endif
 	/** insert into fifo **/
 	dev->fifo = &dev->buffers[index];
+	if (dev->type == device_input && dev->state == MODE_SHOOT)
+	{
+		dev->shoot.ops->queue(dev->shoot.dev, index, mem, bytesused);
+		dev->state = MODE_SHOOTING;
+	}
 	return 0;
 }
 
 void spassthrough_destroy(Passthrough_t *dev)
 {
+	if (dev->type == device_input && dev->shoot.dev)
+	{
+		dev->shoot.ops->destroy(dev->shoot.dev);
+	}
 	free(dev->config);
 	free(dev);
+}
+
+int spassthrough_loadjsonconfiguration(void *arg, void *entry)
+{
+	json_t *jconfig = entry;
+
+	Passthrough_config_t *config = (Passthrough_config_t *)arg;
+	json_t *mode = json_object_get(jconfig, "mode");
+	if (mode && json_is_string(mode))
+	{
+		const char *value = json_string_value(mode);
+		if (!strncasecmp(value, "shoot",6))
+			config->mode = MODE_SHOOT;
+	}
+	json_t *shoot = json_object_get(jconfig, "shoot");
+	config->shoot.entry = shoot;
+	if (mode && json_is_object(mode))
+	{
+		json_t *name = json_object_get(jconfig, "name");
+		config->shoot.name = json_string_value(name);
+		json_t *type = json_object_get(jconfig, "type");
+		config->shoot.type = json_string_value(type);
+	}
+
+library_end:
+	return 0;
 }
 
 FastVideoDevice_ops_t spassthrough_ops = {
