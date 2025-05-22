@@ -27,19 +27,9 @@
 #define MODE_INITIALIZE 0x02
 //#define DISABLE_TRANSFER
 
-typedef struct FastVideoDevice_s FastVideoDevice_t;
-struct FastVideoDevice_s
-{
-	DeviceConf_t *config;
-	void *dev;
-	int id;
-	FastVideoDevice_ops_t *ops;
-	FastVideoDevice_t *next;
-};
-
 int _createdevices(void *data, const char *name, const char *type, void *config)
 {
-	FastVideoDevice_t **devices = data;
+	FastVideoList_t **devices = data;
 	FastVideoDevice_ops_t *fastVideoDevice_ops[] =
 	{
 		&sv4l2_ops,
@@ -72,8 +62,10 @@ int _createdevices(void *data, const char *name, const char *type, void *config)
 				device = calloc(1, sizeof(*device));
 				device->config = devconfig;
 				device->ops = fastVideoDevice_ops[i];
-				device->next = *devices;
-				*devices = device;
+				*devices = fastvideolist_insert(*devices, device);
+				err("new config for %s %p", name, devconfig);
+				/// 1 will stop the loop about the names list but continue the loop about the devices list
+				return 1;
 			}
 		}
 	}
@@ -82,10 +74,11 @@ int _createdevices(void *data, const char *name, const char *type, void *config)
 }
 
 #ifdef HAVE_JANSSON
-int _loadjsonsetting(FastVideoDevice_t *devices, const char *name, json_t *jentry)
+int _loadjsonsetting(FastVideoList_t *devices, const char *name, json_t *jentry)
 {
 	int ret = -1;
-	for (FastVideoDevice_t *device = devices; device != NULL; device = device->next)
+	for (FastVideoDevice_t *device = fastvideolist_next(devices);
+			device != NULL; device = fastvideolist_next(devices))
 	{
 		if (!strcmp(name, device->config->name) &&
 			device->ops->loadsettings && device->dev)
@@ -97,7 +90,7 @@ int _loadjsonsetting(FastVideoDevice_t *devices, const char *name, json_t *jentr
 	}
 	return ret;
 }
-int _loadsetting(FastVideoDevice_t *devices, client_t *clt, json_t *jentry)
+int _loadsetting(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 {
 	int ret = 0;
 	if (jentry && json_is_object(jentry))
@@ -116,7 +109,7 @@ int _loadsetting(FastVideoDevice_t *devices, client_t *clt, json_t *jentry)
 	return ret;
 }
 
-int _capabilities(FastVideoDevice_t *devices, client_t *clt, json_t *jentry)
+int _capabilities(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 {
 	int ret = 0;
 	int all = 0;
@@ -131,7 +124,8 @@ int _capabilities(FastVideoDevice_t *devices, client_t *clt, json_t *jentry)
 			name = json_string_value(jname);
 	}
 	json_t *jdevices = json_array();
-	for (FastVideoDevice_t *device = devices; device != NULL; device = device->next)
+	for (FastVideoDevice_t *device = fastvideolist_next(devices);
+			device != NULL; device = fastvideolist_next(devices))
 	{
 		if (device->dev == NULL)
 			continue;
@@ -165,7 +159,7 @@ int _capabilities(FastVideoDevice_t *devices, client_t *clt, json_t *jentry)
 	json_decref(jstatus);
 	return ret;
 }
-int _runcmd(FastVideoDevice_t *devices, client_t *clt, json_t *jentry)
+int _runcmd(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 {
 	int ret = -1;
 	json_t *jcmd = json_object_get(jentry, "cmd");
@@ -195,7 +189,7 @@ int _server_control(void *data, client_t *clt, const char *buffer, size_t length
 {
 	int ret = -1;
 	dbg("receive: %.*s", length, buffer);
-	FastVideoDevice_t *devices = data;
+	FastVideoList_t *devices = data;
 	json_error_t error;
 	json_t *jentry = json_loadb(buffer, length, JSON_DECODE_ANY, &error);
 	if (jentry && json_is_object(jentry))
@@ -215,6 +209,15 @@ int _server_control(void *data, client_t *clt, const char *buffer, size_t length
 	return 0;
 }
 #endif
+
+void _device_destroy(void *arg)
+{
+	FastVideoDevice_t *device = arg;
+	if (device->dev)
+		device->ops->destroy(device->dev);
+	free(device);
+}
+
 int main(int argc, char * const argv[])
 {
 	const char *owner = NULL;
@@ -259,12 +262,13 @@ int main(int argc, char * const argv[])
 	if (cwd != NULL && chdir(cwd) != 0)
 		err("main: working directory %m");
 
-	FastVideoDevice_t *devices = NULL;
+	FastVideoList_t *devices = NULL;
 	config_parseconfigfile(configfile, _createdevices, &devices);
 	if (devices == NULL)
 		return -1;
 
-	for (FastVideoDevice_t *device = devices; device != NULL; device = device->next)
+	for (FastVideoDevice_t *device = fastvideolist_next(devices);
+			device != NULL; device = fastvideolist_next(devices))
 	{
 		device->dev = device->ops->create("any" , device_control, device->config);
 		if (device->dev == NULL)
@@ -273,20 +277,21 @@ int main(int argc, char * const argv[])
 		{
 			dbg("loadsettings");
 			device->ops->loadsettings(device->dev, device->config->entry);
+			json_t *subdevices = config_getdevices(device->config->entry);
+			if (subdevices != device->config->entry)
+			{
+				err("subdevices are presents");
+				config_loaddevice(subdevices, _createdevices, &devices);
+			}
 		}
 	}
 	server_t *server = server_create(serverpath, 2);
 	server_attach_receive(server, _server_control, devices);
 
 	server_run(server);
-	FastVideoDevice_t *next = NULL;
-	for (FastVideoDevice_t *device = devices; device != NULL; device = next)
-	{
-		next = device->next;
-		if (device->dev)
-			device->ops->destroy(device->dev);
-	}
 	server_destroy(server);
+
+	fastvideolist_destroy(devices, _device_destroy);
 
 	return 0;
 }

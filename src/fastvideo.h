@@ -5,6 +5,17 @@
 
 #include "config.h"
 
+typedef struct FastVideoDevice_ops_s FastVideoDevice_ops_t;
+typedef struct FastVideoDevice_s FastVideoDevice_t;
+struct FastVideoDevice_s
+{
+	DeviceConf_t *config;
+	const char *name;
+	int id;
+	void *dev;
+	FastVideoDevice_ops_t *ops;
+};
+
 typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
 typedef void *(*FastVideoDevice_create_t)(const char *devicename, device_type_e type, DeviceConf_t *config);
 typedef void *(*FastVideoDevice_duplicate_t)(void *dev, DeviceConf_t **pconfig);
@@ -18,7 +29,6 @@ typedef int (*FastVideoDevice_dequeue_t)(void *dev, void **mem, size_t *bytesuse
 typedef int (*FastVideoDevice_queue_t)(void *dev, int index, void *mem, size_t bytesused);
 typedef void (*FastVideoDevice_destroy_t)(void *dev);
 
-typedef struct FastVideoDevice_ops_s FastVideoDevice_ops_t;
 struct FastVideoDevice_ops_s
 {
 	const char *name;

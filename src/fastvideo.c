@@ -22,14 +22,6 @@
 #define MODE_INITIALIZE 0x02
 //#define DISABLE_TRANSFER
 
-typedef struct FastVideoDevice_s FastVideoDevice_t;
-struct FastVideoDevice_s
-{
-	DeviceConf_t *config;
-	void *dev;
-	FastVideoDevice_ops_t *ops;
-};
-
 typedef struct FastVideoPipe_s FastVideoPipe_t;
 struct FastVideoPipe_s
 {
