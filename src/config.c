@@ -116,7 +116,7 @@ static int main_parseconfigdevice(json_t *jconfig, int (*cb)(void *data, const c
 	return ret;
 }
 
-static int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data)
+int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data)
 {
 	int ret = -1;
 	if (json_is_array(jconfig))
@@ -144,6 +144,10 @@ json_t *config_getdevices(json_t *jconfig)
 	if (json_is_object(jconfig))
 	{
 		json_t *devices = json_object_get(jconfig, "devices");
+		if (devices)
+			jconfig = devices;
+		else
+			devices = json_object_get(jconfig, "subdevices");
 		if (devices)
 			jconfig = devices;
 	}

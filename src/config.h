@@ -88,6 +88,8 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition);
 int scommon_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devconfig);
 
 int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data);
+json_t *config_getdevices(json_t *jconfig);
+int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data);
 
 json_t *scommon_getdevice(const char *name);
 int scommon_isnamed(json_t *jdevice, const char *name);
