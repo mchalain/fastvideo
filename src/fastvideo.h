@@ -49,5 +49,6 @@ void *fastvideolist_next(FastVideoList_t *list);
 void *fastvideolist_previous(FastVideoList_t *list);
 int fastvideolist_islast(FastVideoList_t *list, void *entity);
 int fastvideolist_isfirst(FastVideoList_t *list, void *entity);
+void fastvideolist_destroy(FastVideoList_t *list, void(*destroy)(void *));
 
 #endif

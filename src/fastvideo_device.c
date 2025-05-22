@@ -103,6 +103,22 @@ void *fastvideolist_previous(FastVideoList_t *list)
 	return entity;
 }
 
+void fastvideolist_destroy(FastVideoList_t *list, void(*destroy)(void *))
+{
+	if (list == NULL)
+		return;
+
+	void *entity = NULL;
+	FastVideoList_t *previous = NULL;
+	for (FastVideoList_t *entry = list->last; entry != NULL; entry = previous)
+	{
+		previous = entry->previous;
+		if (destroy)
+			destroy(entry->entity);
+		free(entry);
+	}
+}
+
 static FastVideoList_t *g_FastVideoDevice_ops = NULL;
 
 void fastvideodevice_ops_append(FastVideoDevice_ops_t *ops)
