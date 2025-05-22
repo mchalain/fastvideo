@@ -231,7 +231,7 @@ int main(int argc, char * const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "j:L:W:");
+		opt = getopt(argc, argv, "j:L:W:I");
 		switch (opt)
 		{
 			case 'j':
@@ -242,6 +242,9 @@ int main(int argc, char * const argv[])
 			break;
 			case 'W':
 				cwd = optarg;
+			break;
+			case 'I':
+				mode = MODE_INITIALIZE;
 			break;
 		}
 	} while(opt != -1);
@@ -285,12 +288,14 @@ int main(int argc, char * const argv[])
 			}
 		}
 	}
-	server_t *server = server_create(serverpath, 2);
-	server_attach_receive(server, _server_control, devices);
+	if (mode & MODE_INITIALIZE == 0)
+	{
+		server_t *server = server_create(serverpath, 2);
+		server_attach_receive(server, _server_control, devices);
 
-	server_run(server);
-	server_destroy(server);
-
+		server_run(server);
+		server_destroy(server);
+	}
 	fastvideolist_destroy(devices, _device_destroy);
 
 	return 0;
