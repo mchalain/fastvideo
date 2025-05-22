@@ -22,6 +22,8 @@
 
 static int all_capabilities_format = 0;
 
+static int _devices_append(json_t *devices, json_t *device);
+
 static int _dev_formatcdev_devfs(int major, int minor, char *path, int pathlen)
 {
 	return (snprintf(path, pathlen,"/dev/char/%d:%d", major, minor) > 0);
@@ -86,6 +88,7 @@ static int sys_opendev(int dirfd, const char *path, char *devpath, size_t devpat
 static int sys_device(const char *path, int (*sysdevice)(void *arg, int fd, const char *path, const char *name), void *cbarg)
 {
 	int ret = -1;
+	dbg("parse %s tree", path);
 	int sysfd = open(path, O_DIRECTORY);
 	DIR *sys = NULL;
 	if (sysfd > 0)
@@ -135,7 +138,6 @@ static json_t *_device_v4l2(json_t *devices, int devfd, const char *path, const 
 	 * The id comes from the media like the name.
 	 * The subdeivces are injected into the device
 	 */
-	device = NULL;
 	V4L2_t *dev = NULL;
 	device_type_e types[] = {device_input, device_transfer, device_output};
 	for (int i = 0; i < sizeof(types)/sizeof(device_type_e) && dev == NULL; i++)
@@ -147,6 +149,8 @@ static json_t *_device_v4l2(json_t *devices, int devfd, const char *path, const 
 		close(devfd);
 		return device;
 	}
+	if (device == NULL)
+		device = json_object();
 	json_t *names = json_array();
 	json_array_append_new(names, json_string(name));
 	json_object_set_new(device, "name", names);
@@ -290,7 +294,7 @@ static int _devices_append(json_t *devices, json_t *device)
 		}
 		if (oldname && json_is_string(oldname))
 		{
-			if (!strcmp(json_string_value(oldname), name))
+			if (name && !strcmp(json_string_value(oldname), name))
 				break;
 		}
 	}
@@ -298,7 +302,9 @@ static int _devices_append(json_t *devices, json_t *device)
 	if (olddevice && j < json_array_size(olddevice))
 		json_decref(device);
 	else
+	{
 		json_array_append_new(devices, device);
+	}
 	return 0;
 }
 
@@ -324,7 +330,9 @@ static int _drm_device(void *arg, int fd, const char *path, const char *name)
 		json_object_set_new(device, "type", json_string("screen"));
 		int ret = sdrm_capabilities(disp, device);
 		if (ret == 0)
+		{
 			_devices_append(devices, device);
+		}
 		return ret;
 	}
 	return -1;
@@ -352,8 +360,12 @@ static int _media_device(void *arg, int fd, const char *path, const char *name)
 	json_t *definition = NULL;
 	json_array_foreach(mediadevices, i, device)
 	{
-		dbg("device found %s", json_string_value(json_object_get(device, "name")));
-		if (!strcmp("subv4l", json_string_value(json_object_get(device, "type"))))
+		json_t * jname = json_object_get(device, "name");
+		if (json_is_array(jname))
+			jname = json_array_get(jname, 0);
+		dbg("device found %s", json_string_value(jname));
+		const char *type = json_string_value(json_object_get(device, "type"));
+		if (type && !strcmp("subv4l", type))
 		{
 			json_array_append_new(allsubdevices, device);
 		}
@@ -381,11 +393,17 @@ static int _media_device(void *arg, int fd, const char *path, const char *name)
 			}
 		}
 		if (subdevices != NULL)
-			json_object_set_new(device,"subdevice", subdevices);
-		if (!strcmp("v4l2", json_string_value(json_object_get(device, "type"))))
+			json_object_set_new(device,"subdevices", subdevices);
+		const char *type = json_string_value(json_object_get(device, "type"));
+
+		if (type && !strcmp("v4l2", type))
+		{
 			_devices_append(devices, device);
-		if (!strcmp("subv4l", json_string_value(json_object_get(device, "type"))))
+		}
+		if (type && !strcmp("subv4l", type))
+		{
 			_devices_append(devices, device);
+		}
 	}
 	return 0;
 }
@@ -435,7 +453,17 @@ int main(int argc, char *const argv[])
 	if (devices == NULL)
 		devices = json_array();
 
-	if (media == NULL)
+	if (video)
+	{
+		int fd = open(video, O_RDWR);
+		if (fd < 0)
+		{
+			err("video %s not found %m", video);
+		}
+		else
+			_video_device(devices, fd, video, video);
+	}
+	else if (media == NULL)
 	{
 		if (sys_device(sysmedia, _media_device, devices))
 			sys_device(sysvideo, _video_device, devices);
@@ -446,19 +474,9 @@ int main(int argc, char *const argv[])
 		if (fd < 0)
 		{
 			err("media %s not found %m", media);
-			return -1;
 		}
-		_media_device(devices, fd, media, media);
-	}
-	if (video)
-	{
-		int fd = open(video, O_RDWR);
-		if (fd < 0)
-		{
-			err("video %s not found %m", video);
-			return -1;
-		}
-		_video_device(devices, fd, video, video);
+		else
+			_media_device(devices, fd, media, media);
 	}
 #ifdef HAVE_LIBDRM
 	if (drm == NULL)
@@ -469,9 +487,9 @@ int main(int argc, char *const argv[])
 		if (fd < 0)
 		{
 			err("drm %s not found %m", drm);
-			return -1;
 		}
-		_drm_device(devices, fd, drm, drm);
+		else
+			_drm_device(devices, fd, drm, drm);
 	}
 #endif
 	json_dump_file(devices, output, JSON_INDENT(2));
