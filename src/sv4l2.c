@@ -55,14 +55,15 @@ struct V4L2Buffer_s
 {
 	struct v4l2_buffer v4l2;
 	struct v4l2_plane planes[VIDEO_MAX_PLANES];
-	void *map;
+	void *map[VIDEO_MAX_PLANES];
 	size_t length;
 	struct {
-		int (*getdmafd)(V4L2Buffer_t *buf);
-		size_t (*getsize)(V4L2Buffer_t *buf);
-		void (*setdma)(V4L2Buffer_t *buf, int fd, size_t size);
-		void (*setmem)(V4L2Buffer_t *buf, void *mem, size_t size);
-		void *(*mmap)(V4L2Buffer_t *buf, int fd);
+		int (*getdmafd)(V4L2Buffer_t *buf, int plane);
+		void *(*getmem)(V4L2Buffer_t *buf, int plane);
+		size_t (*getsize)(V4L2Buffer_t *buf, int plane);
+		void (*setdma)(V4L2Buffer_t *buf, int plane, int fd, size_t size);
+		void (*setmem)(V4L2Buffer_t *buf, int plane, void *mem, size_t size);
+		void *(*mmap)(V4L2Buffer_t *buf, int plane, int fd);
 	} ops;
 };
 
@@ -73,7 +74,7 @@ struct V4L2Buffer_s
 #define MODE_MEDIACTL 0x10
 #define MODE_MPLANE 0x80
 
-static int _v4l2buffer_exportdmafd(V4L2Buffer_t *buf, int fd)
+static int _v4l2buffer_exportdmafd(V4L2Buffer_t *buf, int plane, int fd)
 {
 	struct v4l2_exportbuffer expbuf = {0};
 	expbuf.type = buf->v4l2.type;
@@ -81,73 +82,84 @@ static int _v4l2buffer_exportdmafd(V4L2Buffer_t *buf, int fd)
 	expbuf.flags = O_CLOEXEC | O_RDWR;;
 	if (ioctl(fd, VIDIOC_EXPBUF, &expbuf) != 0)
 	{
+		err("sv4l2: dmabuf export failed %m");
 		return -1;
 	}
 	return expbuf.fd;
 }
 
-static int getdmafd_splane(V4L2Buffer_t *buf)
+static int getdmafd_splane(V4L2Buffer_t *buf, int plane)
 {
 	return buf->v4l2.m.fd;
 }
 
-static size_t getsize_splane(V4L2Buffer_t *buf)
+static void *getmem_splane(V4L2Buffer_t *buf, int plane)
+{
+	return buf->map[0];
+}
+
+static size_t getsize_splane(V4L2Buffer_t *buf, int plane)
 {
 	return buf->v4l2.length;
 }
 
-static void setdma_splane(V4L2Buffer_t *buf, int fd, size_t size)
+static void setdma_splane(V4L2Buffer_t *buf, int plane, int fd, size_t size)
 {
 	buf->v4l2.m.fd = fd;
 	buf->v4l2.length = size;
 	buf->length = size;
 }
 
-static void setmem_splane(V4L2Buffer_t *buf, void *mem, size_t size)
+static void setmem_splane(V4L2Buffer_t *buf, int plane, void *mem, size_t size)
 {
 	buf->v4l2.m.userptr = (uintptr_t)mem;
 	buf->v4l2.length = size;
 	buf->length = size;
 }
 
-static void *mmap_splane(V4L2Buffer_t *buf, int fd)
+static void *mmap_splane(V4L2Buffer_t *buf, int plane, int fd)
 {
 	size_t offset = buf->v4l2.m.offset;
 	buf->length = buf->v4l2.length;
-	buf->map = mmap(NULL, buf->length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, offset);
-	return buf->map;
+	buf->map[0] = mmap(NULL, buf->length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, offset);
+	return buf->map[0];
 }
 
-static int getdmafd_mplane(V4L2Buffer_t *buf)
+static int getdmafd_mplane(V4L2Buffer_t *buf, int plane)
 {
-	return buf->v4l2.m.planes[0].m.fd;
+	return buf->v4l2.m.planes[plane].m.fd;
 }
 
-static size_t getsize_mplane(V4L2Buffer_t *buf)
+static void *getmem_mplane(V4L2Buffer_t *buf, int plane)
 {
-	return buf->v4l2.m.planes[0].length;
+	return buf->map[plane];
 }
 
-static void setdma_mplane(V4L2Buffer_t *buf, int fd, size_t size)
+static size_t getsize_mplane(V4L2Buffer_t *buf, int plane)
 {
-	buf->v4l2.m.planes[0].m.fd = fd;
-	buf->v4l2.m.planes[0].length = size;
-	buf->length = 1;
+	return buf->v4l2.m.planes[plane].length;
 }
 
-static void setmem_mplane(V4L2Buffer_t *buf, void *mem, size_t size)
+static void setdma_mplane(V4L2Buffer_t *buf, int plane, int fd, size_t size)
 {
-	buf->v4l2.m.planes[0].m.userptr = (uintptr_t)mem;
-	buf->v4l2.m.planes[0].length = size;
-	buf->length = size;
+	buf->v4l2.m.planes[plane].m.fd = fd;
+	buf->v4l2.m.planes[plane].length = size;
+	buf->length += size;
 }
 
-static void *mmap_mplane(V4L2Buffer_t *buf, int fd)
+static void setmem_mplane(V4L2Buffer_t *buf, int plane, void *mem, size_t size)
 {
-	size_t offset = buf->v4l2.m.planes[0].m.mem_offset;
-	buf->length = buf->v4l2.m.planes[0].length;
-	buf->map = mmap(NULL, buf->length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, offset);
-	return buf->map;
+	buf->v4l2.m.planes[plane].m.userptr = (uintptr_t)mem;
+	buf->v4l2.m.planes[plane].length = size;
+	buf->length += size;
+}
+
+static void *mmap_mplane(V4L2Buffer_t *buf, int plane, int fd)
+{
+	size_t offset = buf->v4l2.m.planes[plane].m.mem_offset;
+	size_t length = buf->v4l2.m.planes[plane].length;
+	buf->map[plane] = mmap(NULL,length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, offset);
+	return buf->map[plane];
 }
 
 static V4L2Buffer_t *createbuffers_splane(V4L2_t *dev, int number, enum v4l2_memory memory)
@@ -159,6 +171,7 @@ static V4L2Buffer_t *createbuffers_splane(V4L2_t *dev, int number, enum v4l2_mem
 		buffers[i].v4l2.memory = memory;
 		buffers[i].v4l2.index = i;
 		buffers[i].ops.getdmafd = getdmafd_splane;
+		buffers[i].ops.getmem = getmem_splane;
 		buffers[i].ops.getsize = getsize_splane;
 		buffers[i].ops.setdma = setdma_splane;
 		buffers[i].ops.setmem = setmem_splane;
@@ -175,6 +188,7 @@ static V4L2Buffer_t *createbuffers_mplane(V4L2_t *dev, int number, enum v4l2_mem
 		buffers[i].v4l2.m.planes = buffers[i].planes;
 		buffers[i].v4l2.length = dev->nplanes;
 		buffers[i].ops.getdmafd = getdmafd_mplane;
+		buffers[i].ops.getmem = getmem_mplane;
 		buffers[i].ops.getsize = getsize_mplane;
 		buffers[i].ops.setdma = setdma_mplane;
 		buffers[i].ops.setmem = setmem_mplane;
@@ -348,6 +362,7 @@ uint32_t sv4l2_getpixformat(V4L2_t *dev, int (*pixformat)(void *arg, struct v4l2
 		dev->height = fmt.fmt.pix.height;
 		dev->fourcc = fmt.fmt.pix.pixelformat;
 		dev->stride = fmt.fmt.pix.bytesperline;
+		dev->nplanes = 1;
 	}
 
 	struct v4l2_fmtdesc fmtdesc = {0};
@@ -574,16 +589,16 @@ static int _v4l2_setfps(int fd, enum v4l2_buf_type type, int fps)
 	return fps;
 }
 
-static int _v4l2_getbufferfd(V4L2_t *dev, int i)
+static int _v4l2_getbufferfd(V4L2_t *dev, int i, int plane)
 {
 	if (dev->nbuffers <= i)
 		return -1;
-	int dma_fd = dev->buffers[i].ops.getdmafd(&dev->buffers[i]);
+	int dma_fd = dev->buffers[i].ops.getdmafd(&dev->buffers[i], plane);
 	if (dev->buffers[i].v4l2.memory == V4L2_MEMORY_DMABUF && dma_fd > 0)
 	{
 		return dma_fd;
 	}
-	return _v4l2buffer_exportdmafd(&dev->buffers[i], dev->fd);
+	return _v4l2buffer_exportdmafd(&dev->buffers[i], plane, dev->fd);
 }
 
 int sv4l2_requestbuffer_mmap(V4L2_t *dev)
@@ -633,11 +648,13 @@ int sv4l2_requestbuffer_mmap(V4L2_t *dev)
 			dev->nbuffers = i;
 			return -1;
 		}
-		if (dev->buffers[i].ops.mmap(&dev->buffers[i], dev->fd) == MAP_FAILED)
+		for (int j = 0; j < dev->nplanes; j ++)
 		{
-			err("sv4l2: buffer mmap error %m");
-			ret = -1;
-			break;
+			if (dev->buffers[i].ops.mmap(&dev->buffers[i], j, dev->fd) == MAP_FAILED)
+			{
+				err("sv4l2: buffer mmap error %m");
+				return -1;
+			}
 		}
 	}
 
@@ -662,9 +679,22 @@ int sv4l2_requestbuffer_dmabuf(V4L2_t *dev)
 		count = dev->nbuffers;
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
-			int dma_fd = _v4l2_getbufferfd(dev, i);
-			size_t size = dev->buffers[i].ops.getsize(&dev->buffers[i]);
-			dev->buffers[i].ops.setdma(&dev->buffers[i], dma_fd, size);
+			int dma_fd = _v4l2_getbufferfd(dev, i, 0);
+			if (dma_fd == -1)
+			{
+				dev->nbuffers = i;
+				return -1;
+			}
+			for (int j = 0; j < dev->nplanes; j++)
+			{
+				size_t size = dev->buffers[i].ops.getsize(&dev->buffers[i], j);
+				dev->buffers[i].ops.setdma(&dev->buffers[i], j, dma_fd, size);
+				for (int k = 0 ; k < dev->nplanes; k++)
+				{
+					munmap(dev->buffers[i].map[k], dev->buffers[i].ops.getsize(&dev->buffers[i], k));
+					dev->buffers[i].map[k] = NULL;
+				}
+			}
 		}
 		struct v4l2_requestbuffers req = {0};
 		req.type = dev->buffers[0].v4l2.type;
@@ -695,9 +725,12 @@ int sv4l2_requestbuffer_dmabuf(V4L2_t *dev)
 	{
 		if (oldbuffers)
 		{
-			int dma_fd = oldbuffers[i].ops.getdmafd(&oldbuffers[i]);
-			size_t size = oldbuffers[i].ops.getsize(&oldbuffers[i]);
-			dev->buffers[i].ops.setdma(&dev->buffers[i], dma_fd, size);
+			for (int j = 0; j < dev->nplanes; j++)
+			{
+				int dma_fd = oldbuffers[i].ops.getdmafd(&oldbuffers[i], j);
+				size_t size = oldbuffers[i].ops.getsize(&oldbuffers[i], j);
+				dev->buffers[i].ops.setdma(&dev->buffers[i], j, dma_fd, size);
+			}
 		}
 	}
 	if (oldbuffers)
@@ -748,7 +781,8 @@ int sv4l2_requestbuffer_userptr(V4L2_t *dev, int nmems, void *mems[], size_t siz
 	count = (dev->nbuffers > nmems)? nmems:dev->nbuffers;
 	for (int i = 0; i < count; i++)
 	{
-		dev->buffers[i].ops.setmem(&dev->buffers[i], mems[i], size);
+		for (int j = 0; j < dev->nplanes; j++)
+			dev->buffers[i].ops.setmem(&dev->buffers[i], j, mems[i], size);
 	}
 	return 0;
 }
@@ -759,13 +793,16 @@ int sv4l2_linkv4l2(V4L2_t *dev, V4L2_t *target)
 	{
 		if (dev->buffers[i].v4l2.memory != V4L2_MEMORY_DMABUF)
 			return -1;
-		int dma_fd = _v4l2_getbufferfd(target, i);
-		size_t size = target->buffers[i].ops.getsize(&target->buffers[i]);
-		dev->buffers[i].ops.setdma(&dev->buffers[i], dma_fd, size);
+		int dma_fd = _v4l2_getbufferfd(target, i, 0);
 		if (dma_fd == -1)
 		{
 			dev->nbuffers = i;
 			return -1;
+		}
+		for (int j = 0; j < dev->nplanes; j++)
+		{
+			size_t size = target->buffers[i].ops.getsize(&target->buffers[i], j);
+			dev->buffers[i].ops.setdma(&dev->buffers[i], j, dma_fd, size);
 		}
 	}
 	return 0;
@@ -779,8 +816,11 @@ int sv4l2_linkdma(V4L2_t *dev, int ntargets, int targets[], size_t size)
 			return -1;
 		if (i == ntargets)
 			return -1;
-		int dma_fd = targets[i];
-		dev->buffers[i].ops.setdma(&dev->buffers[i], dma_fd, size);
+		for (int j = 0; j < dev->nplanes; j++)
+		{
+			int dma_fd = targets[i + j];
+			dev->buffers[i].ops.setdma(&dev->buffers[i], j, dma_fd, size);
+		}
 	}
 	return 0;
 }
@@ -826,12 +866,13 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 				*ntargets = dev->nbuffers;
 			if (targets != NULL)
 			{
-				*targets = calloc(dev->nbuffers, sizeof(void *));
+				*targets = calloc(dev->nbuffers * dev->nplanes, sizeof(void *));
 				for (int i = 0; i < dev->nbuffers; i++)
-					(*targets)[i] = dev->buffers[i].map;
+					for (int j = 0; j < dev->nplanes; j++)
+						(*targets)[i + j] = dev->buffers[i].ops.getmem(&dev->buffers[i], j);
 			}
 			if (size != NULL)
-				*size = dev->buffers[0].ops.getsize(&dev->buffers[0]);
+				*size = dev->buffers[0].ops.getsize(&dev->buffers[0], 0);
 		}
 		break;
 		case buf_type_dmabuf:
@@ -857,12 +898,13 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 				*ntargets = dev->nbuffers;
 			if (targets != NULL)
 			{
-				*targets = calloc(dev->nbuffers, sizeof(int));
+				*targets = calloc(dev->nbuffers * dev->nplanes, sizeof(int));
 				for (int i = 0; i < dev->nbuffers; i++)
-					(*targets)[i] = dev->buffers[i].ops.getdmafd(&dev->buffers[i]);
+					for (int j = 0; j < dev->nplanes; j++)
+						(*targets)[i + j] = dev->buffers[i].ops.getdmafd(&dev->buffers[i], j);
 			}
 			if (size != NULL)
-				*size = dev->buffers[0].ops.getsize(&dev->buffers[0]);
+				*size = dev->buffers[0].ops.getsize(&dev->buffers[0], 0);
 		}
 		break;
 		default:
@@ -877,7 +919,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 		dbg_buffer((&dev->buffers[i].v4l2));
 	}
 #endif
-	dbg("sv4l2: %s %dx%d, %.4s %lu", dev->name, dev->width, dev->height, (char*)&dev->fourcc, dev->buffers[0].ops.getsize(&dev->buffers[0]));
+	dbg("sv4l2: %s %dx%d, %.4s %lu", dev->name, dev->width, dev->height, (char*)&dev->fourcc, dev->buffers[0].length);
 	return ret;
 }
 
@@ -1329,7 +1371,7 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused)
 		}
 	}
 	if (!ret && mem)
-		*mem = dev->buffers[buf.index].map;
+		*mem = dev->buffers[buf.index].map[0];
 	return buf.index;
 }
 
@@ -1339,7 +1381,7 @@ int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused)
 	if (bytesused > 0)
 		dev->buffers[index].v4l2.bytesused = bytesused;
 	if (mem && dev->buffers[0].v4l2.memory == V4L2_MEMORY_USERPTR)
-		dev->buffers[index].ops.setmem(&dev->buffers[index], mem, bytesused);
+		dev->buffers[index].ops.setmem(&dev->buffers[index], 0, mem, bytesused);
 	ret = ioctl(dev->fd, VIDIOC_QBUF, &dev->buffers[index].v4l2);
 	if (ret)
 	{
@@ -1353,8 +1395,9 @@ void sv4l2_destroy(V4L2_t *dev)
 {
 	for (int i = 0; i < dev->nbuffers; i++)
 	{
-		if (dev->buffers[i].map)
-			munmap(dev->buffers[i].map, dev->buffers[i].length);
+		for (int j = 0; j < dev->nplanes; j++)
+			if (dev->buffers[i].map[j])
+				munmap(dev->buffers[i].map[j], dev->buffers[i].length);
 	}
 	free(dev->buffers);
 	close(dev->fd);
