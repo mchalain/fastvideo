@@ -189,6 +189,10 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	dbg("segl: swap interval %d", minswapinterval);
 	eglSwapInterval(eglDisplay, minswapinterval);
 
+	GLProgram_t *programs = glprog_create(config->programs);
+	if (programs == NULL)
+		return NULL;
+
 	EGL_t *dev = calloc(1, sizeof(*dev));
 	dev->config = config;
 	dev->native = native;
@@ -196,8 +200,8 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	dev->eglconfig = eglConfig;
 	dev->eglcontext = eglContext;
 	dev->eglsurface = eglSurface;
+	dev->programs = programs;
 
-	dev->programs = glprog_create(config->programs);
 #ifndef EGL_EGLEXT_PROTOTYPES
 	eglCreateImageKHR = (void *) eglGetProcAddress("eglCreateImageKHR");
 	if(eglCreateImageKHR == NULL)
