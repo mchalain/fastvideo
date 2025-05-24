@@ -245,7 +245,7 @@ int main(int argc, char * const argv[])
 				cwd = optarg;
 			break;
 			case 'I':
-				mode = MODE_INITIALIZE;
+				mode |= MODE_INITIALIZE;
 			break;
 		}
 	} while(opt != -1);
@@ -289,7 +289,7 @@ int main(int argc, char * const argv[])
 			}
 		}
 	}
-	if (mode & MODE_INITIALIZE == 0)
+	if ((mode & MODE_INITIALIZE) == 0)
 	{
 		server_t *server = server_create(serverpath, 2);
 		server_attach_receive(server, _server_control, devices);
