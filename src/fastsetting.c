@@ -77,6 +77,7 @@ int _createdevices(void *data, const char *name, const char *type, void *config)
 int _loadjsonsetting(FastVideoList_t *devices, const char *name, json_t *jentry)
 {
 	int ret = -1;
+	fastvideolist_first(devices);
 	for (FastVideoDevice_t *device = fastvideolist_next(devices);
 			device != NULL; device = fastvideolist_next(devices))
 	{
@@ -96,15 +97,14 @@ int _loadsetting(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 	if (jentry && json_is_object(jentry))
 	{
 		json_t *jname = json_object_get(jentry, "name");
-
 		if (jname && json_is_string(jname))
 			ret = _loadjsonsetting(devices, json_string_value(jname), jentry);
 #define RESPONSE_LOADSETTING_OK "{\"cmd\":\"loadsetting\", \"status\":0}"
 #define RESPONSE_LOADSETTING_KO "{\"cmd\":\"loadsetting\", \"status\":-1}"
-		if (ret)
+		if (ret > 0)
 			client_send(clt, RESPONSE_LOADSETTING_OK, sizeof(RESPONSE_LOADSETTING_OK) - 1);
 		else
-			client_send(clt, RESPONSE_LOADSETTING_OK, sizeof(RESPONSE_LOADSETTING_KO) - 1);
+			client_send(clt, RESPONSE_LOADSETTING_KO, sizeof(RESPONSE_LOADSETTING_KO) - 1);
 	}
 	return ret;
 }
@@ -124,6 +124,7 @@ int _capabilities(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 			name = json_string_value(jname);
 	}
 	json_t *jdevices = json_array();
+	fastvideolist_first(devices);
 	for (FastVideoDevice_t *device = fastvideolist_next(devices);
 			device != NULL; device = fastvideolist_next(devices))
 	{
@@ -153,7 +154,7 @@ int _capabilities(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 	json_object_set_new(jstatus, "data", jdata);
 	char *status = json_dumps(jstatus, 0);
 	size_t length = strnlen(status, UNIXSOCKET_PACKETSIZE);
-	dbg("send %s", status);
+	dbg("send %lu %.*s", length, length, status);
 	client_send(clt, status, length);
 	free(status);
 	json_decref(jstatus);
