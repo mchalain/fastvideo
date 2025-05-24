@@ -4,7 +4,7 @@
 		"name":"cam-ov5647",
 		"type":"v4l2",
 		"device":"/dev/video0",
-		"subdevice":"/dev/v4l-subdev0",
+		"subdevices":"/dev/v4l-subdev0",
 		"definition": {
 			"fourcc~":"BA10",
 			"fourcc":"GB10",

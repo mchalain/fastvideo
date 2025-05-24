@@ -266,7 +266,7 @@
     ],
     "id": 35,
     "media": "media1",
-    "subdevice": [
+    "subdevices": [
       {
         "name": "pisp-fe",
         "type": "subv4l",

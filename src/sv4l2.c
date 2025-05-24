@@ -980,69 +980,84 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 	}
 	else
 #endif
-	if (queryctrl->type != V4L2_CTRL_TYPE_CTRL_CLASS)
+	struct v4l2_ext_control control = {0};
+	char string[256] = {0};
+	control.id = id;
+	if (queryctrl->type == V4L2_CTRL_TYPE_INTEGER)
 	{
-		struct v4l2_ext_control control = {0};
-		char string[256] = {0};
-		control.id = id;
-		if (queryctrl->type == V4L2_CTRL_TYPE_INTEGER)
-			control.size = sizeof(uint32_t);
-		else if (queryctrl->type == V4L2_CTRL_TYPE_BOOLEAN)
-			control.size = 1;
-		else if (queryctrl->type == V4L2_CTRL_TYPE_MENU)
-			control.size = sizeof(uint32_t);
-		else if (queryctrl->type == V4L2_CTRL_TYPE_BUTTON)
-			control.size = 0;
-		else if (queryctrl->type == V4L2_CTRL_TYPE_INTEGER64)
-			control.size = sizeof(uint64_t);
-		else if (queryctrl->type == V4L2_CTRL_TYPE_STRING && value != NULL)
-		{
-			if (value != (void*)-1)
-				control.size = strlen(value) + 1;
-			else
-				control.size = sizeof(string);
-			control.string = string;
-		}
-		else if (queryctrl->type == V4L2_CTRL_TYPE_U8 ||
-				queryctrl->type == V4L2_CTRL_TYPE_U16 ||
-				queryctrl->type == V4L2_CTRL_TYPE_U32)
-		{
-			if (value != (void*)-1)
-				control.size = queryctrl->elem_size * queryctrl->elems;
-			else
-				control.size = sizeof(string);
-		}
-		else
-			control.size = 0;
-		struct v4l2_ext_controls controls = {0};
-		controls.count = 1;
-		controls.controls = &control;
+		control.value = (int32_t)(long)value;
+		control.size = sizeof(int32_t);
+	}
+	else if (queryctrl->type == V4L2_CTRL_TYPE_BOOLEAN)
+	{
+		if (value)
+			control.value = 1;
+		control.size = 1;
+	}
+	else if (queryctrl->type == V4L2_CTRL_TYPE_MENU)
+	{
+		control.value = (uint32_t)(long)value;
+		control.size = sizeof(uint32_t);
+	}
+	else if (queryctrl->type == V4L2_CTRL_TYPE_BUTTON)
+	{
+		control.size = 0;
+	}
+	else if (queryctrl->type == V4L2_CTRL_TYPE_INTEGER64)
+	{
+		control.value64 = (int64_t)(long)value;
+		control.size = sizeof(int64_t);
+	}
+	else if (queryctrl->type == V4L2_CTRL_TYPE_STRING && value != NULL)
+	{
 		if (value != (void*)-1)
+			control.size = strlen(value) + 1;
+		else
+			control.size = sizeof(string);
+		control.string = string;
+	}
+	else if (queryctrl->type == V4L2_CTRL_TYPE_U8 ||
+			queryctrl->type == V4L2_CTRL_TYPE_U16 ||
+			queryctrl->type == V4L2_CTRL_TYPE_U32)
+	{
+		if (value != (void*)-1)
+			control.size = queryctrl->elem_size * queryctrl->elems;
+		else
+			control.size = sizeof(string);
+		control.p_u8 = value;
+	}
+	if (control.size == 0)
+	{
+		return 0;
+	}
+	struct v4l2_ext_controls controls = {0};
+	controls.count = 1;
+	controls.controls = &control;
+	if (value != (void *)(long)-1)
+	{
+		if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
 		{
-			control.string = value;
-			if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
-			{
-				err("sv4l2: control %#x setting error %m", id);
-				return (void *)-1;
-			}
-		}
-		/**
-		 * DEBUG with valgrind.
-		 * valgrind returns problem on the next ioctl
-		 * if ptr is not set on a good address even with an integer control.
-		 * Syscall param ioctl(VKI_V4L2_G_EXT_CTRLS).controls[].ptr[] points to unaddressable byte(s)
-		 */
-		control.ptr = string;
-		if ((queryctrl->type != V4L2_CTRL_TYPE_BUTTON) &&
-			(queryctrl->type != V4L2_CTRL_TYPE_CTRL_CLASS) &&
-			ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls))
-		{
-			err("sv4l2: control %#x getting error %m", id);
+			err("sv4l2: control %#x setting error %m", id);
 			return (void *)-1;
 		}
-		value = control.string;
-		dbg("sv4l2: control %#x => %d", id, control.value);
 	}
+	/**
+	 * DEBUG with valgrind.
+	 * valgrind returns problem on the next ioctl
+	 * if ptr is not set on a good address even with an integer control.
+	 * Syscall param ioctl(VKI_V4L2_G_EXT_CTRLS).controls[].ptr[] points to unaddressable byte(s)
+	 */
+	control.value = 0;
+	if ((queryctrl->type != V4L2_CTRL_TYPE_BUTTON) &&
+		(queryctrl->type != V4L2_CTRL_TYPE_CTRL_CLASS) &&
+		ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls))
+	{
+		err("sv4l2: control %#x getting error %m", id);
+		return (void *)-1;
+	}
+	value = control.ptr;
+	dbg("sv4l2: control %#x => %d", id, control.value);
+
 	return value;
 }
 
@@ -1423,11 +1438,8 @@ struct _SV4L2_Setting_s
 	json_t *jconfig;
 };
 
-static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
+static json_t *_sv4l2_getjsonvalue(json_t *jconfig, const char *name, int id)
 {
-	_SV4L2_Setting_t *setting = (_SV4L2_Setting_t *)arg;
-	json_t *jconfig = setting->jconfig;
-	V4L2_t *dev = setting->dev;
 	json_t *jvalue = NULL;
 	if (json_is_object(jconfig))
 	{
@@ -1435,7 +1447,7 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 		 * json format:
 		 * {"Gain":1000,"Exposure":1}
 		 */
-		jvalue = json_object_get(jconfig, ctrl->name);
+		jvalue = json_object_get(jconfig, name);
 	}
 	else if (json_is_array(jconfig))
 	{
@@ -1451,21 +1463,37 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 			{
 				json_t *jname = json_object_get(jcontrol, "name");
 				if (jname && json_is_string(jname) &&
-					!strcmp(json_string_value(jname),ctrl->name))
+					!strcmp(json_string_value(jname), name))
 				{
 					jvalue = json_object_get(jcontrol, "value");
 					break;
 				}
 				json_t *jid = json_object_get(jcontrol, "id");
 				if (jid && json_is_integer(jid) &&
-					json_integer_value(jid) == ctrl->id)
+					json_integer_value(jid) == id)
 				{
 					jvalue = json_object_get(jcontrol, "value");
 					break;
 				}
+				json_t *jitems = json_object_get(jcontrol, "items");
+				if (jitems && json_is_array(jitems))
+				{
+					jvalue = _sv4l2_getjsonvalue(jitems, name, id);
+					if (jvalue)
+						break;
+				}
 			}
 		}
 	}
+	return jvalue;
+}
+
+static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
+{
+	_SV4L2_Setting_t *setting = (_SV4L2_Setting_t *)arg;
+	json_t *jconfig = setting->jconfig;
+	V4L2_t *dev = setting->dev;
+	json_t *jvalue = _sv4l2_getjsonvalue(jconfig, ctrl->name, ctrl->id);
 	if (jvalue == NULL)
 		return 0;
 	if (ctrl->type == V4L2_CTRL_TYPE_INTEGER && json_is_integer(jvalue))
@@ -1528,6 +1556,8 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 		json_t *ju8;
 		json_array_foreach(jvalue, index, ju8)
 		{
+			if (index == ctrl->elems)
+				break;
 			u8[index] = (uint8_t)json_integer_value(ju8);
 		}
 		void *value = sv4l2_control(dev, ctrl->id, (void*)u8);
@@ -1543,6 +1573,8 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 		json_t *ju16;
 		json_array_foreach(jvalue, index, ju16)
 		{
+			if (index == ctrl->elems)
+				break;
 			u16[index] = (uint16_t)json_integer_value(ju16);
 		}
 		void *value = sv4l2_control(dev, ctrl->id, (void*)u16);
@@ -1558,6 +1590,8 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 		json_t *ju32;
 		json_array_foreach(jvalue, index, ju32)
 		{
+			if (index == ctrl->elems)
+				break;
 			u32[index] = (uint32_t)json_integer_value(ju32);
 		}
 		void *value = sv4l2_control(dev, ctrl->id, (void*)u32);
@@ -1671,7 +1705,9 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 
 	json_t *jcontrols = json_object_get(jconfig,"controls");
 	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
+	{
 		jconfig = jcontrols;
+	}
 	return _v4l2_loadjsoncontrols(dev, jconfig);
 }
 
@@ -1795,7 +1831,7 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	json_t *definition = json_object_get(jconfig, "definition");
 	_v4l2_parsedefinition(definition, config);
 
-	json_t *subdevice = json_object_get(jconfig, "subdevice");
+	json_t *subdevice = json_object_get(jconfig, "subdevices");
 	_v4l2_addsubdevice(config, subdevice, config->parent.name);
 
 library_end:
