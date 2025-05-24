@@ -54,6 +54,7 @@ int client_attach_close(client_t *client, client_close_t callback, void *data);
 
 ssize_t client_send(client_t *client, void *buffer, size_t length);
 ssize_t client_sendfd(client_t *client, void *buffer, size_t length, int fd);
+ssize_t client_recv(client_t *client, void *buffer, size_t length);
 
 ssize_t client_receive(client_t *client);
 int client_wait(client_t *client, int maxfd, fd_set *rfds);

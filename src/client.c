@@ -109,6 +109,13 @@ int client_wait(client_t *client, int maxfd, fd_set *rfds)
 	return ret;
 }
 
+ssize_t client_recv(client_t *client, void *buffer, size_t length)
+{
+	ssize_t ret = -1;
+	ret = recv(client->sock, buffer, length, 0);
+	return ret;
+}
+
 ssize_t client_send(client_t *client, void *buffer, size_t length)
 {
 	ssize_t ret = -1;
