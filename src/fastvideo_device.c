@@ -51,6 +51,12 @@ FastVideoList_t *fastvideolist_last(FastVideoList_t *list)
 	return list->last;
 }
 
+FastVideoList_t *fastvideolist_first(FastVideoList_t *list)
+{
+	list->iterator = NULL;
+	return list;
+}
+
 int fastvideolist_islast(FastVideoList_t *list, void *entity)
 {
 	if (list->last->entity == entity)
