@@ -34,8 +34,8 @@ struct control_s
 typedef struct device_s device_t;
 struct device_s
 {
-	char name[32];
-	char type[32];
+	char name[36];
+	char type[36];
 	int id;
 	unsigned long width;
 	unsigned long height;
@@ -155,11 +155,13 @@ int _simple_printf(app_t *app, const char *fmt, ...)
 char _simple_getc(app_t *app)
 {
 	char ch = getc(stdin);
+#if 0
 	char next = getc(stdin);
 	while (next != 0x0a)
 	{
 		next = getc(stdin);
 	}
+#endif
 	return ch;
 }
 
@@ -369,10 +371,14 @@ int _client_receive_capabilities(app_t *app, client_t *clt, json_t *jdata)
 					ctrl->type = CTRL_BOOLEAN;
 					ctrl->value.boolean = json_integer_value(jvalue);
 				}
-				if (jvalue && json_is_integer(jvalue))
+				else if (jvalue && json_is_integer(jvalue))
 				{
 					ctrl->type = CTRL_INTEGER;
 					ctrl->value.integer = json_integer_value(jvalue);
+				}
+				else
+				{
+					err("control type unkown");
 				}
 			}
 		}
@@ -388,7 +394,7 @@ int _client_receive_loadsetting(app_t *app, client_t *clt, json_t *jdata)
 int _client_receive(void *data, client_t *clt, const char *buffer, size_t length)
 {
 	app_t *app = data;
-	dbg("receive: %.*s", length, buffer);
+	dbg("receive %d: %.*s", length, length, buffer);
 
 	json_error_t error;
 	json_t *jentry = json_loadb(buffer, length, JSON_DECODE_ANY, &error);
@@ -433,12 +439,26 @@ int _app_displaycontrol(app_t *app, control_t *control)
 	return 0;
 }
 
+int _app_displaydevice(app_t *app, device_t *device)
+{
+	app->env->printf(app, "device: %s\n", device->name);
+	app->env->printf(app, "\t%s\n", device->type);
+	app->env->printf(app, "\tdefinition %lux%lu %s\n", device->width, device->height, device->fourcc);
+	app->env->printf(app, "\tcontrols:\n");
+	for (control_t *control = device->controls; control != NULL; control = control->next)
+	{
+		_app_displaycontrol(app, control);
+	}
+
+	return 0;
+}
+
 int _app_managecontrol(app_t *app, device_t *device, control_t *control)
 {
 	int ret = 2;
-	app->env->printf(app, "select: u (uo) n (down)\n");
 	while (ret == 2)
 	{
+		app->env->printf(app, "select: u (up) | n (down) | [esc (back) | v <value> | + | -\n");
 		_app_displaycontrol(app, control);
 
 		char ch = app->env->getc(app);
@@ -447,6 +467,7 @@ int _app_managecontrol(app_t *app, device_t *device, control_t *control)
 			app->env->closewindow(app);
 			return ret - 1;
 		}
+		char string[256] = {0};
 		int cmd = 0;
 		switch (ch)
 		{
@@ -457,6 +478,22 @@ int _app_managecontrol(app_t *app, device_t *device, control_t *control)
 			case 'n':
 				if (control->next)
 					control = control->next;
+			break;
+			case 'r':
+				_app_displaydevice(app, device);
+			break;
+			case 'v':
+				for (int i = 0; ch != '\n' && i < sizeof(string); i++ , ch = app->env->getc(app))
+				{
+					string[i] = ch;
+				}
+				switch (control->type)
+				{
+				case CTRL_INTEGER:
+					control->value.integer = strtol(string + 1, NULL, 10);
+					cmd = 1;
+				break;
+				}
 			break;
 			case '-':
 			case '+':
@@ -470,7 +507,10 @@ int _app_managecontrol(app_t *app, device_t *device, control_t *control)
 					cmd = 1;
 				break;
 				case CTRL_BOOLEAN:
-					control->value.boolean &= control->value.boolean;
+					if (ch == '+')
+						control->value.boolean = 1;
+					else
+						control->value.integer = 0;
 					cmd = 1;
 				break;
 				}
@@ -497,11 +537,7 @@ int _app_managecontrol(app_t *app, device_t *device, control_t *control)
 			if (client_request(app->client, request, length) < 0)
 				ret = 0;
 		}
-		else
-		{
-			//app->env->printf(app, "\b\b\b\b\b", control->id);
-			_app_displaycontrol(app, control);
-		}
+		while (app->env->getc(app) != '\n');
 	}
 	return ret;
 }
@@ -516,14 +552,7 @@ int _app_show_device(app_t *app, device_t *device)
 	{
 		app->level = app->env->openwindow(app, ret);
 	}
-	app->env->printf(app, "device: %s\n", device->name);
-	app->env->printf(app, "\t%s\n", device->type);
-	app->env->printf(app, "\tdefinition %lux%lu %s\n", device->width, device->height, device->fourcc);
-	app->env->printf(app, "\tcontrols:\n");
-	for (control_t *control = device->controls; control != NULL; control = control->next)
-	{
-		_app_displaycontrol(app, control);
-	}
+	_app_displaydevice(app, device);
 
 	control_t *control = device->controls;
 	if (control)
@@ -558,7 +587,13 @@ int _app_show_devices(app_t *app)
 	}
 	if (ch < 0x30 || ch > 0x39)
 		return 1;
-	int index = ch - 0x30;
+	char string[256];
+	for (int i = 0; ch != '\n' && i < sizeof(string); i++ , ch = app->env->getc(app))
+	{
+		string[i] = ch;
+	}
+
+	int index = strtol(string, NULL, 10);
 
 	json_t *jrequest = json_object();
 	json_object_set_new(jrequest, "cmd", json_string("capabilities"));
@@ -597,7 +632,7 @@ int _app_show(app_t *app, int level)
 
 int main(int argc, char * const argv[])
 {
-	app_t app;
+	app_t app = {0};
 	const char *serverpath = "/tmp/fastsetting_socket";
 	unsigned int mode = 0;
 	const char *logfile = "-";
