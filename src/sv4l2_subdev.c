@@ -161,6 +161,11 @@ int sv4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs)
 
 V4L2_t *sv4l2_subdev_create2(int ctrlfd, V4l2Config_t *config)
 {
+	struct v4l2_capability cap = {0};
+	if (ioctl(ctrlfd, VIDIOC_QUERYCAP, &cap) != 0)
+		err("sv4l2: subdev is not video %m");
+	else
+		warn("sv4l2: subdev %.32s", cap.card);
 #ifdef VIDIOC_SUBDEV_QUERYCAP
 	struct v4l2_subdev_capability caps = {0};
 	if (ioctl(ctrlfd, VIDIOC_SUBDEV_QUERYCAP, &caps) != 0)
@@ -203,10 +208,13 @@ V4L2_t *sv4l2_subdev_create2(int ctrlfd, V4l2Config_t *config)
 
 V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Config_t *config)
 {
-	int ctrlfd = 0;
-	ctrlfd = open(devicename, O_RDWR, 0);
-	if (ctrlfd < 0)
+	int ctrlfd = -1;
+	if (config->device)
 		ctrlfd = open(config->device, O_RDWR, 0);
+	if (ctrlfd < 0)
+	{
+		ctrlfd = open(devicename, O_RDWR, 0);
+	}
 	if (ctrlfd < 0)
 	{
 		err("sv4l2: subdevice %s not exist", config->device);
