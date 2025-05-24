@@ -1,6 +1,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <string.h>
 
 #include <linux/v4l2-subdev.h>
 #ifdef HAVE_JANSSON
@@ -190,7 +191,7 @@ V4L2_t *sv4l2_subdev_create2(int ctrlfd, V4l2Config_t *config)
 	subdev->fd = ctrlfd;
 	if (config)
 	{
-		subdev->name = config->parent.name;
+		memcpy(subdev->name, config->parent.name, sizeof(subdev->name));
 		subdev->width = config->parent.width;
 		subdev->height = config->parent.height;
 		subdev->stride = config->parent.stride;

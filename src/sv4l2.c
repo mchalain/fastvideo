@@ -241,14 +241,17 @@ static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 	return -1;
 }
 
-static int _v4l2_devicecapabilities(int fd, const char *interface, int *mode, device_type_e type)
+static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, device_type_e type)
 {
-	struct v4l2_capability cap;
+	struct v4l2_capability cap = {0};
 	if (ioctl(fd, VIDIOC_QUERYCAP, &cap) != 0)
 	{
 		err("sv4l2: device %s not video %m", interface);
 		return -1;
 	}
+	warn("sv4l2: device %.32s", cap.card);
+	if (interface)
+		memcpy(interface, cap.card, sizeof(cap.card));
 #ifdef DEBUG
 	dbg("device %s capabilities %#X", interface, cap.device_caps);
 	if(cap.device_caps & V4L2_CAP_VIDEO_CAPTURE)
@@ -1159,20 +1162,19 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config
 	return 0;
 }
 
-V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e dtype, V4l2Config_t *config)
+V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_t *config)
 {
 	enum v4l2_buf_type type = 0;
 	int mode = 0;
 	if (config)
 		mode = config->mode;
+	char devicename[32];
+	memcpy(devicename, name, sizeof(devicename));
 	if (_v4l2_devicecapabilities(fd, devicename, &mode, dtype))
 	{
 		close(fd);
 		return NULL;
 	}
-
-	if (mode & MODE_VERBOSE)
-		warn("SV4l2 create %s", devicename);
 
 	if (dtype != device_control && _sv4l2_prepare(fd, &type, mode, config))
 	{
@@ -1182,7 +1184,7 @@ V4L2_t *sv4l2_create2(int fd, const char *devicename, device_type_e dtype, V4l2C
 		type = _v4l2_getbuftype(type, mode);
 
 	V4L2_t *dev = calloc(1, sizeof(*dev));
-	dev->name = devicename;
+	strncpy(dev->name, devicename, sizeof(dev->name) - 1);
 	dev->config = config;
 	dev->fd = fd;
 	dev->type = type;
@@ -1274,7 +1276,7 @@ int sv4l2_start(V4L2_t *dev)
 	if (dev->type == V4L2_BUF_TYPE_VIDEO_CAPTURE ||
 		dev->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
 	{
-		dbg("sv4l2: start buffers enqueuing");
+		dbg("sv4l2: %s start buffers enqueuing", dev->name);
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
 			dbg_buffer((&dev->buffers[i].v4l2));
@@ -1284,7 +1286,7 @@ int sv4l2_start(V4L2_t *dev)
 	}
 	if (ioctl(dev->fd, VIDIOC_STREAMON, &type) != 0)
 	{
-		err("sv4l2: starting error %m");
+		err("sv4l2: %s starting error %m", dev->name);
 		return -1;
 	}
 	dbg("sv4l2: %s starting", dev->name);

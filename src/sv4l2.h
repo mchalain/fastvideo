@@ -39,7 +39,7 @@ typedef struct V4L2Buffer_s V4L2Buffer_t;
 typedef struct V4L2_s V4L2_t;
 struct V4L2_s
 {
-	const char *name;
+	char name[32];
 	V4l2Config_t *config;
 	uint32_t width;
 	uint32_t height;
