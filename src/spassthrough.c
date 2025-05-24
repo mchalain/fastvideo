@@ -31,12 +31,13 @@ struct PassBuffer_s
 
 #define MODE_SHOOT 0x01
 #define MODE_SHOOTING 0x10
+#define MODE_TEE 0x02
 
 struct Passthrough_config_s
 {
 	DeviceConf_t parent;
 	int mode;
-	DeviceConf_t shoot;
+	DeviceConf_t branch;
 };
 
 typedef struct Passthrough_s Passthrough_t;
@@ -57,7 +58,7 @@ struct Passthrough_s
 		DeviceConf_t *config;
 		void *dev;
 		FastVideoDevice_ops_t *ops;
-	} shoot;
+	} branch;
 };
 
 int spassthrough_loadjsonconfiguration(void *arg, void *entry);
@@ -100,21 +101,21 @@ void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **pconfig)
 		};
 		for (int i = 0; opss[i] != NULL; i++)
 		{
-			if (! strcmp(dev->config->shoot.type, opss[i]->name))
-				dev->shoot.ops = opss[i];
+			if (! strcmp(dev->config->branch.type, opss[i]->name))
+				dev->branch.ops = opss[i];
 		}
 		DeviceConf_t *devconfig = NULL;
-		if (dev->shoot.ops)
-			dev->shoot.ops->createconfig();
+		if (dev->branch.ops)
+			dev->branch.ops->createconfig();
 		if (devconfig)
 		{
-			devconfig->name = dev->config->shoot.name;
-			devconfig->type = dev->config->shoot.type;
-			devconfig->entry = dev->config->shoot.entry;
+			devconfig->name = dev->config->branch.name;
+			devconfig->type = dev->config->branch.type;
+			devconfig->entry = dev->config->branch.entry;
 			if (devconfig->ops.loadconfiguration)
 				devconfig->ops.loadconfiguration(devconfig, devconfig->entry);
-			dev->shoot.config = devconfig;
-			dev->shoot.dev = dev->shoot.ops->create(devconfig->name, device_output, dev->shoot.config);
+			dev->branch.config = devconfig;
+			dev->branch.dev = dev->branch.ops->create(devconfig->name, device_output, dev->branch.config);
 		}
 	}
 	return dup;
@@ -161,10 +162,10 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 			_passthrough_createbuffers(dev, ntargets, targets, NULL, size);
 			_passthrough_createbuffers(dev->dup, ntargets, targets, NULL, size);
 			ret = 0;
-			if (dev->type == device_input && dev->shoot.dev)
+			if (dev->type == device_input && dev->branch.dev)
 			{
-				dev->shoot.ops->destroy(dev->shoot.dev);
-				dev->shoot.dev = NULL;
+				dev->branch.ops->destroy(dev->branch.dev);
+				dev->branch.dev = NULL;
 			}
 		}
 		break;
@@ -184,9 +185,9 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 			if (size != NULL)
 				*size = dev->size;
 			ret = 0;
-			if (dev->type == device_input && dev->shoot.dev)
+			if (dev->type == device_input && dev->branch.dev)
 			{
-				dev->shoot.ops->requestbuffer(dev->shoot.dev, buf_type_memory, dev->nbuffers, dev->mems, dev->size, NULL);
+				dev->branch.ops->requestbuffer(dev->branch.dev, buf_type_memory, dev->nbuffers, dev->mems, dev->size, NULL);
 			}
 		}
 		break;
@@ -200,10 +201,10 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 			_passthrough_createbuffers(dev, ntargets, NULL, targets, size);
 			_passthrough_createbuffers(dev->dup, ntargets, NULL, targets, size);
 			ret = 0;
-			if (dev->type == device_input && dev->shoot.dev)
+			if (dev->type == device_input && dev->branch.dev)
 			{
-				dev->shoot.ops->destroy(dev->shoot.dev);
-				dev->shoot.dev = NULL;
+				dev->branch.ops->destroy(dev->branch.dev);
+				dev->branch.dev = NULL;
 			}
 		}
 		break;
@@ -223,9 +224,9 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 			if (size != NULL)
 				*size = dev->size;
 			ret = 0;
-			if (dev->type == device_input && dev->shoot.dev)
+			if (dev->type == device_input && dev->branch.dev)
 			{
-				dev->shoot.ops->requestbuffer(dev->shoot.dev, buf_type_dmabuf, dev->nbuffers, dev->dmabufs, dev->size, NULL);
+				dev->branch.ops->requestbuffer(dev->branch.dev, buf_type_dmabuf, dev->nbuffers, dev->dmabufs, dev->size, NULL);
 			}
 		}
 		break;
@@ -243,18 +244,18 @@ int spassthrough_fd(Passthrough_t *dev)
 
 int spassthrough_start(Passthrough_t *dev)
 {
-	if (dev->type == device_input && dev->shoot.dev)
+	if (dev->type == device_input && dev->branch.dev)
 	{
-		dev->shoot.ops->start(dev->shoot.dev);
+		dev->branch.ops->start(dev->branch.dev);
 	}
 	return 0;
 }
 
 int spassthrough_stop(Passthrough_t *dev)
 {
-	if (dev->type == device_input && dev->shoot.dev)
+	if (dev->type == device_input && dev->branch.dev)
 	{
-		dev->shoot.ops->stop(dev->shoot.dev);
+		dev->branch.ops->stop(dev->branch.dev);
 	}
 	return 0;
 }
@@ -267,11 +268,11 @@ int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused)
 		return -1;
 	if (last->state == PassBuffer_free_e)
 		return -1;
-	if (dev->type == device_input && dev->state == MODE_SHOOTING)
+	if (dev->type == device_input && (dev->state & MODE_SHOOTING))
 	{
-		int index = dev->shoot.ops->dequeue(dev->shoot.dev, mem, bytesused);
-		if (index == last->index)
-			dev->state = 0;
+		int index = dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused);
+		if (index == last->index && dev->state & MODE_SHOOT)
+			dev->state &= ~MODE_SHOOTING;
 	}
 	last->state = PassBuffer_free_e;
 	/** the real fifo is useless as the entry is immediately pushed **/
@@ -304,19 +305,21 @@ int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesuse
 #endif
 	/** insert into fifo **/
 	dev->fifo = &dev->buffers[index];
-	if (dev->type == device_input && dev->state == MODE_SHOOT)
+	if ((dev->type == device_input) &&
+		(dev->state & (MODE_SHOOT | MODE_TEE)) &&
+		((dev->state & MODE_SHOOTING) == 0))
 	{
-		dev->shoot.ops->queue(dev->shoot.dev, index, mem, bytesused);
-		dev->state = MODE_SHOOTING;
+		dev->branch.ops->queue(dev->branch.dev, index, mem, bytesused);
+		dev->state |= MODE_SHOOTING;
 	}
 	return 0;
 }
 
 void spassthrough_destroy(Passthrough_t *dev)
 {
-	if (dev->type == device_input && dev->shoot.dev)
+	if (dev->type == device_input && dev->branch.dev)
 	{
-		dev->shoot.ops->destroy(dev->shoot.dev);
+		dev->branch.ops->destroy(dev->branch.dev);
 	}
 	free(dev->config);
 	free(dev);
@@ -334,14 +337,14 @@ int spassthrough_loadjsonconfiguration(void *arg, void *entry)
 		if (!strncasecmp(value, "shoot",6))
 			config->mode = MODE_SHOOT;
 	}
-	json_t *shoot = json_object_get(jconfig, "shoot");
-	config->shoot.entry = shoot;
+	json_t *branch = json_object_get(jconfig, "branch");
+	config->branch.entry = branch;
 	if (mode && json_is_object(mode))
 	{
 		json_t *name = json_object_get(jconfig, "name");
-		config->shoot.name = json_string_value(name);
+		config->branch.name = json_string_value(name);
 		json_t *type = json_object_get(jconfig, "type");
-		config->shoot.type = json_string_value(type);
+		config->branch.type = json_string_value(type);
 	}
 
 library_end:
