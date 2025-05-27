@@ -247,7 +247,7 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	drmModeFreePlaneResources(planes);
 	if (ret == -1)
 	{
-		err("sdrm: plane with 4cc %.4s not found", disp->fourcc);
+		err("sdrm: plane with 4cc %.4s not found", &disp->fourcc);
 	}
 	return ret;
 }
