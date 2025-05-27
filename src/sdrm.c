@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <limits.h>
+#include <errno.h>
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -21,26 +22,12 @@
 
 #define MAX_BUFFERS 4
 
-typedef struct DisplayBuffer_s DisplayBuffer_t;
-struct DisplayBuffer_s
-{
-#ifdef HAVE_LIBKMS
-	struct kms_bo *bo;
-#endif
-	int bo_handle;
-	int dma_fd;
-	uint32_t fb_id;
-	uint32_t *memory;
-	uint32_t pitch;
-	uint32_t size;
-	uint8_t queued :1;
-};
-
 typedef struct Display_s Display_t;
 struct Display_s
 {
 #ifdef HAVE_LIBKMS
 	struct kms_driver *kms;
+	struct kms_bo *bo[MAX_BUFFERS];
 #endif
 	uint32_t connector_id;
 	uint32_t encoder_id;
@@ -51,7 +38,7 @@ struct Display_s
 	int type;
 	int fd;
 	drmModeModeInfo mode;
-	DisplayBuffer_t buffers[MAX_BUFFERS];
+	FrameBuffer_t buffers[MAX_BUFFERS];
 	int nbuffers;
 	int buf_id;
 	int queueid;
@@ -252,8 +239,9 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	return ret;
 }
 
-static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, DisplayBuffer_t *buffer)
+static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, FrameBuffer_t *buffer)
 {
+	int bo_handle = (long)buffer->private;
 #ifdef HAVE_LIBKMS
 	unsigned attr[] = {
 		KMS_BO_TYPE, KMS_BO_TYPE_SCANOUT_X8R8G8B8,
@@ -262,21 +250,19 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 		KMS_TERMINATE_PROP_LIST
 	};
 
-	if (kms_bo_create(disp->kms, attr, &buffer->bo))
+	struct kms_bo *bo = NULL;
+	if (kms_bo_create(disp->kms, attr, &bo))
 	{
 		err("sdrm: kms bo error");
 		return -1;
 	}
-	if (kms_bo_get_prop(buffer->bo, KMS_HANDLE, &buffer->bo_handle))
+	if (kms_bo_get_prop(bo, KMS_HANDLE, &bo_handle))
 	{
 		err("sdrm: kms bo handle error");
 		return -1;
 	}
-	if (kms_bo_get_prop(buffer->bo, KMS_PITCH, &buffer->pitch))
-	{
-		err("sdrm: kms bo pitch error");
-		return -1;
-	}
+	buffer->private = (void *)(long)bo_handle;
+	disp->bo[buffer->id] = bo;
 #else
 	dbg("sdrm: buffer for width %u height %u ", width, height);
 	struct drm_mode_create_dumb gem = {
@@ -290,38 +276,40 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 		return -1;
 	}
 
-	buffer->bo_handle = gem.handle;
-	buffer->pitch = gem.pitch;
+	buffer->private = (void *)(long)gem.handle;
 	buffer->size = gem.size;
 #endif
 
 	return 0;
 }
 
-static int sdrm_buffer_mmap(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, DisplayBuffer_t *buffer)
+static int sdrm_buffer_mmap(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, FrameBuffer_t *buffer)
 {
+	int bo_handle = (long)buffer->private;
 	sdrm_buffer_generic(disp, width, height, fourcc, buffer);
 #ifdef HAVE_LIBKMS
-	if (kms_bo_map(buffer->bo, &buffer->memory))
+	struct kms_bo *bo = disp->bo[buffer->id];
+	if (kms_bo_map(bo, &buffer->memory))
 	{
 		err("sdrm: kms bo map error");
 		return -1;
 	}
 #else
 	struct drm_mode_map_dumb map = {
-		.handle = buffer->bo_handle,
+		.handle = bo_handle,
 	};
 	if (drmIoctl(disp->fd, DRM_IOCTL_MODE_MAP_DUMB, &map) == -1)
 	{
 		err("sdrm: dumb map error %m");
 		return -1;
 	}
-	buffer->memory = (uint32_t *)mmap(NULL, buffer->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+	buffer->mem = (uint32_t *)mmap(NULL, buffer->size, PROT_READ | PROT_WRITE, MAP_SHARED,
 		disp->fd, map.offset);
 #endif
 
-	if (drmModeAddFB(disp->fd, width, height, 24, 32, buffer->pitch,
-		buffer->bo_handle, &buffer->fb_id))
+	uint32_t stride = buffer->size / height;
+	if (drmModeAddFB(disp->fd, width, height, 24, 32, stride,
+		bo_handle, &buffer->id))
 	{
 		err("sdrm: Frame buffer unavailable %m");
 		return -1;
@@ -329,33 +317,35 @@ static int sdrm_buffer_mmap(Display_t *disp, uint32_t width, uint32_t height, ui
 	return 0;
 }
 
-static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, DisplayBuffer_t *buffer)
+static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, FrameBuffer_t *buffer)
 {
 
 	sdrm_buffer_generic(disp, width, height, fourcc, buffer);
 
+	uint32_t stride = buffer->size / disp->mode.vdisplay;
+	int bo_handle = (long)buffer->private;
 	uint32_t offsets[4] = { 0 };
-	uint32_t pitches[4] = { buffer->pitch };
-	uint32_t bo_handles[4] = { buffer->bo_handle };
+	uint32_t pitches[4] = { stride };
+	uint32_t bo_handles[4] = { bo_handle };
 
 #if 0
 	struct drm_prime_handle prime = {0};
-	prime.handle = buffer->bo_handle;
+	prime.handle = bo_handle;
 
 	if (ioctl(disp->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &prime))
 	{
 		err("sdrm: dmabuf not allowed %m");
 	}
-	buffer->dma_fd = prime.fd;
+	buffer->dma_buf = prime.fd;
 #else
-	if (drmPrimeHandleToFD(disp->fd, buffer->bo_handle, DRM_CLOEXEC, &buffer->dma_fd))
+	if (drmPrimeHandleToFD(disp->fd, bo_handle, DRM_CLOEXEC, &buffer->dma_buf))
 	{
 		err("sdrm: dmabuf not allowed %m");
 	}
 #endif
 
 	if (drmModeAddFB2(disp->fd, width, height, disp->fourcc, bo_handles,
-		pitches, offsets, &buffer->fb_id, 0))
+		pitches, offsets, &buffer->id, 0))
 	{
 		err("sdrm: Frame buffer unavailable %m");
 		return -1;
@@ -363,13 +353,13 @@ static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uin
 	return 0;
 }
 
-static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, DisplayBuffer_t *buffer)
+static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, FrameBuffer_t *buffer)
 {
 	buffer->size = size;
-	buffer->pitch = size / disp->mode.vdisplay;
+	uint32_t stride = buffer->size / disp->mode.vdisplay;
 
 	uint32_t offsets[4] = { 0 };
-	uint32_t pitches[4] = { buffer->pitch };
+	uint32_t pitches[4] = { stride };
 
 	uint32_t handle;
 	if (drmPrimeFDToHandle(disp->fd, fd, &handle))
@@ -377,11 +367,11 @@ static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, DisplayBuf
 		err("sdrm: buffer %d association error", fd);
 		return -1;
 	}
-	buffer->bo_handle = handle;
-	uint32_t bo_handles[4] = { buffer->bo_handle };
+	buffer->private = (void *)(long)handle;
+	uint32_t bo_handles[4] = { handle };
 
 	if (drmModeAddFB2(disp->fd, disp->mode.hdisplay, disp->mode.vdisplay, disp->fourcc,
-		bo_handles, pitches, offsets, &buffer->fb_id, 0))
+		bo_handles, pitches, offsets, &buffer->id, 0))
 	{
 		err("sdrm: Frame buffer unavailable %m");
 		return -1;
@@ -389,17 +379,18 @@ static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, DisplayBuf
 	return 0;
 }
 
-static void sdrm_freebuffer(Display_t *disp, DisplayBuffer_t *buffer)
+static void sdrm_freebuffer(Display_t *disp, FrameBuffer_t *buffer)
 {
-	drmModeRmFB(disp->fd, buffer->fb_id);
+	drmModeRmFB(disp->fd, buffer->id);
 #ifdef HAVE_LIBKMS
-	kms_bo_unmap(buffer->bo);
-	kms_bo_destroy(buffer->bo);
+	kms_bo_unmap(disp->bo[buffer->id]);
+	kms_bo_destroy(disp->bo[buffer->id]);
 #else
+	int bo_handle = (long)buffer->private;
 	struct drm_mode_destroy_dumb dumb = {
-		.handle = buffer->bo_handle,
+		.handle = bo_handle,
 	};
-	munmap(buffer->memory, buffer->size);
+	munmap(buffer->mem, buffer->size);
 	drmIoctl(disp->fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dumb);
 #endif
 }
@@ -408,7 +399,7 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 {
 	if (type != device_output)
 	{
-		err("sdrm: %s bad device type", config->parent.name);
+		err("sdrm: %s bad device type", name);
 		return NULL;
 	}
 	if (drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1))
@@ -448,6 +439,7 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 	{
 		config->parent.dev = disp;
 	}
+	warn("sdrm: create %s", name);
 	return disp;
 }
 
@@ -471,6 +463,8 @@ Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf_t *conf
 	Display_t *disp = sdrm_create2(fd, name, type, config);
 	if (disp == NULL)
 		close(fd);
+	else
+		warn("sdrm: device %s", config->device);
 	return disp;
 }
 
@@ -496,7 +490,7 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 						err("sdrm: buffer %d allocation error", i);
 						break;
 					}
-					targets[i] = disp->buffers[i].memory;
+					targets[i] = disp->buffers[i].mem;
 				}
 			}
 			if (ntargets != NULL)
@@ -538,7 +532,7 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 						err("sdrm: buffer %d allocation error", i);
 						break;
 					}
-					(*targets)[i] = disp->buffers[i].dma_fd;
+					(*targets)[i] = disp->buffers[i].dma_buf;
 				}
 			}
 			if (ntargets != NULL)
@@ -554,7 +548,7 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 	va_end(ap);
 
 	disp->crtc = drmModeGetCrtc(disp->fd, disp->crtc_id);
-	if (drmModeSetCrtc(disp->fd, disp->crtc_id, disp->buffers[0].fb_id, 0, 0, &disp->connector_id, 1, &disp->mode))
+	if (drmModeSetCrtc(disp->fd, disp->crtc_id, disp->buffers[0].id, 0, 0, &disp->connector_id, 1, &disp->mode))
 	{
 		err("srdm: Crtc setting error %m");
 		for (int j = 0; j < MAX_BUFFERS; j++)
@@ -562,7 +556,7 @@ int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 		free(disp);
 		return -1;
 	}
-	drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[0].fb_id, DRM_MODE_PAGE_FLIP_EVENT, disp);
+	drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[0].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
 	return 0;
 }
 
@@ -571,33 +565,48 @@ static void page_flip_handler(int fd, unsigned int frame,
 {
 	Display_t *disp = data;
 	int id = disp->queueid;
-	disp->buffers[(int)id].queued = 0;
+	disp->buffers[(int)id].state = dequeued;
 }
 
 int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused)
 {
-	if (disp->buffers[id].queued)
+	if (id > disp->nbuffers)
+	{
+		err("unkown %d buffer index to queue", id);
 		return -1;
-	drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[(int)id].fb_id, DRM_MODE_PAGE_FLIP_EVENT, disp);
-	disp->buffers[id].queued = 1;
-	return 0;
-}
-
-int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused)
-{
+	}
+	FrameBuffer_t *buffer = &disp->buffers[id];
+	if (bytesused == 0)
+		bytesused = buffer->size;
+	if (bytesused > buffer->size)
+	{
+		warn("sfile: buffer too small %lu %lu", buffer->size, bytesused);
+	}
+	drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[(int)id].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
+	buffer->state = queued;
 	drmEventContext evctx = {
 				.version = DRM_EVENT_CONTEXT_VERSION,
 				.page_flip_handler = page_flip_handler,
 	};
 	drmHandleEvent(disp->fd, &evctx);
+	return 0;
+}
+
+int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused)
+{
 	int id = disp->queueid;
-	if (disp->buffers[id].queued)
+	FrameBuffer_t *buffer = &disp->buffers[id];
+	if (buffer->state != dequeued)
+	{
+		errno = EAGAIN;
 		return -1;
-	disp->queueid = (disp->queueid + 1) % disp->nbuffers;
-	if (mem)
-		*mem = disp->buffers[id].memory;
+	}
 	if (bytesused)
-		*bytesused = disp->buffers[id].size;
+		*bytesused = buffer->size;
+	if (mem && buffer->mem)
+		*mem = buffer->mem;
+	disp->queueid++;
+	disp->queueid %= disp->nbuffers;
 	return id;
 }
 
