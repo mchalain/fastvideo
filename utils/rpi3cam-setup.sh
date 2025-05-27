@@ -47,22 +47,21 @@ echo $fmt_input
   v4l2-ctl -d $SENSOR --list-framesizes $FOURCC
   read -p "new framesize : " framesize
 fi
+
+OUTIMAGE=$IMAGE
+
+read -p "current fmt $fmt_input. Change it (y/N): " CHOICE
+if [ "$CHOICE" = y ]; then
+  echo $list_fmt_output
+  read -p "set new fmt: " fmt_input
+fi
+
 read -p "set $SENSORNAME ($SENSORENTITY) with $fmt_input/$framesize continue (Y/n)?" CHOICE
 if [ "$CHOICE" = n ]; then
   exit
 fi
 
-OUTIMAGE=$IMAGE
-
 # set the link between SENSOR and IMAGE entity
-media-ctl -d $CAMMEDIA --set-v4l2 "$SENSORENTITY:$SENSORPADING[fmt:$fmt_input/$framesize field:none colorspace:raw]"
-
-read -p "current fmt $fmt_input. Change it (y/N): " CHOICE
-if [ "$CHOICE" = y ]; then
-  echo $list_fmt_output
-  read -p "set new fmt: " fmt_output
-fi
-echo "fmt image "$fmt_input
 media-ctl -d $CAMMEDIA --set-v4l2 "$SENSORENTITY:$SENSORPADIMG[fmt:$fmt_input/$framesize field:none colorspace:raw]"
 
 media-ctl -d $CAMMEDIA --link "$SENSORENTITY:$SENSORPADIMG->$IMGENTITY:$IMGPADSENSOR[1]"
@@ -95,6 +94,10 @@ while [ $? -ne 0 ]; do
   v4l2-ctl -d $OUTIMAGE -v width=$WIDTH,height=$HEIGHT,pixelformat=$FOURCC
 done
 
+setcontrol() {
+CTRLS=$(v4l2-ctl -d $1 -l)
+echo $CTRLS
+}
 echo "0: media topology"
 echo "1: Image device configuration"
 echo "2: try to stream into file"
@@ -112,6 +115,9 @@ case "$CHOICE" in
     ;;
   3)
     v4l2-ctl --verbose -d $OUTIMAGE --stream-mmap --stream-count=1 --stream-to=test.raw
+    ;;
+  4)
+    setcontrol $SENSOR
     ;;
 esac
 echo Device set to $IMAGE
