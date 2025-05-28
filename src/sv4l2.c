@@ -1400,7 +1400,7 @@ int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused)
 	ret = ioctl(dev->fd, VIDIOC_QBUF, &dev->buffers[index].v4l2);
 	if (ret)
 	{
-		err("sv4l2: %s queueing error %m", dev->name);
+		err("sv4l2: %s(%s) queueing error %m", dev->name, (dev->mode & MODE_OUTPUT)?"output":"capture");
 		dbg_buffer((&dev->buffers[index].v4l2));
 	}
 	return ret;
@@ -2034,6 +2034,8 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 		}
 	}
 	void *value = _sv4l2_control(ctrlfd, ctrl->id, (void*)-1, ctrl);
+	if (value == (void*)(long)-1)
+		return -1;
 	json_t *control = json_object();
 	json_object_set_new(control, "name", json_string(ctrl->name));
 	json_object_set_new(control, "id", json_integer(ctrl->id));
