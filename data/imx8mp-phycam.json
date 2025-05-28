@@ -1,0 +1,406 @@
+[
+  {
+    "name": [
+      "viv_v4l21",
+      "cam-vm017"
+    ],
+    "type": "v4l2",
+    "device": "/dev/video0",
+    "definition": [
+      {
+        "name": "fourcc",
+        "value": "YUYV",
+        "type": "string",
+        "items": [
+          "YUYV",
+          "NV12",
+          "NV16"
+        ]
+      },
+      {
+        "name": "width",
+        "value": 1920,
+        "type": "integer",
+        "minimum": 176,
+        "maximum": 4096,
+        "step": 16
+      },
+      {
+        "name": "height",
+        "value": 1080,
+        "type": "integer",
+        "minimum": 144,
+        "maximum": 3072,
+        "step": 8
+      },
+      {
+        "name": "fps",
+        "type": "integer",
+        "value": 60
+      }
+    ],
+    "transformation": [
+      {
+        "name": "crop",
+        "type": "rectangle",
+        "bounds": [
+          {
+            "name": "top",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967264,
+            "value_default": 0,
+            "value": 0
+          },
+          {
+            "name": "left",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967264,
+            "value_default": 0,
+            "value": 0
+          },
+          {
+            "name": "width",
+            "type": "integer",
+            "minimum": 32,
+            "maximum": 0,
+            "value_default": 0,
+            "value": 0
+          },
+          {
+            "name": "height",
+            "type": "integer",
+            "minimum": 32,
+            "maximum": 0,
+            "value_default": 0,
+            "value": 0
+          }
+        ]
+      },
+      {
+        "name": "compose",
+        "type": "rectangle",
+        "bounds": [
+          {
+            "name": "top",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967264,
+            "value_default": 0,
+            "value": 0
+          },
+          {
+            "name": "left",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967264,
+            "value_default": 0,
+            "value": 0
+          },
+          {
+            "name": "width",
+            "type": "integer",
+            "minimum": 32,
+            "maximum": 0,
+            "value_default": 0,
+            "value": 176
+          },
+          {
+            "name": "height",
+            "type": "integer",
+            "minimum": 32,
+            "maximum": 0,
+            "value_default": 0,
+            "value": 144
+          }
+        ]
+      }
+    ],
+    "subdevices" : [
+      {
+        "name": ["ar0521 1-0036","cam-vm017"],
+        "type": "subv4l",
+        "device": "/dev/v4l-subdev1",
+        "controls": [
+          {
+            "name": "User Controls",
+            "id": 9961473,
+            "type": "control class",
+            "items": [
+              {
+                "name": "Exposure",
+                "id": 9963793,
+                "type": "integer",
+                "value": 1817,
+                "minimum": 0,
+                "maximum": 65535,
+                "step": 1,
+                "default_value": 1817
+              },
+              {
+                "name": "Horizontal Flip",
+                "id": 9963796,
+                "type": "boolean",
+                "value": false,
+                "default_value": 0
+              },
+              {
+                "name": "Vertical Flip",
+                "id": 9963797,
+                "type": "boolean",
+                "value": false,
+                "default_value": 0
+              },
+              {
+                "name": "Column Binning",
+                "id": 9973249,
+                "type": "menu",
+                "value": 0,
+                "items": [
+                  "disable",
+                  "enable"
+                ],
+                "value_show": "disable",
+                "default_value": 0
+              },
+              {
+                "name": "Extra Vertical Blanking",
+                "id": 9973250,
+                "type": "integer",
+                "value": 0,
+                "minimum": 0,
+                "maximum": 65535,
+                "step": 1,
+                "default_value": 0
+              },
+              {
+                "name": "Dynamic Defect Pixel Correction",
+                "id": 9973255,
+                "type": "boolean",
+                "value": false,
+                "default_value": 0
+              },
+              {
+                "name": "Invert Flash",
+                "id": 9973256,
+                "type": "boolean",
+                "value": false,
+                "default_value": 0
+              },
+              {
+                "name": "Flash Xenon Width",
+                "id": 9973257,
+                "type": "integer",
+                "value": 256,
+                "minimum": 0,
+                "maximum": 65535,
+                "step": 1,
+                "default_value": 256
+              },
+              {
+                "name": "Trigger mode",
+                "id": 9973258,
+                "type": "menu",
+                "value": 0,
+                "items": [
+                  "off",
+                  "Global Reset Release",
+                  "Electronic Rolling Shutter"
+                ],
+                "value_show": "off",
+                "default_value": 0
+              },
+              {
+                "name": "Trigger pin",
+                "id": 9973259,
+                "type": "integer",
+                "value": 2,
+                "minimum": 0,
+                "maximum": 3,
+                "step": 1,
+                "default_value": 2
+              }
+            ]
+          },
+          {
+            "name": "Flash Controls",
+            "id": 10223617,
+            "type": "control class",
+            "items": [
+              {
+                "name": "LED Mode",
+                "id": 10225921,
+                "type": "menu",
+                "value": 0,
+                "items": [
+                  "Off",
+                  "Flash",
+                  "Torch"
+                ],
+                "value_show": "Off",
+                "default_value": 0
+              }
+            ]
+          },
+          {
+            "name": "Image Source Controls",
+            "id": 10354689,
+            "type": "control class",
+            "items": [
+              {
+                "name": "Vertical Blanking",
+                "id": 10356993,
+                "type": "integer",
+                "value": 28,
+                "minimum": 28,
+                "maximum": 65535,
+                "step": 1,
+                "default_value": 28
+              },
+              {
+                "name": "Horizontal Blanking",
+                "id": 10356994,
+                "type": "integer",
+                "value": 488,
+                "minimum": 488,
+                "maximum": 65535,
+                "step": 1,
+                "default_value": 488
+              },
+              {
+                "name": "Analogue Gain",
+                "id": 10356995,
+                "type": "integer",
+                "value": 2000,
+                "minimum": 1000,
+                "maximum": 14000,
+                "step": 1,
+                "default_value": 2000
+              },
+              {
+                "name": "Red Pixel Value",
+                "id": 10356996,
+                "type": "integer",
+                "value": 0,
+                "minimum": 0,
+                "maximum": 4095,
+                "step": 1,
+                "default_value": 0
+              },
+              {
+                "name": "Green (Red) Pixel Value",
+                "id": 10356997,
+                "type": "integer",
+                "value": 0,
+                "minimum": 0,
+                "maximum": 4095,
+                "step": 1,
+                "default_value": 0
+              },
+              {
+                "name": "Blue Pixel Value",
+                "id": 10356998,
+                "type": "integer",
+                "value": 0,
+                "minimum": 0,
+                "maximum": 4095,
+                "step": 1,
+                "default_value": 0
+              },
+              {
+                "name": "Green (Blue) Pixel Value",
+                "id": 10356999,
+                "type": "integer",
+                "value": 0,
+                "minimum": 0,
+                "maximum": 4095,
+                "step": 1,
+                "default_value": 0
+              }
+            ]
+          },
+          {
+            "name": "Image Processing Controls",
+            "id": 10420225,
+            "type": "control class",
+            "items": [
+              {
+                "name": "Link Frequency",
+                "id": 10422529,
+                "type": "menu",
+                "value": 0,
+                "items": [
+                  414000000,
+                  504000000,
+                  504000000
+                ],
+                "value_show": 414000000,
+                "default_value": 2
+              },
+              {
+                "name": "Pixel Rate",
+                "id": 10422530,
+                "type": "large integer",
+                "value": 336000000,
+                "default_value": 0
+              },
+              {
+                "name": "Test Pattern",
+                "id": 10422531,
+                "type": "menu",
+                "value": 0,
+                "items": [
+                  "disabled",
+                  "solid color",
+                  "color bar",
+                  "fade to gray",
+                  "pn9 link integrity",
+                  "walking 1 (10 bit)",
+                  "walking 1 (8 bit)"
+                ],
+                "value_show": "disabled",
+                "default_value": 0
+              },
+              {
+                "name": "Digital Gain",
+                "id": 10422533,
+                "type": "integer",
+                "value": 1000,
+                "minimum": 1000,
+                "maximum": 7999,
+                "step": 1,
+                "default_value": 1000
+              }
+            ]
+          }
+        ],
+        "sink": [
+          1
+        ],
+        "id": 10,
+        "media": "media0"
+      }
+    ],
+    "id": 7,
+    "media": "media1"
+  },
+  {
+    "name":[ "screen" ],
+    "type":"screen",
+    "device":"/dev/dri/card0"
+  },
+  {
+    "name":[ "gpu" ],
+    "type":"gpu",
+    "native":"drm",
+    "definition": {
+    },
+    "end":true
+  },
+  {
+    "name": "file",
+    "type": "file",
+    "end": true
+  }
+]
