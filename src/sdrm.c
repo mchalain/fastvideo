@@ -48,6 +48,11 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 {
 	drmModeResPtr resources;
 	resources = drmModeGetResources(disp->fd);
+	if (resources == NULL)
+	{
+		err("sdrm: No resource available");
+		return -1;
+	}
 
 	int32_t connector_id = -1;
 	int32_t encoder_id = -1;
