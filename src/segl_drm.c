@@ -17,6 +17,13 @@
 #include "segl.h"
 #include "log.h"
 
+#ifndef GBM_FORMAT_XBGR16161616F
+# define GBM_FORMAT_XBGR16161616F DRM_FORMAT_XBGR16161616F
+#endif
+#ifndef GBM_FORMAT_ABGR16161616F
+# define GBM_FORMAT_ABGR16161616F DRM_FORMAT_ABGR16161616F
+#endif
+
 static struct {
 	struct gbm_device *dev;
 	struct gbm_surface *surface;
@@ -290,18 +297,23 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 		GBM_FORMAT_YVU444,
 	};
 
-	drm.fourcc = GBM_FORMAT_XRGB8888;
-	dbg("segl: screen formats:");
+	uint32_t defaultfourcc = 0;
+	drm.fourcc = 0;
+	dbg("segl: screen formats (search %.4s):", &config->parent.fourcc);
 	for (int i = 0; i < sizeof(formats)/sizeof(*formats); i++)
 	{
 		int ret = gbm_device_is_format_supported(gbm.dev, formats[i], GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
-#ifdef DEBUG
 		if (ret)
+		{
 			dbg("\t%.4s", &formats[i]);
-#endif
+			if (!defaultfourcc)
+				defaultfourcc = formats[i];
+		}
 		if (ret && config->parent.fourcc && config->parent.fourcc == formats[i])
 			drm.fourcc = formats[i];
 	}
+	if (! drm.fourcc)
+		drm.fourcc = defaultfourcc;
 	return (EGLNativeDisplayType)gbm.dev;
 }
 
