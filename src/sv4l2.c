@@ -1037,7 +1037,7 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 	{
 		if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
 		{
-			err("sv4l2: control %#x setting error %m", id);
+			err("sv4l2: control %#x %s setting error %m", id, queryctrl->name);
 			return (void *)-1;
 		}
 	}
@@ -1052,12 +1052,32 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 		(queryctrl->type != V4L2_CTRL_TYPE_CTRL_CLASS) &&
 		ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls))
 	{
-		err("sv4l2: control %#x getting error %m", id);
-		return (void *)-1;
+		err("sv4l2: control %#x %s getting error %m", id, queryctrl->name);
+		return (void *)(long)-1;
 	}
 	value = control.ptr;
-	dbg("sv4l2: control %#x => %d", id, control.value);
-
+	switch (queryctrl->type)
+	{
+	case V4L2_CTRL_TYPE_BOOLEAN:
+	case V4L2_CTRL_TYPE_INTEGER:
+		warn("sv4l2: control %#x %s => %d", id, queryctrl->name, control.value);
+	break;
+	case V4L2_CTRL_TYPE_STRING:
+		warn("sv4l2: control %#x %s => %s", id, queryctrl->name, control.ptr);
+	break;
+	case V4L2_CTRL_TYPE_INTEGER64:
+		warn("sv4l2: control %#x %s => %lld", id, queryctrl->name, control.value64);
+	break;
+	case V4L2_CTRL_TYPE_U8:
+	case V4L2_CTRL_TYPE_U16:
+	case V4L2_CTRL_TYPE_U32:
+		warn("sv4l2: control %#x %s => array", id, queryctrl->name);
+	break;
+	default:
+		warn("sv4l2: control %#x %s => type(%d)", id, queryctrl->name, queryctrl->type);
+	}
+	if (value == (void *)(long)-1)
+		err("sv4l2: control %#x %s => not set", id, queryctrl->name);
 	return value;
 }
 
@@ -1343,7 +1363,7 @@ int sv4l2_start(V4L2_t *dev)
 	}
 	if (ioctl(dev->fd, VIDIOC_STREAMON, &type) != 0)
 	{
-		err("sv4l2: %s starting error %m", dev->name);
+		err("sv4l2: %s(%s) starting error (%d)%m", dev->name, dev->mode & MODE_OUTPUT?"output":"capture", errno);
 		return -1;
 	}
 	dbg("sv4l2: %s starting", dev->name);
@@ -1448,6 +1468,7 @@ static json_t *_sv4l2_getjsonvalue(json_t *jconfig, const char *name, int id)
 		 * {"Gain":1000,"Exposure":1}
 		 */
 		jvalue = json_object_get(jconfig, name);
+		json_object_del(jconfig, name);
 	}
 	else if (json_is_array(jconfig))
 	{
@@ -1484,6 +1505,8 @@ static json_t *_sv4l2_getjsonvalue(json_t *jconfig, const char *name, int id)
 				}
 			}
 		}
+		if (jvalue)
+			json_array_remove(jconfig, index);
 	}
 	return jvalue;
 }
@@ -1676,8 +1699,68 @@ static int _v4l2_loadjsontransformation(V4L2_t *dev, json_t *transformation)
  *
  * @return -1 on error, 0 otherwise.
  */
+static int _v4l2_loadjsoncontrol(V4L2_t *dev, json_t *control)
+{
+	json_t *jid = json_object_get(control, "id");
+	if (!jid || !json_is_integer(jid))
+		return -1;
+	int ret = 0;
+	json_t *jvalue = json_object_get(control, "value");
+	if (jvalue && json_is_number(jvalue))
+	{
+		double value = json_number_value(jvalue);
+		if (sv4l2_control(dev, json_integer_value(jid), (void*)(long)value) != (void*)(long)-1)
+		{
+			ret = 1;
+		}
+	}
+	else if (jvalue && json_is_integer(jvalue))
+	{
+		int32_t value = json_number_value(jvalue);
+		if (sv4l2_control(dev, json_integer_value(jid), (void*)(long)value) != (void*)(long)-1)
+		{
+			ret = 1;
+		}
+	}
+	else if (jvalue && json_is_string(jvalue))
+	{
+		const char *value = json_string_value(jvalue);
+		if (sv4l2_control(dev, json_integer_value(jid), (void*)value) != (void*)(long)-1)
+		{
+			ret = 1;
+		}
+	}
+	else if (jvalue && json_is_boolean(jvalue))
+	{
+		int value = json_is_true(jvalue);
+		if (sv4l2_control(dev, json_integer_value(jid), (void*)(long)value) != (void*)(long)-1)
+		{
+			ret = 1;
+		}
+	}
+	return ret;
+}
+
 static int _v4l2_loadjsoncontrols(V4L2_t *dev, json_t *controls)
 {
+	if (json_is_array(controls))
+	{
+		int ncontrols = json_array_size(controls);
+		for (int index = 0; index < json_array_size(controls); index++)
+		{
+			json_t *control = json_array_get(controls, index);
+			if (_v4l2_loadjsoncontrol(dev, control) >= 0)
+			{
+				// remove each control designed by an ID
+				json_array_remove(controls, index);
+				ncontrols--;
+				// roolback the list because the number of elements changed
+				index--;
+			}
+		}
+	}
+	if (json_array_size(controls) == 0)
+		return 0;
 	_SV4L2_Setting_t setting;
 	setting.dev = dev;
 	setting.jconfig = controls;
