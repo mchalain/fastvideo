@@ -124,6 +124,7 @@ struct FrameBuffer_s
 	enum {
 		invalid,
 		dequeued,
+		ready,
 		queued,
 	} state;
 	void *private;
