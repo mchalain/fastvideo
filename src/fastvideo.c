@@ -493,13 +493,13 @@ int main(int argc, char * const argv[])
 			FastVideoDevice_t *master = device_list[i].master;
 			if (master->ops->requestbuffer(master->dev, buf_type | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
 			{
-				err("%s buffers[%d] not allowed", master->config->name, buf_type);
+				err("%s buffer type(%d) not allowed", master->config->name, buf_type);
 				continue;
 			}
 			FastVideoDevice_t *slave = device_list[i].slave;
-			if (slave->ops->requestbuffer(slave->dev,buf_type, nbbufs, dma_bufs, size, NULL) < 0)
+			if (slave->ops->requestbuffer(slave->dev, buf_type, nbbufs, dma_bufs, size, NULL) < 0)
 			{
-				err("%s buffers[%d] not linked", slave->config->name, buf_type);
+				err("%s buffer type(%d) not linked", slave->config->name, buf_type);
 				continue;
 			}
 			ret = 0;
