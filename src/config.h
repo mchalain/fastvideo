@@ -9,6 +9,18 @@
 #define FOURCC(a,b,c,d)	((a << 0) | (b << 8) | (c << 16) | (d << 24))
 #endif
 
+#define FOURCC_AB24		FOURCC('A','B','2','4')
+#define FOURCC_BG24		FOURCC('B','G','2','4')
+#define FOURCC_RG24		FOURCC('R','G','2','4')
+#define FOURCC_RGBA		FOURCC('R','G','B','A')
+#define FOURCC_RGBP		FOURCC('R','G','B','P')
+#define FOURCC_YUYV		FOURCC('Y','U','Y','V')
+#define FOURCC_YUY2		FOURCC('Y','U','Y','2')
+#define FOURCC_U008		FOURCC('U','0','0','8')
+#define FOURCC_JPEG		FOURCC('J','P','E','G')
+#define FOURCC_MJPG		FOURCC('M','J','P','G')
+#define FOURCC_H264		FOURCC('H','2','6','4')
+
 #define BPP_TO_BYTE(_bpp)	(((_bpp) + 7) / 8)
 
 /**
