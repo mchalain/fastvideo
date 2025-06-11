@@ -965,18 +965,18 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 		control.value = ivalue;
 		if (value != (void*)-1 && ioctl(ctrlfd, VIDIOC_S_CTRL, &control))
 		{
-			err("sv4l2: control %#x setting error %m", id);
+			err("sv4l2: control %d setting error %m", id);
 			return (void *)-1;
 		}
 		control.value = 0;
 		if (queryctrl->type != V4L2_CTRL_TYPE_CTRL_CLASS &&
 			ioctl(ctrlfd, VIDIOC_G_CTRL, &control))
 		{
-			err("sv4l2: device doesn't support control %#x %m", id);
+			err("sv4l2: device doesn't support control %d %m", id);
 			return (void *)-1;
 		}
 		value = (void *)control.value;
-		dbg("sv4l2: control %#x => %d", id, control.value);
+		dbg("sv4l2: control %d => %d", id, control.value);
 	}
 	else
 #endif
@@ -1037,7 +1037,7 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 	{
 		if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
 		{
-			err("sv4l2: control %#x %s setting error %m", id, queryctrl->name);
+			err("sv4l2: control %d %s setting error %m", id, queryctrl->name);
 			return (void *)-1;
 		}
 	}
@@ -1052,7 +1052,7 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 		(queryctrl->type != V4L2_CTRL_TYPE_CTRL_CLASS) &&
 		ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls))
 	{
-		err("sv4l2: control %#x %s getting error %m", id, queryctrl->name);
+		err("sv4l2: control %d %s getting error %m", id, queryctrl->name);
 		return (void *)(long)-1;
 	}
 	value = control.ptr;
@@ -1060,24 +1060,24 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 	{
 	case V4L2_CTRL_TYPE_BOOLEAN:
 	case V4L2_CTRL_TYPE_INTEGER:
-		warn("sv4l2: control %#x %s => %d", id, queryctrl->name, control.value);
+		warn("sv4l2: control %d %s => %d", id, queryctrl->name, control.value);
 	break;
 	case V4L2_CTRL_TYPE_STRING:
-		warn("sv4l2: control %#x %s => %s", id, queryctrl->name, control.ptr);
+		warn("sv4l2: control %d %s => %s", id, queryctrl->name, control.ptr);
 	break;
 	case V4L2_CTRL_TYPE_INTEGER64:
-		warn("sv4l2: control %#x %s => %lld", id, queryctrl->name, control.value64);
+		warn("sv4l2: control %d %s => %lld", id, queryctrl->name, control.value64);
 	break;
 	case V4L2_CTRL_TYPE_U8:
 	case V4L2_CTRL_TYPE_U16:
 	case V4L2_CTRL_TYPE_U32:
-		warn("sv4l2: control %#x %s => array", id, queryctrl->name);
+		warn("sv4l2: control %d %s => array", id, queryctrl->name);
 	break;
 	default:
-		warn("sv4l2: control %#x %s => type(%d)", id, queryctrl->name, queryctrl->type);
+		warn("sv4l2: control %d %s => type(%d)", id, queryctrl->name, queryctrl->type);
 	}
 	if (value == (void *)(long)-1)
-		err("sv4l2: control %#x %s => not set", id, queryctrl->name);
+		err("sv4l2: control %d %s => not set", id, queryctrl->name);
 	return value;
 }
 
@@ -1089,13 +1089,13 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 	int ret = ioctl(ctrlfd, VIDIOC_QUERYCTRL, &queryctrl);
 	if (ret != 0)
 	{
-		err("sv4l2: control %#x not supported", id);
+		err("sv4l2: control %d not supported", id);
 		return (void *)-1;
 	}
 
 	if (queryctrl.flags & V4L2_CTRL_FLAG_DISABLED)
 	{
-		err("sv4l2: control %#x disabled", id);
+		err("sv4l2: control %d disabled", id);
 		return 0;
 	}
 	/**
@@ -1103,7 +1103,7 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 	 */
 	if (queryctrl.flags & V4L2_CTRL_FLAG_HAS_PAYLOAD)
 	{
-		err("sv4l2: control %#x with payload unsupported", id);
+		err("sv4l2: control %d with payload unsupported", id);
 		return 0;
 	}
 	return _sv4l2_control(ctrlfd, id, value, &queryctrl);
@@ -1120,11 +1120,11 @@ static int _sv4l2_treecontrols(int ctrlfd, int (*cb)(void *arg, struct v4l2_quer
 	{
 		if (qctrl.flags & V4L2_CTRL_FLAG_DISABLED)
 		{
-			dbg("control %s %#x disabled", qctrl.name, qctrl.id);
+			dbg("control %s %d disabled", qctrl.name, qctrl.id);
 			qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
 			continue;
 		}
-		dbg("sv4l2: control %s id %#x", qctrl.name, qctrl.id);
+		dbg("sv4l2: control %s id %d", qctrl.name, qctrl.id);
 		if (cb)
 		{
 			struct v4l2_query_ext_ctrl qectrl = {0};
@@ -1148,11 +1148,11 @@ static int _sv4l2_treecontrols(int ctrlfd, int (*cb)(void *arg, struct v4l2_quer
 	{
 		if (qctrl.flags & V4L2_CTRL_FLAG_DISABLED)
 		{
-			dbg("control %s %#x disabled", qctrl.name, qctrl.id);
+			dbg("control %s %d disabled", qctrl.name, qctrl.id);
 			qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
 			continue;
 		}
-		dbg("sv4l2: control %s id %#x", qctrl.name, qctrl.id);
+		dbg("sv4l2: control %s id %d", qctrl.name, qctrl.id);
 		if (cb)
 			cb(arg, &qctrl);
 		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
@@ -1701,6 +1701,9 @@ static int _v4l2_loadjsontransformation(V4L2_t *dev, json_t *transformation)
  */
 static int _v4l2_loadjsoncontrol(V4L2_t *dev, json_t *control)
 {
+	json_t *jdisable = json_object_get(control, "disable");
+	if (json_is_true(jdisable))
+		return 1;
 	json_t *jid = json_object_get(control, "id");
 	if (!jid || !json_is_integer(jid))
 		return -1;
@@ -1948,7 +1951,7 @@ const char *sv4l2_CTRLTYPE(enum v4l2_ctrl_type type)
 	case V4L2_CTRL_TYPE_CTRL_CLASS:
 		return "control class";
 	}
-	dbg("sv4l2: control type %#x unsupported", type);
+	dbg("sv4l2: control type %#x not supported", type);
 	return "unknown";
 }
 
