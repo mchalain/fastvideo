@@ -175,7 +175,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	EGLConfig eglConfig;
 	if (!eglChooseConfig(eglDisplay, config_attribs, &eglConfig, 1, &num_config))
 	{
-		err("segl: failed to choose config: %d", num_config);
+		err("segl: failed to choose config: %d (%#x)", num_config, eglGetError());
 		native->destroy(ndisplay);
 		return NULL;
 	}
@@ -188,7 +188,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	eglContext = eglCreateContext(eglDisplay, eglConfig, EGL_NO_CONTEXT, context_attribs);
 	if (eglContext == NULL)
 	{
-		err("segl: failed to create context");
+		err("segl: failed to create context (%#x)", eglGetError());
 		native->destroy(ndisplay);
 		return NULL;
 	}
@@ -213,7 +213,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	}
 	if (eglSurface == EGL_NO_SURFACE)
 	{
-		err("segl: failed to create egl surface");
+		err("segl: failed to create egl surface (%#x)", eglGetError());
 		native->destroy(ndisplay);
 		return NULL;
 	}
