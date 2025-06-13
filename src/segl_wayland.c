@@ -59,6 +59,21 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	return (EGLNativeDisplayType)g_context.display;
 }
 
+static const EGLint g_attributes[] = {
+	EGL_RED_SIZE, 8,
+	EGL_GREEN_SIZE, 8,
+	EGL_BLUE_SIZE, 8,
+	EGL_ALPHA_SIZE, 8,
+	//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
+	EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+	EGL_NONE
+};
+
+static const GLint *native_attributes(EGLNativeDisplayType display)
+{
+	return g_attributes;
+}
+
 static int native_fd(EGLNativeWindowType native_win)
 {
 	return -1;
@@ -258,6 +273,7 @@ EGLNative_t *eglnative_wayland = &(EGLNative_t)
 {
 	.name = "wayland",
 	.display = native_display,
+	.attributes = native_attributes,
 	.createwindow = native_createwindow,
 	.fd = native_fd,
 	.flush = native_flush,

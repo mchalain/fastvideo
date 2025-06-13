@@ -163,17 +163,8 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	EGLint num_config;
 	eglGetConfigs(eglDisplay, NULL, 0, &num_config);
 
-	static const EGLint config_attribs[] = {
-		EGL_RED_SIZE, 8,
-		EGL_GREEN_SIZE, 8,
-		EGL_BLUE_SIZE, 8,
-		EGL_ALPHA_SIZE, 8,
-		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-		EGL_NONE
-	};
 	EGLConfig eglConfig;
-	if (!eglChooseConfig(eglDisplay, config_attribs, &eglConfig, 1, &num_config))
+	if (!eglChooseConfig(eglDisplay, native->attributes(ndisplay), &eglConfig, 1, &num_config))
 	{
 		err("segl: failed to choose config: %d (%#x)", num_config, eglGetError());
 		native->destroy(ndisplay);
