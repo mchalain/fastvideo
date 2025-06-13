@@ -181,7 +181,7 @@ EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *conf
 	}
 
 	static const EGLint context_attribs[] = {
-		EGL_CONTEXT_CLIENT_VERSION, 2,
+		EGL_CONTEXT_MAJOR_VERSION, 2,
 		EGL_NONE
 	};
 	EGLContext eglContext;
