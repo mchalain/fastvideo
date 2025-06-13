@@ -314,6 +314,7 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	}
 	if (! drm.fourcc)
 		drm.fourcc = defaultfourcc;
+	dbg("segl: screen format %.4s", &drm.fourcc);
 	return (EGLNativeDisplayType)gbm.dev;
 }
 
