@@ -118,7 +118,7 @@
     "type": "v4l2",
     "device": "/dev/video21",
     "definition": {
-      "fourcc": "YUYV",
+      "fourcc": "NV12",
       "width": 1920,
       "height": 1080
     },
@@ -168,8 +168,8 @@
     "device": "/dev/video11",
     "definition": {
       "~ourcc":"RGBP",
-      "~ourcc":"AR24",
-      "fourcc":"YUYV",
+      "fourcc":"BGR4",
+      "~ourcc":"YUYV",
       "width":1920,
       "height":1080,
       "end":true
@@ -221,8 +221,8 @@
       },{
         "name": "H264 Level",
         "id": 10029671,
-        "value": 11,
-        "value_show": "4"
+        "value": 13,
+        "value_show": "4.2"
       },{
         "name": "H264 Profile",
         "id": 10029675,
@@ -744,34 +744,60 @@
         "definition": {
           "fourcc": "GB10",
           "width": 1920,
+          "-width": 640,
           "height": 1080,
+          "-height": 480,
           "end": true
         },
         "controls": [
           {
+            "disable": false,
             "name":"White Balance, Automatic",
+            "id": 9963788,
             "value":true
           },{
+            "disable": false,
             "name":"Gain, Automatic",
+            "id": 9963794,
             "value":true
           },{
+            "disable": true,
             "name":"Analogue Gain",
+            "id": 10356995,
             "value":1020
           },{
+            "disable": false,
             "name":"Auto Exposure",
+            "id": 10094849,
             "value":true
           },{
+            "disable": true,
             "name":"Exposure",
+            "id": 9963793,
             "value":1000
           },{
+            "disable": false,
             "name":"Vertical Flip",
-            "value":true
+            "id": 9963797,
+            "comment": "true value fail the startup",
+            "value": false
           },{
+            "disable": false,
             "name":"Horizontal Flip",
-            "value":true
+            "id": 9963796,
+            "comment": "true value fail the startup",
+            "value": false
           },{
+            "disable": true,
+            "name": "Camera Sensor Rotation",
+            "id": 10094883,
+            "comment": "not supported",
+            "value": 180
+          },{
+            "disable": true,
             "name":"Vertical Blanking",
-            "value":-1
+            "id": 10356993,
+            "value": 24
           }
         ]
       }
