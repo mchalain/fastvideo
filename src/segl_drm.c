@@ -256,16 +256,6 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 		GBM_FORMAT_BGRA5551	,
 		GBM_FORMAT_RGB565	,
 		GBM_FORMAT_BGR565	,
-		GBM_FORMAT_RGB888	,
-		GBM_FORMAT_BGR888	,
-		GBM_FORMAT_XRGB8888	,
-		GBM_FORMAT_XBGR8888	,
-		GBM_FORMAT_RGBX8888	,
-		GBM_FORMAT_BGRX8888	,
-		GBM_FORMAT_ARGB8888	,
-		GBM_FORMAT_ABGR8888	,
-		GBM_FORMAT_RGBA8888	,
-		GBM_FORMAT_BGRA8888	,
 		GBM_FORMAT_XRGB2101010	,
 		GBM_FORMAT_XBGR2101010	,
 		GBM_FORMAT_RGBX1010102	,
@@ -276,6 +266,16 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 		GBM_FORMAT_BGRA1010102	,
 		GBM_FORMAT_XBGR16161616F,
 		GBM_FORMAT_ABGR16161616F,
+		GBM_FORMAT_RGB888	,
+		GBM_FORMAT_BGR888	,
+		GBM_FORMAT_XRGB8888	,
+		GBM_FORMAT_XBGR8888	,
+		GBM_FORMAT_RGBX8888	,
+		GBM_FORMAT_BGRX8888	,
+		GBM_FORMAT_ARGB8888	,
+		GBM_FORMAT_ABGR8888	,
+		GBM_FORMAT_RGBA8888	,
+		GBM_FORMAT_BGRA8888	,
 		GBM_FORMAT_YUYV,
 		GBM_FORMAT_YVYU,
 		GBM_FORMAT_UYVY,
@@ -299,7 +299,7 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 
 	uint32_t defaultfourcc = 0;
 	drm.fourcc = 0;
-	dbg("segl: screen formats (search %.4s):", &config->parent.fourcc);
+	dbg("segl: screen formats (search %.4s):", &config->transfer);
 	for (int i = 0; i < sizeof(formats)/sizeof(*formats); i++)
 	{
 		int ret = gbm_device_is_format_supported(gbm.dev, formats[i], GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
@@ -309,7 +309,7 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 			if (!defaultfourcc)
 				defaultfourcc = formats[i];
 		}
-		if (ret && config->parent.fourcc && config->parent.fourcc == formats[i])
+		if (ret && config->transfer && config->transfer == formats[i])
 			drm.fourcc = formats[i];
 	}
 	if (! drm.fourcc)
