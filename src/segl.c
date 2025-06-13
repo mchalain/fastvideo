@@ -297,17 +297,36 @@ static GLuint texture_create(EGL_t *dev, GLenum textype)
 static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t size)
 {
 	uint32_t stride = size / dev->config->parent.height;
+	uint32_t fourcc;
+	switch (dev->config->parent.fourcc)
+	{
+		/**
+		 * change multi-planar format to mono-planar grey format
+		 */
+		case FOURCC('I','4','2','0'):
+		case FOURCC('N','V','2','1'):
+		case FOURCC('N','V','1','2'):
+		case FOURCC('Y','V','1','2'):
+		case FOURCC('Y','V','1','6'):
+			fourcc = FOURCC('G','R','E','Y');
+			fourcc = FOURCC('R','8',' ',' ');
+			stride = dev->config->parent.width;
+			size = dev->config->parent.width * dev->config->parent.height;
+		break;
+		default:
+			fourcc = dev->config->parent.fourcc;
+	}
 	EGLImageKHR dma_image;
 	GLint attrib_list[] = {
 		EGL_WIDTH, dev->config->parent.width,
 		EGL_HEIGHT, dev->config->parent.height,
-		EGL_LINUX_DRM_FOURCC_EXT, dev->config->parent.fourcc,
+		EGL_LINUX_DRM_FOURCC_EXT, fourcc,
 		EGL_DMA_BUF_PLANE0_FD_EXT, dma_fd,
 		EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
 		EGL_DMA_BUF_PLANE0_PITCH_EXT, stride,
 		EGL_NONE
 	};
-	dbg("segl: create image for dma %d : %dx%d %u %.4s", dma_fd, dev->config->parent.width, dev->config->parent.height, stride, (char*)&dev->config->parent.fourcc);
+	dbg("segl: create image for dma %d : %dx%d %u %.4s", dma_fd, dev->config->parent.width, dev->config->parent.height, stride, (char*)&fourcc);
 	dma_image = eglCreateImageKHR(
 					dev->egldisplay,
 					EGL_NO_CONTEXT,
