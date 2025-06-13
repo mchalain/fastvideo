@@ -220,6 +220,246 @@ static void page_flip_handler(int fd, unsigned int frame,
 	*waiting_for_flip = 0;
 }
 
+static const EGLint g_attributes[][21] = {
+	{
+		EGL_RED_SIZE, 1, /// set the minimum bit inside the color
+		EGL_GREEN_SIZE, 0,
+		EGL_BLUE_SIZE, 0,
+		EGL_ALPHA_SIZE, 0,
+		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+		EGL_NONE
+	},
+	{
+		EGL_RED_SIZE, 1,
+		EGL_GREEN_SIZE, 1,
+		EGL_BLUE_SIZE, 0,
+		EGL_ALPHA_SIZE, 0,
+		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+		EGL_NONE
+	},
+	{
+		EGL_RED_SIZE, 1,
+		EGL_GREEN_SIZE, 1,
+		EGL_BLUE_SIZE, 1,
+		EGL_ALPHA_SIZE, 0,
+		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+		EGL_NONE
+	},
+	{
+		EGL_RED_SIZE, 1,
+		EGL_GREEN_SIZE, 1,
+		EGL_BLUE_SIZE, 1,
+		EGL_ALPHA_SIZE, 1,
+		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+		EGL_NONE
+	},
+};
+
+struct
+{
+	uint32_t fourcc;
+	const EGLint *attributes;
+} g_formats[] =
+{
+	{
+		.fourcc = GBM_FORMAT_C8		,
+		.attributes = g_attributes[0],
+	},
+	{
+		.fourcc = GBM_FORMAT_R8		,
+		.attributes = g_attributes[0],
+	},
+	{
+		.fourcc = GBM_FORMAT_GR88		,
+		.attributes = g_attributes[1],
+	},
+	{
+		.fourcc = GBM_FORMAT_RGB332	,
+		.attributes = g_attributes[2],
+	},
+	{
+		.fourcc = GBM_FORMAT_BGR233	,
+		.attributes = g_attributes[2],
+	},
+	{
+		.fourcc = GBM_FORMAT_XRGB4444	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_XBGR4444	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_RGBX4444	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_BGRX4444	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_ARGB4444	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_ABGR4444	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_RGBA4444	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_BGRA4444	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_XRGB1555	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_XBGR1555	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_RGBX5551	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_BGRX5551	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_ARGB1555	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_ABGR1555	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_RGBA5551	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_BGRA5551	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_RGB565	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_BGR565	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_XRGB2101010	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_XBGR2101010	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_RGBX1010102	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_BGRX1010102	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_ARGB2101010	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_ABGR2101010	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_RGBA1010102	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_BGRA1010102	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_XBGR16161616F,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_ABGR16161616F,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_RGB888	,
+		.attributes = g_attributes[2],
+	},
+	{
+		.fourcc = GBM_FORMAT_BGR888	,
+		.attributes = g_attributes[2],
+	},
+	{
+		.fourcc = GBM_FORMAT_XRGB8888	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_XBGR8888	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_RGBX8888	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_BGRX8888	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_ARGB8888	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_ABGR8888	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_RGBA8888	,
+		.attributes = g_attributes[3],
+	},
+	{
+		.fourcc = GBM_FORMAT_BGRA8888	,
+		.attributes = g_attributes[3],
+	},
+#if 0
+	GBM_FORMAT_YUYV,
+	GBM_FORMAT_YVYU,
+	GBM_FORMAT_UYVY,
+	GBM_FORMAT_VYUY,
+	GBM_FORMAT_AYUV,
+	GBM_FORMAT_NV12,
+	GBM_FORMAT_NV21,
+	GBM_FORMAT_NV16,
+	GBM_FORMAT_NV61,
+	GBM_FORMAT_YUV410,
+	GBM_FORMAT_YVU410,
+	GBM_FORMAT_YUV411,
+	GBM_FORMAT_YVU411,
+	GBM_FORMAT_YUV420,
+	GBM_FORMAT_YVU420,
+	GBM_FORMAT_YUV422,
+	GBM_FORMAT_YVU422,
+	GBM_FORMAT_YUV444,
+	GBM_FORMAT_YVU444,
+#endif
+};
+
 static EGLNativeDisplayType native_display(EGLConfig_t *config)
 {
 	const char *device = config->device;
@@ -231,86 +471,20 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	}
 	gbm.dev = gbm_create_device(drm.fd);
 
-	uint32_t formats[] =
-	{
-		GBM_FORMAT_C8		,
-		GBM_FORMAT_R8		,
-		GBM_FORMAT_GR88		,
-		GBM_FORMAT_RGB332	,
-		GBM_FORMAT_BGR233	,
-		GBM_FORMAT_XRGB4444	,
-		GBM_FORMAT_XBGR4444	,
-		GBM_FORMAT_RGBX4444	,
-		GBM_FORMAT_BGRX4444	,
-		GBM_FORMAT_ARGB4444	,
-		GBM_FORMAT_ABGR4444	,
-		GBM_FORMAT_RGBA4444	,
-		GBM_FORMAT_BGRA4444	,
-		GBM_FORMAT_XRGB1555	,
-		GBM_FORMAT_XBGR1555	,
-		GBM_FORMAT_RGBX5551	,
-		GBM_FORMAT_BGRX5551	,
-		GBM_FORMAT_ARGB1555	,
-		GBM_FORMAT_ABGR1555	,
-		GBM_FORMAT_RGBA5551	,
-		GBM_FORMAT_BGRA5551	,
-		GBM_FORMAT_RGB565	,
-		GBM_FORMAT_BGR565	,
-		GBM_FORMAT_XRGB2101010	,
-		GBM_FORMAT_XBGR2101010	,
-		GBM_FORMAT_RGBX1010102	,
-		GBM_FORMAT_BGRX1010102	,
-		GBM_FORMAT_ARGB2101010	,
-		GBM_FORMAT_ABGR2101010	,
-		GBM_FORMAT_RGBA1010102	,
-		GBM_FORMAT_BGRA1010102	,
-		GBM_FORMAT_XBGR16161616F,
-		GBM_FORMAT_ABGR16161616F,
-		GBM_FORMAT_RGB888	,
-		GBM_FORMAT_BGR888	,
-		GBM_FORMAT_XRGB8888	,
-		GBM_FORMAT_XBGR8888	,
-		GBM_FORMAT_RGBX8888	,
-		GBM_FORMAT_BGRX8888	,
-		GBM_FORMAT_ARGB8888	,
-		GBM_FORMAT_ABGR8888	,
-		GBM_FORMAT_RGBA8888	,
-		GBM_FORMAT_BGRA8888	,
-		GBM_FORMAT_YUYV,
-		GBM_FORMAT_YVYU,
-		GBM_FORMAT_UYVY,
-		GBM_FORMAT_VYUY,
-		GBM_FORMAT_AYUV,
-		GBM_FORMAT_NV12,
-		GBM_FORMAT_NV21,
-		GBM_FORMAT_NV16,
-		GBM_FORMAT_NV61,
-		GBM_FORMAT_YUV410,
-		GBM_FORMAT_YVU410,
-		GBM_FORMAT_YUV411,
-		GBM_FORMAT_YVU411,
-		GBM_FORMAT_YUV420,
-		GBM_FORMAT_YVU420,
-		GBM_FORMAT_YUV422,
-		GBM_FORMAT_YVU422,
-		GBM_FORMAT_YUV444,
-		GBM_FORMAT_YVU444,
-	};
-
 	uint32_t defaultfourcc = 0;
 	drm.fourcc = 0;
 	dbg("segl: screen formats (search %.4s):", &config->transfer);
-	for (int i = 0; i < sizeof(formats)/sizeof(*formats); i++)
+	for (int i = 0; i < sizeof(g_formats)/sizeof(*g_formats); i++)
 	{
-		int ret = gbm_device_is_format_supported(gbm.dev, formats[i], GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+		int ret = gbm_device_is_format_supported(gbm.dev, g_formats[i].fourcc, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 		if (ret)
 		{
-			dbg("\t%.4s", &formats[i]);
+			dbg("\t%.4s", &g_formats[i].fourcc);
 			if (!defaultfourcc)
-				defaultfourcc = formats[i];
+				defaultfourcc = g_formats[i].fourcc;
 		}
-		if (ret && config->transfer && config->transfer == formats[i])
-			drm.fourcc = formats[i];
+		if (ret && config->transfer && config->transfer == g_formats[i].fourcc)
+			drm.fourcc = g_formats[i].fourcc;
 	}
 	if (! drm.fourcc)
 		drm.fourcc = defaultfourcc;
@@ -318,19 +492,15 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	return (EGLNativeDisplayType)gbm.dev;
 }
 
-static const EGLint g_attributes[] = {
-	EGL_RED_SIZE, 8,
-	EGL_GREEN_SIZE, 8,
-	EGL_BLUE_SIZE, 8,
-	EGL_ALPHA_SIZE, 8,
-	//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
-	EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-	EGL_NONE
-};
-
 static const GLint *native_attributes(EGLNativeDisplayType display)
 {
-	return g_attributes;
+	const EGLint *attributes = NULL;
+	for (int i = 0; i < sizeof(g_formats)/sizeof(*g_formats); i++)
+	{
+		if (g_formats[i].fourcc == drm.fourcc)
+			attributes = g_formats[i].attributes;
+	}
+	return attributes;
 }
 
 static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLuint width, GLuint height, const GLchar *name)
