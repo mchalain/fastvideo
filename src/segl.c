@@ -379,7 +379,20 @@ static int texturemem_link(EGL_t *dev, GLuint texture, void *mem, size_t size)
 
 static int texturedma_get(EGL_t *dev, GLuint dma_texture)
 {
-	EGLImage image = eglCreateImage(dev->egldisplay, dev->eglcontext, EGL_GL_TEXTURE_2D, (void *)(long)dma_texture, NULL);
+/// the both have the same result
+#if 0
+	GLint *attributes = NULL;
+
+	EGLImage image = eglCreateImageKHR(dev->egldisplay, dev->eglcontext, EGL_GL_TEXTURE_2D, (void *)(long)dma_texture, attributes);
+#else
+	GLint tattributes[] = {
+		EGL_IMAGE_PRESERVED, EGL_TRUE,
+		EGL_NONE,
+	};
+	GLint *attributes = tattributes;
+
+	EGLImage image = eglCreateImage(dev->egldisplay, dev->eglcontext, EGL_GL_TEXTURE_2D, (void *)(long)dma_texture, attributes);
+#endif
 
 	if (image == EGL_NO_IMAGE)
 		return -1;
@@ -395,24 +408,25 @@ static int texturedma_get(EGL_t *dev, GLuint dma_texture)
 	EGLint offset[5] = {0};
 	int fourcc = dev->config->parent.fourcc;
 	int dma_buf[5] = {0};
+	uint64_t modifiers = 0;
 
 	eglExportDMABUFImageQueryMESA(dev->egldisplay, image,
-								&fourcc, &numplanes, NULL);
+								&fourcc, &numplanes, &modifiers);
 	if (numplanes < 5)
 	{
 		eglExportDMABUFImageMESA(dev->egldisplay, image, &dma_buf[0], &stride[0], &offset[0]);
 	}
+	if (modifiers)
+		err("segl: export modifed buffer %#x", modifiers);
 	if (dev->config->parent.fourcc && dev->config->parent.fourcc != fourcc)
 		err("segl: requests %.4s, obtains %.4s", &dev->config->parent.fourcc, &fourcc);
 	dev->config->parent.fourcc = fourcc;
 
+	dev->buffers[dev->nbuffers].dma_image = image;
 	dev->buffers[dev->nbuffers].size = stride[0] * dev->config->parent.height;
 	dev->buffers[dev->nbuffers].pitch = stride[0];
-	dev->buffers[dev->nbuffers].dma_fd = dma_buf[0];
-	dev->buffers[dev->nbuffers].dma_texture = dma_texture;
-	dev->buffers[dev->nbuffers].dma_image = 0;
-	dev->buffers[dev->nbuffers].textype = GL_TEXTURE_2D;
-	return 0;
+
+	return dma_buf[0];
 }
 
 int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
@@ -513,56 +527,31 @@ EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	if (glget <= dup->config->parent.height)
 		warn("segl: width to height max %d", glget);
 
-#if 0
-	int index = 4;
-	GLint formats[] =
-	{
-		GL_ALPHA,
-		GL_LUMINANCE,
-		GL_LUMINANCE_ALPHA,
-		GL_RGB,
-		GL_RGBA,
-	};
-	GLenum type = GL_UNSIGNED_BYTE;
-	switch (dup->config->parent.fourcc)
-	{
-		case FOURCC('R','G','B', 'P'):
-			index = 3;
-			type = GL_UNSIGNED_SHORT_5_6_5;
-		break;
-		default:
-		break;
-	}
-	GLint intformat = formats[index];
-	GLint format = formats[index];
-#else
 	const FourccFormat_t *fformat = fourcc_getformat(dup->config->parent.fourcc);
-	GLint intformat = fformat->internal;
-	GLint format = fformat->full;
-	GLenum type = fformat->data;
-#endif
-dbg("%.4s %#x %#x %#x", &dup->config->parent.fourcc, intformat, format, type);
+
 	/*  Framebuffer */
 	glGenFramebuffers(1, &dup->fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, dup->fbo);
-	for (int i = 0; i < MAX_BUFFERS; i++)
+	for (int i = 0; i < MAX_BUFFERS; i++, dup->nbuffers++)
 	{
-		GLuint dma_texture = -1;
-		dma_texture = texture_create(dev, GL_TEXTURE_2D);
-#if 0
-		glTexImage2D(GL_TEXTURE_2D, 0, formats[index],
-				dup->config->parent.width, dup->config->parent.height, 0,
-				formats[index], type, NULL);
-#else
-		glTexImage2D(GL_TEXTURE_2D, 0, fformat->internal,
+		GLuint dma_texture = 0;
+		dup->buffers[i].textype = GL_TEXTURE_2D;
+		dma_texture = texture_create(dup, dup->buffers[i].textype);
+		if (dma_texture == 0)
+			break;
+		dup->buffers[i].dma_texture = dma_texture;
+
+		glTexImage2D(dup->buffers[i].textype, 0, fformat->internal,
 				dup->config->parent.width, dup->config->parent.height, 0,
 				fformat->full, fformat->data, NULL);
-#endif
-		if (texturedma_get(dup, dma_texture))
+		int dma_fd = texturedma_get(dup, dma_texture);
+		if (dma_fd <= 0)
 			break;
-		dup->nbuffers++;
+		dup->buffers[i].dma_fd = dma_fd;
+
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-			GL_TEXTURE_2D, dup->buffers[i].dma_texture, 0);
+			dup->buffers[i].textype, dup->buffers[i].dma_texture, 0);
+		dbg("segl: export dmabuffer[%d]: %d", i, dev->buffers[i].dma_fd);
 	}
 	/* Sanity check. */
 	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
