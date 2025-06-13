@@ -12,6 +12,17 @@
 #include "segl.h"
 #include "log.h"
 
+typedef struct FourccFormat_s FourccFormat_t;
+struct FourccFormat_s
+{
+	uint32_t fourcc;
+	GLuint internal;
+	GLuint full;
+	GLuint data;
+	int nplanes;
+	int stride_factor[4];
+};
+
 extern EGLNative_t *eglnative_offscreen;
 #ifdef HAVE_GBM
 extern EGLNative_t *eglnative_drm;
@@ -65,6 +76,30 @@ PFNEGLEXPORTDMABUFIMAGEMESAPROC eglExportDMABUFImageMESA = NULL;
 PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
 PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
 #endif
+
+static FourccFormat_t _FourccFormats[] =
+{
+	{ .fourcc = FOURCC_RGBA, .internal = GL_RGBA, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_AB24, .internal = GL_RGBA, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_XB24, .internal = GL_RGBA, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_AR24, .internal = GL_RGBA, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_XR24, .internal = GL_RGBA, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_RGBP, .internal = GL_RGB , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
+	{ .fourcc = FOURCC_R8  , .internal = GL_RED_EXT, .full = GL_RED_EXT, .data = GL_UNSIGNED_BYTE , .nplanes = 1, .stride_factor={sizeof(uint8_t),0,0,0}},
+	{ .fourcc = FOURCC_YUYV, .internal = GL_RGBA, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+};
+
+static const FourccFormat_t *fourcc_getformat(uint32_t fourcc)
+{
+	FourccFormat_t *format = NULL;
+	for (int i = 0; i < sizeof(_FourccFormats)/sizeof(*_FourccFormats); i++)
+	{
+		format = &_FourccFormats[i];
+		if (format->fourcc == fourcc)
+			break;
+	}
+	return format;
+}
 
 EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *config)
 {
@@ -413,6 +448,7 @@ EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	if (glget <= dup->config->parent.height)
 		warn("segl: width to height max %d", glget);
 
+#if 0
 	int index = 4;
 	GLint formats[] =
 	{
@@ -432,6 +468,15 @@ EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		default:
 		break;
 	}
+	GLint intformat = formats[index];
+	GLint format = formats[index];
+#else
+	const FourccFormat_t *fformat = fourcc_getformat(dup->config->parent.fourcc);
+	GLint intformat = fformat->internal;
+	GLint format = fformat->full;
+	GLenum type = fformat->data;
+#endif
+dbg("%.4s %#x %#x %#x", &dup->config->parent.fourcc, intformat, format, type);
 	/*  Framebuffer */
 	glGenFramebuffers(1, &dup->fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, dup->fbo);
@@ -439,9 +484,15 @@ EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	{
 		GLuint dma_texture = -1;
 		dma_texture = texture_create(dev, GL_TEXTURE_2D);
+#if 0
 		glTexImage2D(GL_TEXTURE_2D, 0, formats[index],
 				dup->config->parent.width, dup->config->parent.height, 0,
 				formats[index], type, NULL);
+#else
+		glTexImage2D(GL_TEXTURE_2D, 0, fformat->internal,
+				dup->config->parent.width, dup->config->parent.height, 0,
+				fformat->full, fformat->data, NULL);
+#endif
 		if (texturedma_get(dup, dma_texture))
 			break;
 		dup->nbuffers++;
@@ -452,7 +503,7 @@ EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if (ret != GL_FRAMEBUFFER_COMPLETE)
 	{
-		err("segl: offscreen generator failed");
+		err("segl: offscreen generator failed for %.4s", &dup->config->parent.fourcc);
 		return NULL;
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
