@@ -287,6 +287,12 @@ static GLuint texture_create(EGL_t *dev, GLenum textype)
 	glGenTextures(1, &dma_texture);
 
 	glBindTexture(textype, dma_texture);
+#if 0
+	uint32_t width = dev->config->parent.width;
+	uint32_t height = dev->config->parent.height;
+	const FourccFormat_t *format = fourcc_getformat(dev->config->parent.fourcc);
+	glTexImage2D(textype, 0, format->internal, width, height, 0, format->full, GL_UNSIGNED_BYTE, NULL);
+#endif
 	glTexParameteri(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -351,6 +357,35 @@ static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t si
 	return 0;
 }
 
+static int texturemem_link(EGL_t *dev, GLuint texture, void *mem, size_t size)
+{
+	uint32_t stride = size / dev->config->parent.height;
+	EGLImageKHR image;
+	dbg("segl: create image for mmap %p : %dx%d %u %.4s", mem, dev->config->parent.width, dev->config->parent.height, stride, (char*)&dev->config->parent.fourcc);
+	image = eglCreateImageKHR(
+					dev->egldisplay,
+					dev->eglcontext,
+					EGL_GL_TEXTURE_2D_KHR,
+					(EGLClientBuffer)(long)texture,
+					mem);
+
+	if(image == EGL_NO_IMAGE_KHR)
+	{
+		err("segl: Image creation error %#X", eglGetError());
+//		return -1;
+	}
+
+	dev->buffers[dev->nbuffers].size = size;
+	dev->buffers[dev->nbuffers].pitch = stride;
+	dev->buffers[dev->nbuffers].memory = mem;
+	dev->buffers[dev->nbuffers].dma_texture = texture;
+	dev->buffers[dev->nbuffers].dma_image = image;
+	dev->buffers[dev->nbuffers].textype = GL_TEXTURE_EXTERNAL_OES;
+	dev->nbuffers++;
+
+	return 0;
+}
+
 static int texturedma_get(EGL_t *dev, GLuint dma_texture)
 {
 	EGLImage image = eglCreateImage(dev->egldisplay, dev->eglcontext, EGL_GL_TEXTURE_2D, (void *)(long)dma_texture, NULL);
@@ -408,6 +443,26 @@ int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 				ret = texturedma_link(dev, dma_texture, targets[i], size);
 				glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, dev->buffers[i].dma_image);
 				eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
+				dev->buffers[i].dma_image = 0;
+				if (ret)
+					break;
+			}
+		}
+		break;
+		case buf_type_memory:
+		{
+			int ntargets = va_arg(ap, int);
+			void **targets = va_arg(ap, void **);
+			size_t size = va_arg(ap, size_t);
+			for (int i = 0; i < ntargets; i++)
+			{
+				GLuint texture = -1;
+				//GLuint textype = GL_TEXTURE_EXTERNAL_OES;
+				GLuint textype = GL_TEXTURE_2D;
+				texture = texture_create(dev, textype);
+				ret = texturemem_link(dev, texture, targets[i], size);
+//				glEGLImageTargetTexture2DOES(textype, dev->buffers[i].dma_image);
+//				eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
 				dev->buffers[i].dma_image = 0;
 				if (ret)
 					break;
@@ -562,6 +617,9 @@ void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo)
 
 int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused)
 {
+	uint32_t width = dev->config->parent.width;
+	uint32_t height = dev->config->parent.height;
+
 	if (dev->type == device_input)
 	{
 		dev->curbufferid = -1;
@@ -582,6 +640,12 @@ int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused)
 		return -1;
 	}
 
+#if 0
+	if (dev->buffers[id].dma_fd == 0)
+	{
+		glTexSubImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, mem);
+	}
+#endif
 	segl_queue_output(dev, id, bytesused, 0);
 	dev->curbufferid = id;
 	if (dev->dup)
