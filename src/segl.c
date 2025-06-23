@@ -85,6 +85,7 @@ static FourccFormat_t _FourccFormats[] =
 	{ .fourcc = FOURCC_AR24, .internal = GL_RGBA, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
 	{ .fourcc = FOURCC_XR24, .internal = GL_RGBA, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
 	{ .fourcc = FOURCC_RGBP, .internal = GL_RGB , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
+	{ .fourcc = FOURCC_RG16, .internal = GL_RGB , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
 	{ .fourcc = FOURCC_R8  , .internal = GL_RED_EXT, .full = GL_RED_EXT, .data = GL_UNSIGNED_BYTE , .nplanes = 1, .stride_factor={sizeof(uint8_t),0,0,0}},
 	{ .fourcc = FOURCC_YUYV, .internal = GL_RGBA, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
 };
@@ -139,8 +140,6 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	warn("segl: native %s", native->name);
 	ndisplay = native->display(config);
 
-	EGLNativeWindowType nwindow = native->createwindow(ndisplay, config->parent.width, config->parent.height, "segl");
-
 	EGLDisplay eglDisplay = eglGetDisplay(ndisplay);
 
 	EGLint major, minor;
@@ -163,6 +162,26 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	EGLint num_config;
 	eglGetConfigs(eglDisplay, NULL, 0, &num_config);
 
+#ifdef DEBUG
+	EGLConfig eglConfigs[20];
+	eglGetConfigs(eglDisplay, eglConfigs, 20, &num_config);
+	for (int i = 0; i < num_config; i++)
+	{
+		EGLint redsize;
+		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_RED_SIZE, &redsize);
+		EGLint greensize;
+		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_GREEN_SIZE, &greensize);
+		EGLint bluesize;
+		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_BLUE_SIZE, &bluesize);
+		EGLint alphasize;
+		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_ALPHA_SIZE, &alphasize);
+		EGLint texturetype;
+		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_BIND_TO_TEXTURE_RGB, &texturetype);
+		EGLint buffertype;
+		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_COLOR_BUFFER_TYPE, &buffertype);
+		dbg("segl: config[%.2d]\t%d/%d/%d/%d %s", i, redsize, greensize, bluesize, alphasize, (buffertype== EGL_LUMINANCE_BUFFER)?"LUMINANCE":(texturetype)?"RGB":"RGBA");
+	}
+#endif
 	EGLConfig eglConfig;
 	if (!eglChooseConfig(eglDisplay, native->attributes(ndisplay), &eglConfig, 1, &num_config))
 	{
@@ -183,6 +202,8 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		native->destroy(ndisplay);
 		return NULL;
 	}
+
+	EGLNativeWindowType nwindow = native->createwindow(ndisplay, config->parent.width, config->parent.height, "segl");
 
 	EGLSurface eglSurface = NULL;
 	if (nwindow != (EGLNativeWindowType)NULL)

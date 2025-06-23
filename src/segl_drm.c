@@ -222,37 +222,37 @@ static void page_flip_handler(int fd, unsigned int frame,
 
 static const EGLint g_attributes[][21] = {
 	{
-		EGL_RED_SIZE, 1, /// set the minimum bit inside the color
+		EGL_RED_SIZE, 8, /// set the minimum bit inside the color
+		EGL_GREEN_SIZE, 8,
+		EGL_BLUE_SIZE, 8,
+		EGL_ALPHA_SIZE, 8,
+		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+		EGL_NONE
+	},
+	{
+		EGL_RED_SIZE, 8,
+		EGL_GREEN_SIZE, 8,
+		EGL_BLUE_SIZE, 8,
+		EGL_ALPHA_SIZE, 0,
+		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+		EGL_NONE
+	},
+	{
+		EGL_RED_SIZE, 5,
+		EGL_GREEN_SIZE, 6,
+		EGL_BLUE_SIZE, 5,
+		EGL_ALPHA_SIZE, 0,
+		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+		EGL_NONE
+	},
+	{
+		EGL_RED_SIZE, 10,
 		EGL_GREEN_SIZE, 0,
 		EGL_BLUE_SIZE, 0,
 		EGL_ALPHA_SIZE, 0,
-		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-		EGL_NONE
-	},
-	{
-		EGL_RED_SIZE, 1,
-		EGL_GREEN_SIZE, 1,
-		EGL_BLUE_SIZE, 0,
-		EGL_ALPHA_SIZE, 0,
-		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-		EGL_NONE
-	},
-	{
-		EGL_RED_SIZE, 1,
-		EGL_GREEN_SIZE, 1,
-		EGL_BLUE_SIZE, 1,
-		EGL_ALPHA_SIZE, 0,
-		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-		EGL_NONE
-	},
-	{
-		EGL_RED_SIZE, 1,
-		EGL_GREEN_SIZE, 1,
-		EGL_BLUE_SIZE, 1,
-		EGL_ALPHA_SIZE, 1,
 		//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
 		EGL_NONE
@@ -267,11 +267,11 @@ struct
 {
 	{
 		.fourcc = GBM_FORMAT_C8		,
-		.attributes = g_attributes[0],
+		.attributes = g_attributes[1],
 	},
 	{
 		.fourcc = GBM_FORMAT_R8		,
-		.attributes = g_attributes[0],
+		.attributes = g_attributes[1],
 	},
 	{
 		.fourcc = GBM_FORMAT_GR88		,
@@ -287,75 +287,75 @@ struct
 	},
 	{
 		.fourcc = GBM_FORMAT_XRGB4444	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_XBGR4444	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_RGBX4444	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_BGRX4444	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_ARGB4444	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_ABGR4444	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_RGBA4444	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_BGRA4444	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_XRGB1555	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_XBGR1555	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_RGBX5551	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_BGRX5551	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_ARGB1555	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_ABGR1555	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_RGBA5551	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_BGRA5551	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_RGB565	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_BGR565	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[2],
 	},
 	{
 		.fourcc = GBM_FORMAT_XRGB2101010	,
@@ -399,43 +399,43 @@ struct
 	},
 	{
 		.fourcc = GBM_FORMAT_RGB888	,
-		.attributes = g_attributes[2],
+		.attributes = g_attributes[1],
 	},
 	{
 		.fourcc = GBM_FORMAT_BGR888	,
-		.attributes = g_attributes[2],
+		.attributes = g_attributes[1],
 	},
 	{
 		.fourcc = GBM_FORMAT_XRGB8888	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[0],
 	},
 	{
 		.fourcc = GBM_FORMAT_XBGR8888	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[0],
 	},
 	{
 		.fourcc = GBM_FORMAT_RGBX8888	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[0],
 	},
 	{
 		.fourcc = GBM_FORMAT_BGRX8888	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[0],
 	},
 	{
 		.fourcc = GBM_FORMAT_ARGB8888	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[0],
 	},
 	{
 		.fourcc = GBM_FORMAT_ABGR8888	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[0],
 	},
 	{
 		.fourcc = GBM_FORMAT_RGBA8888	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[0],
 	},
 	{
 		.fourcc = GBM_FORMAT_BGRA8888	,
-		.attributes = g_attributes[3],
+		.attributes = g_attributes[0],
 	},
 #if 0
 	GBM_FORMAT_YUYV,
@@ -531,7 +531,7 @@ static int native_fd(EGLNativeWindowType native_win)
 static struct gbm_bo *old_bo = NULL;
 static int native_flush(EGLNativeWindowType native_win)
 {
-	struct gbm_surface *surface = (struct gbm_surface *)native_win;
+	struct gbm_surface *surface = gbm.surface;
 
 	if (old_bo == NULL)
 	{
@@ -571,7 +571,8 @@ static int native_flush(EGLNativeWindowType native_win)
 
 static int native_sync(EGLNativeWindowType native_win)
 {
-	struct gbm_surface *surface = (struct gbm_surface *)native_win;
+	struct gbm_surface *surface = gbm.surface;
+
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
 			.page_flip_handler = page_flip_handler,
