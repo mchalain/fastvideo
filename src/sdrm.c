@@ -316,7 +316,7 @@ static int sdrm_buffer_mmap(Display_t *disp, uint32_t width, uint32_t height, ui
 	if (drmModeAddFB(disp->fd, width, height, 24, 32, stride,
 		bo_handle, &buffer->id))
 	{
-		err("sdrm: Frame buffer unavailable %m");
+		err("sdrm: Frame buffer unavailable 1 (%dx%d %.4s) %m", width, height, &fourcc);
 		return -1;
 	}
 	return 0;
@@ -352,7 +352,7 @@ static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uin
 	if (drmModeAddFB2(disp->fd, width, height, disp->fourcc, bo_handles,
 		pitches, offsets, &buffer->id, 0))
 	{
-		err("sdrm: Frame buffer unavailable %m");
+		err("sdrm: Frame buffer unavailable 2 (%dx%d %.4s) %m", width, height, &disp->fourcc);
 		return -1;
 	}
 	return 0;
@@ -378,7 +378,7 @@ static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, FrameBuffe
 	if (drmModeAddFB2(disp->fd, disp->mode.hdisplay, disp->mode.vdisplay, disp->fourcc,
 		bo_handles, pitches, offsets, &buffer->id, 0))
 	{
-		err("sdrm: Frame buffer unavailable %m");
+		err("sdrm: Frame buffer unavailable 3 (%dx%d %.4s) %m", disp->mode.hdisplay, disp->mode.vdisplay, &disp->fourcc);
 		return -1;
 	}
 	return 0;

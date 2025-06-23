@@ -19,18 +19,6 @@ struct DisplayConf_s
 
 typedef struct Display_s Display_t;
 
-DeviceConf_t * sdrm_createconfig();
-
-Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf_t *config);
-Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayConf_t *config);
-int sdrm_requestbuffer(Display_t *dev, enum buf_type_e t, ...);
-int sdrm_fd(Display_t *disp);
-int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused);
-int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused);
-int sdrm_start(Display_t *disp);
-int sdrm_stop(Display_t *disp);
-void sdrm_destroy(Display_t *disp);
-
 #ifdef HAVE_JANSSON
 int sdrm_capabilities(Display_t *disp, json_t *capabilities);
 
