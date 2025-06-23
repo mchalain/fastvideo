@@ -61,7 +61,7 @@ struct Passthrough_s
 	} branch;
 };
 
-int spassthrough_loadjsonconfiguration(void *arg, void *entry);
+EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry);
 
 DeviceConf_t * spassthrough_createconfig(void)
 {
@@ -73,7 +73,7 @@ DeviceConf_t * spassthrough_createconfig(void)
 	return &config->parent;
 }
 
-void *spassthrough_create(const char *devicename, device_type_e type, Passthrough_config_t *config)
+EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Passthrough_config_t *config)
 {
 	if (type != device_transfer)
 	{
@@ -86,7 +86,7 @@ void *spassthrough_create(const char *devicename, device_type_e type, Passthroug
 	return dev;
 }
 
-void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **pconfig)
+EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **pconfig)
 {
 	Passthrough_t *dup = calloc(1, sizeof(*dup));
 	dup->type = device_input;
@@ -121,7 +121,7 @@ void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **pconfig)
 	return dup;
 }
 
-int spassthrough_loadsettings(Passthrough_t *dev, void *configentry)
+EXT_API int spassthrough_loadsettings(Passthrough_t *dev, void *configentry)
 {
 	return 0;
 }
@@ -145,7 +145,7 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 	return nmems;
 }
 
-int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
+EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 {
 	int ret = -1;
 	va_list ap;
@@ -237,12 +237,12 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 	return ret;
 }
 
-int spassthrough_fd(Passthrough_t *dev, int writer)
+EXT_API int spassthrough_fd(Passthrough_t *dev, int writer)
 {
 	return -1;
 }
 
-int spassthrough_start(Passthrough_t *dev)
+EXT_API int spassthrough_start(Passthrough_t *dev)
 {
 	if (dev->type == device_input && dev->branch.dev)
 	{
@@ -251,7 +251,7 @@ int spassthrough_start(Passthrough_t *dev)
 	return 0;
 }
 
-int spassthrough_stop(Passthrough_t *dev)
+EXT_API int spassthrough_stop(Passthrough_t *dev)
 {
 	if (dev->type == device_input && dev->branch.dev)
 	{
@@ -260,7 +260,7 @@ int spassthrough_stop(Passthrough_t *dev)
 	return 0;
 }
 
-int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused)
+EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused)
 {
 	PassBuffer_t *last = dev->fifo;
 	errno = EAGAIN;
@@ -290,7 +290,7 @@ int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused)
 	return last->index;
 }
 
-int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused)
+EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused)
 {
 	dev = dev->dup;
 	if (mem)
@@ -315,7 +315,7 @@ int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesuse
 	return 0;
 }
 
-void spassthrough_destroy(Passthrough_t *dev)
+EXT_API void spassthrough_destroy(Passthrough_t *dev)
 {
 	if (dev->type == device_input && dev->branch.dev)
 	{
@@ -325,7 +325,7 @@ void spassthrough_destroy(Passthrough_t *dev)
 	free(dev);
 }
 
-int spassthrough_loadjsonconfiguration(void *arg, void *entry)
+EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry)
 {
 	json_t *jconfig = entry;
 

@@ -34,8 +34,9 @@ struct File_s
 	FrameBuffer_t *buffers;
 	int lastbufferid;
 };
+EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused);
 
-File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
+EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
 {
 	const char *start = strchr(filename, ':');
 	if (start)
@@ -125,7 +126,7 @@ File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *co
 	return dev;
 }
 
-int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
+EXT_API int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 {
 	int ret = 0;
 	va_list ap;
@@ -177,12 +178,12 @@ int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 	return ret;
 }
 
-int sfile_fd(File_t *dev, int writer)
+EXT_API int sfile_fd(File_t *dev, int writer)
 {
 	return dev->ops->fd(dev);
 }
 
-int sfile_start(File_t *dev)
+EXT_API int sfile_start(File_t *dev)
 {
 	dev->lastbufferid = 0;
 	if (dev->type & device_input)
@@ -197,12 +198,12 @@ int sfile_start(File_t *dev)
 	return 0;
 }
 
-int sfile_stop(File_t *dev)
+EXT_API int sfile_stop(File_t *dev)
 {
 	return 0;
 }
 
-int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
+EXT_API int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
 {
 	int ret = dev->lastbufferid;
 	FrameBuffer_t *buffer = &dev->buffers[dev->lastbufferid];
@@ -221,7 +222,7 @@ int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
 	return ret;
 }
 
-int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused)
+EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused)
 {
 	if (index > dev->nbuffers)
 	{
@@ -288,7 +289,7 @@ int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused)
 	return 0;
 }
 
-void sfile_destroy(File_t *dev)
+EXT_API void sfile_destroy(File_t *dev)
 {
 	dev->ops->close(dev);
 	if (dev->nbuffers > 0)

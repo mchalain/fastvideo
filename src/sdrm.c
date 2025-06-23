@@ -400,7 +400,7 @@ static void sdrm_freebuffer(Display_t *disp, FrameBuffer_t *buffer)
 #endif
 }
 
-Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayConf_t *config)
+EXT_API Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayConf_t *config)
 {
 	if (type != device_output)
 	{
@@ -448,7 +448,7 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 	return disp;
 }
 
-Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf_t *config)
+EXT_API Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf_t *config)
 {
 	if (type != device_output)
 	{
@@ -473,7 +473,7 @@ Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf_t *conf
 	return disp;
 }
 
-int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
+EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 {
 	va_list ap;
 	va_start(ap, t);
@@ -573,7 +573,7 @@ static void page_flip_handler(int fd, unsigned int frame,
 	disp->buffers[(int)id].state = dequeued;
 }
 
-int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused)
+EXT_API int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused)
 {
 	if (id > disp->nbuffers)
 	{
@@ -597,7 +597,7 @@ int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused)
 	return 0;
 }
 
-int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused)
+EXT_API int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused)
 {
 	int id = disp->queueid;
 	FrameBuffer_t *buffer = &disp->buffers[id];
@@ -615,12 +615,12 @@ int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused)
 	return id;
 }
 
-int sdrm_fd(Display_t *disp, int writer)
+EXT_API int sdrm_fd(Display_t *disp, int writer)
 {
 	return disp->fd;
 }
 
-int sdrm_start(Display_t *disp)
+EXT_API int sdrm_start(Display_t *disp)
 {
 	return 0;
 }

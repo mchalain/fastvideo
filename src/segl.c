@@ -101,7 +101,7 @@ static const FourccFormat_t *fourcc_getformat(uint32_t fourcc)
 	return format;
 }
 
-EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *config)
+EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *config)
 {
 	if (type != device_output && type != device_transfer)
 	{
@@ -431,7 +431,7 @@ static int texturedma_get(EGL_t *dev, int id)
 	return dma_buf[0];
 }
 
-int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
+EXT_API int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 {
 	va_list ap;
 	va_start(ap, t);
@@ -518,7 +518,7 @@ int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 	return ret;
 }
 
-EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
+EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 {
 	EGL_t *dup = NULL;
 	if (dev->type != device_transfer)
@@ -577,7 +577,7 @@ EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	return dup;
 }
 
-int segl_start(EGL_t *dev)
+EXT_API int segl_start(EGL_t *dev)
 {
 	if (dev->type == device_input)
 		return 0;
@@ -591,7 +591,7 @@ int segl_start(EGL_t *dev)
 	return 0;
 }
 
-int segl_stop(EGL_t *dev)
+EXT_API int segl_stop(EGL_t *dev)
 {
 	if (dev->type == device_input)
 		return 0;
@@ -599,7 +599,7 @@ int segl_stop(EGL_t *dev)
 	return 0;
 };
 
-void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo)
+static void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo)
 {
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 
@@ -608,7 +608,7 @@ void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused)
+EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused)
 {
 	uint32_t width = dev->config->parent.width;
 	uint32_t height = dev->config->parent.height;
@@ -646,7 +646,7 @@ int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused)
 	return dev->native->flush(dev->native_window);
 }
 
-int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
+EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
 {
 	int id = dev->curbufferid;
 	dev->curbufferid = -1;
@@ -667,12 +667,12 @@ int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
 	return id;
 }
 
-int segl_fd(EGL_t *dev, int writer)
+EXT_API int segl_fd(EGL_t *dev, int writer)
 {
 	return dev->native->fd(dev->native_window);
 }
 
-void segl_destroy(EGL_t *dev)
+EXT_API void segl_destroy(EGL_t *dev)
 {
 	if (dev->type != device_input)
 	{

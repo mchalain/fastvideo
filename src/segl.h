@@ -70,16 +70,6 @@ struct EGLConfig_s
 
 typedef struct EGL_s EGL_t;
 
-EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *config);
-EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig);
-int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...);
-int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused);
-int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused);
-int segl_start(EGL_t *dev);
-int segl_stop(EGL_t *dev);
-int segl_fd(EGL_t *dev);
-void segl_destroy(EGL_t *dev);
-
 typedef struct EGLNative_s EGLNative_t;
 struct EGLNative_s
 {
@@ -103,8 +93,6 @@ int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffe
 int glprog_run(GLProgram_t *program, int bufid);
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
 void glprog_destroy(GLProgram_t *program);
-
-DeviceConf_t * segl_createconfig();
 
 #ifdef HAVE_JANSSON
 int segl_loadjsonsettings(EGL_t *dev, void *jconfig);

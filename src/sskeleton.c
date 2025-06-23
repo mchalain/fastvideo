@@ -14,7 +14,7 @@ struct Dev_s
 	int nbuffers;
 };
 
-FrameBuffer_t *_create_buffer(DeviceConf_t *config)
+static FrameBuffer_t *_create_buffer(DeviceConf_t *config)
 {
 	FrameBuffer_t *buffer = calloc(1, sizeof(*buffer));
 	buffer->size = 1024;
@@ -23,18 +23,18 @@ FrameBuffer_t *_create_buffer(DeviceConf_t *config)
 	buffer->offset = 0;
 	return buffer;
 }
-void _destroy_buffer(FrameBuffer_t *buffer)
+static void _destroy_buffer(FrameBuffer_t *buffer)
 {
 	free(buffer->mem);
 }
 
-DeviceConf_t * skeleton_createconfig(void)
+EXT_API DeviceConf_t * skeleton_createconfig(void)
 {
 	DeviceConf_t *devconfig = (void *)(long) -1;
 	return devconfig;
 }
 
-Dev_t *skeleton_create(const char *devicename, device_type_e type, DeviceConf_t *config)
+EXT_API Dev_t *skeleton_create(const char *devicename, device_type_e type, DeviceConf_t *config)
 {
 	Dev_t *dev = calloc(1, sizeof(*dev));
 	dev->type = type;
@@ -58,14 +58,14 @@ Dev_t *skeleton_create(const char *devicename, device_type_e type, DeviceConf_t 
 	return dev;
 }
 
-Dev_t *skeleton_duplicate(Dev_t *dev)
+EXT_API Dev_t *skeleton_duplicate(Dev_t *dev)
 {
 	Dev_t *dev2 = calloc(1, sizeof(*dev));
 	memmove(dev2, dev, sizeof(*dev));
 	return dev2;
 }
 
-int skeleton_requestbuffer(Dev_t *dev, enum buf_type_e t, ...)
+EXT_API int skeleton_requestbuffer(Dev_t *dev, enum buf_type_e t, ...)
 {
 	va_list ap;
 	va_start(ap, t);
@@ -166,12 +166,12 @@ int skeleton_requestbuffer(Dev_t *dev, enum buf_type_e t, ...)
 	return 0;
 }
 
-int skeleton_fd(Dev_t *dev, int writer)
+EXT_API int skeleton_fd(Dev_t *dev, int writer)
 {
 	return -1;
 }
 
-int skeleton_queue(Dev_t *dev, int id, void *mem, size_t size)
+EXT_API int skeleton_queue(Dev_t *dev, int id, void *mem, size_t size)
 {
 	dev->buffers[id].state = queued;
 	/**
@@ -182,7 +182,7 @@ int skeleton_queue(Dev_t *dev, int id, void *mem, size_t size)
 	return 0;
 }
 
-int skeleton_dequeue(Dev_t *dev, void **mem, size_t *bytesused)
+EXT_API int skeleton_dequeue(Dev_t *dev, void **mem, size_t *bytesused)
 {
 	FrameBuffer_t *buffer = NULL;
 	for (FrameBuffer_t *buffer = dev->buffers; buffer != NULL; buffer = buffer->next)
@@ -202,7 +202,7 @@ int skeleton_dequeue(Dev_t *dev, void **mem, size_t *bytesused)
 	return buffer->id;
 }
 
-int skeleton_start(Dev_t *dev)
+EXT_API int skeleton_start(Dev_t *dev)
 {
 	if (dev->type == device_input)
 	{
@@ -214,7 +214,7 @@ int skeleton_start(Dev_t *dev)
 	return 0;
 }
 
-int skeleton_stop(Dev_t *dev)
+EXT_API int skeleton_stop(Dev_t *dev)
 {
 	for (FrameBuffer_t *buffer = dev->buffers; buffer != NULL; buffer = buffer->next)
 	{
@@ -223,7 +223,7 @@ int skeleton_stop(Dev_t *dev)
 	return 0;
 }
 
-void skeleton_destroy(Dev_t *dev)
+EXT_API void skeleton_destroy(Dev_t *dev)
 {
 	FrameBuffer_t *next = NULL;
 	for (FrameBuffer_t *buffer = dev->buffers; buffer != NULL; buffer = next)
