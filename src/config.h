@@ -10,10 +10,15 @@
 #endif
 
 #define FOURCC_AB24		FOURCC('A','B','2','4')
+#define FOURCC_XB24		FOURCC('X','B','2','4')
+#define FOURCC_AR24		FOURCC('A','R','2','4')
+#define FOURCC_XR24		FOURCC('X','R','2','4')
 #define FOURCC_BG24		FOURCC('B','G','2','4')
 #define FOURCC_RG24		FOURCC('R','G','2','4')
 #define FOURCC_RGBA		FOURCC('R','G','B','A')
 #define FOURCC_RGBP		FOURCC('R','G','B','P')
+#define FOURCC_RG16		FOURCC('R','G','1','6')
+#define FOURCC_R8		FOURCC('R','8',' ',' ')
 #define FOURCC_YUYV		FOURCC('Y','U','Y','V')
 #define FOURCC_YUY2		FOURCC('Y','U','Y','2')
 #define FOURCC_U008		FOURCC('U','0','0','8')
