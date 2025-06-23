@@ -667,7 +667,7 @@ int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
 	return id;
 }
 
-int segl_fd(EGL_t *dev)
+int segl_fd(EGL_t *dev, int writer)
 {
 	return dev->native->fd(dev->native_window);
 }

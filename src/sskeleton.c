@@ -166,7 +166,7 @@ int skeleton_requestbuffer(Dev_t *dev, enum buf_type_e t, ...)
 	return 0;
 }
 
-int skeleton_fd(Dev_t *dev)
+int skeleton_fd(Dev_t *dev, int writer)
 {
 	return -1;
 }

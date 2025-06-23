@@ -177,7 +177,7 @@ int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 	return ret;
 }
 
-int sfile_fd(File_t *dev)
+int sfile_fd(File_t *dev, int writer)
 {
 	return dev->ops->fd(dev);
 }

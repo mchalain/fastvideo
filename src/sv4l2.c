@@ -1194,7 +1194,7 @@ int _sv4l2_treecontrolmenu(int ctrlfd, struct v4l2_query_ext_ctrl *ctrl, int (*c
 
 int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_query_ext_ctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg)
 {
-	return _sv4l2_treecontrolmenu(sv4l2_fd(dev), ctrl, cb, arg);
+	return _sv4l2_treecontrolmenu(sv4l2_fd(dev, 0), ctrl, cb, arg);
 }
 
 static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config_t *config)
@@ -1337,8 +1337,10 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	return dup;
 }
 
-int sv4l2_fd(V4L2_t *dev)
+int sv4l2_fd(V4L2_t *dev, int writer)
 {
+	if (writer)
+		return -1;
 	return dev->fd;
 }
 
@@ -2268,7 +2270,7 @@ static int _v4l2_capabilities_transform(V4L2_t *dev, json_t *transformations, in
 	{
 		sel.type = sv4l2_type(dev);
 		sel.target = target | 0x02; // <target>_BOUNDS
-		if (ioctl(sv4l2_fd(dev), VIDIOC_G_SELECTION, &sel) == 0)
+		if (ioctl(sv4l2_fd(dev, 0), VIDIOC_G_SELECTION, &sel) == 0)
 		{
 			json_object_set_new(top, "type", json_string("integer"));
 			json_object_set_new(top, "minimum", json_integer(0));
@@ -2294,7 +2296,7 @@ static int _v4l2_capabilities_transform(V4L2_t *dev, json_t *transformations, in
 		memset(&sel, 0, sizeof(sel));
 		sel.type = sv4l2_type(dev);
 		sel.target = target | 0x01; // <target>_DEFAULT
-		if (ioctl(sv4l2_fd(dev), VIDIOC_G_SELECTION, &sel) == 0)
+		if (ioctl(sv4l2_fd(dev, 0), VIDIOC_G_SELECTION, &sel) == 0)
 		{
 			json_object_set_new(top, "value_default", json_integer(sel.r.top));
 			json_object_set_new(left, "value_default", json_integer(sel.r.left));
@@ -2304,7 +2306,7 @@ static int _v4l2_capabilities_transform(V4L2_t *dev, json_t *transformations, in
 	}
 	sel.type = sv4l2_type(dev);
 	sel.target = target;
-	if (ioctl(sv4l2_fd(dev), VIDIOC_G_SELECTION, &sel) == 0)
+	if (ioctl(sv4l2_fd(dev, 0), VIDIOC_G_SELECTION, &sel) == 0)
 	{
 		json_object_set_new(top, "value", json_integer(sel.r.top));
 		json_object_set_new(left, "value", json_integer(sel.r.left));
@@ -2346,7 +2348,7 @@ static int _v4l2_capabilities_fps(V4L2_t *dev, json_t *definition, int all)
 		json_object_set_new(fps, "type", json_string(sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
 	struct v4l2_streamparm streamparm = {0};
 	streamparm.type = sv4l2_type(dev);
-	if (ioctl(sv4l2_fd(dev), VIDIOC_G_PARM, &streamparm) == 0)
+	if (ioctl(sv4l2_fd(dev, 0), VIDIOC_G_PARM, &streamparm) == 0)
 	{
 		if (streamparm.parm.capture.timeperframe.denominator > streamparm.parm.capture.timeperframe.numerator)
 			json_object_set_new(fps, "value", json_integer((int)(streamparm.parm.capture.timeperframe.denominator / streamparm.parm.capture.timeperframe.numerator)));
@@ -2376,7 +2378,7 @@ static int _v4l2_capabilities_imageformat(V4L2_t *dev, json_t *definition, int a
 	struct v4l2_format fmt = {0};
 	fmt.type = sv4l2_type(dev);
 	fmt.fmt.pix.field = V4L2_FIELD_ANY;
-	if (ioctl(sv4l2_fd(dev), VIDIOC_G_FMT, &fmt) == 0)
+	if (ioctl(sv4l2_fd(dev, 0), VIDIOC_G_FMT, &fmt) == 0)
 	{
 		json_object_set_new(pixelformat, "value", json_stringn((char*)&fmt.fmt.pix.pixelformat, 4));
 		json_object_set_new(width, "value", json_integer(fmt.fmt.pix.width));
@@ -2397,7 +2399,7 @@ static int _v4l2_capabilities_imageformat(V4L2_t *dev, json_t *definition, int a
 	json_t *items = json_array();
 	struct v4l2_fmtdesc fmtdesc = {0};
 	fmtdesc.type = sv4l2_type(dev);
-	while (ioctl(sv4l2_fd(dev), VIDIOC_ENUM_FMT, &fmtdesc) == 0)
+	while (ioctl(sv4l2_fd(dev, 0), VIDIOC_ENUM_FMT, &fmtdesc) == 0)
 	{
 		json_array_append_new(items, json_stringn((char*)&fmtdesc.pixelformat, 4));
 		fmtdesc.index++;
@@ -2407,7 +2409,7 @@ static int _v4l2_capabilities_imageformat(V4L2_t *dev, json_t *definition, int a
 	struct v4l2_frmsizeenum video_cap = {0};
 	video_cap.pixel_format = fmt.fmt.pix.pixelformat;
 	video_cap.type = V4L2_FRMSIZE_TYPE_STEPWISE;
-	if(ioctl(sv4l2_fd(dev), VIDIOC_ENUM_FRAMESIZES, &video_cap) == 0)
+	if(ioctl(sv4l2_fd(dev, 0), VIDIOC_ENUM_FRAMESIZES, &video_cap) == 0)
 	{
 		if (video_cap.type == V4L2_FRMSIZE_TYPE_STEPWISE)
 		{
@@ -2454,7 +2456,7 @@ int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 	_JSONControl_Arg_t arg = {0};
 	arg.controls = json_array();
 	arg.all = all;
-	arg.ctrlfd = sv4l2_fd(dev);
+	arg.ctrlfd = sv4l2_fd(dev, 0);
 	int ret;
 	ret = sv4l2_treecontrols(dev, sv4l2_jsoncontrol_cb, &arg);
 	if (ret > 0)

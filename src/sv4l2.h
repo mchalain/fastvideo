@@ -96,11 +96,12 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...);
  * @brief get the file descriptor of the device
  * The file descriptor with select or inside the CameraConfig structure
  *
- * @param dev the V4L2_t object.
+ * @param dev		the V4L2_t object.
+ * @param writer	0 if used with rdfs 1 if used with wfds
  *
  * @return fd.
  */
-int sv4l2_fd(V4L2_t *dev);
+int sv4l2_fd(V4L2_t *dev, int writer);
 /**
  * @brief get the true type of the buffers.
  *

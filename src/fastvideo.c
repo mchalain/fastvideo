@@ -175,14 +175,14 @@ int main_loop(FastVideoList_t *pipes)
 			return -1;
 		if (pipe->output->ops->eventfd)
 		{
-			int fd = pipe->output->ops->eventfd(pipe->output->dev);
+			int fd = pipe->output->ops->eventfd(pipe->output->dev, 0);
 			maxfd = (fd > maxfd)?fd:maxfd;
 		}
 		if (pipe->input->ops->start(pipe->input->dev) == -1)
 			return -1;
 		if (pipe->input->ops->eventfd)
 		{
-			int fd = pipe->input->ops->eventfd(pipe->input->dev);
+			int fd = pipe->input->ops->eventfd(pipe->input->dev, 0);
 			maxfd = (fd > maxfd)?fd:maxfd;
 		}
 	}
@@ -206,14 +206,18 @@ int main_loop(FastVideoList_t *pipes)
 		{
 			if (pipe->output->ops->eventfd)
 			{
-				int fd = pipe->output->ops->eventfd(pipe->output->dev);
+				int fd;
+				fd = pipe->output->ops->eventfd(pipe->output->dev, 0);
 				FD_SET(fd, &rfds);
+				fd = pipe->output->ops->eventfd(pipe->output->dev, 1);
 				FD_SET(fd, &wfds);
 			}
 			if (pipe->input->ops->eventfd)
 			{
-				int fd = pipe->input->ops->eventfd(pipe->input->dev);
+				int fd;
+				fd = pipe->input->ops->eventfd(pipe->input->dev, 0);
 				FD_SET(fd, &rfds);
+				fd = pipe->input->ops->eventfd(pipe->input->dev, 1);
 				FD_SET(fd, &wfds);
 			}
 		}
@@ -245,9 +249,9 @@ int main_loop(FastVideoList_t *pipes)
 		{
 			int infd = -1;
 			if (pipe->input->ops->eventfd)
-				infd = pipe->input->ops->eventfd(pipe->input->dev);
+				infd = pipe->input->ops->eventfd(pipe->input->dev, 0);
 			if (infd < 0 ||
-				FD_ISSET(infd, &rfds))
+				(infd > 0 && FD_ISSET(infd, &rfds)))
 			{
 				ret = main_transferbuffer(pipe->input, pipe->output);
 				if (ret && infd > 0)
@@ -263,10 +267,9 @@ int main_loop(FastVideoList_t *pipes)
 		{
 			int outfd = -1;
 			if (pipe->output->ops->eventfd)
-				outfd = pipe->output->ops->eventfd(pipe->output->dev);
+				outfd = pipe->output->ops->eventfd(pipe->output->dev, 1);
 			if (outfd < 0 ||
-				FD_ISSET(outfd, &wfds) ||
-				FD_ISSET(outfd, &rfds))
+				(outfd > 0 && FD_ISSET(outfd, &wfds)))
 			{
 				ret = main_transferbuffer(pipe->output, pipe->input);
 				if (ret && outfd > 0)

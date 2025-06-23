@@ -22,7 +22,7 @@ typedef void *(*FastVideoDevice_duplicate_t)(void *dev, DeviceConf_t **pconfig);
 typedef int (*FastVideoDevice_loadsettings_t)(void *dev, void *configentry);
 typedef int (*FastVideoDevice_capabilities_t)(void *dev, void *capabilities, int all);
 typedef int (*FastVideoDevice_requestbuffer_t)(void *dev, enum buf_type_e t, ...);
-typedef int (*FastVideoDevice_eventfd_t)(void *dev);
+typedef int (*FastVideoDevice_eventfd_t)(void *dev, int writer);
 typedef int (*FastVideoDevice_start_t)(void *dev);
 typedef int (*FastVideoDevice_stop_t)(void *dev);
 typedef int (*FastVideoDevice_dequeue_t)(void *dev, void **mem, size_t *bytesused);

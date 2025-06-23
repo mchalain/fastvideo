@@ -191,7 +191,7 @@ int sdvb_requestbuffer(DVB_t *dev, enum buf_type_e t, ...)
 
 }
 
-int sdvb_fd(DVB_t *dev)
+int sdvb_fd(DVB_t *dev, int writer)
 {
 	return dev->fd;
 }

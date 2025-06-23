@@ -237,7 +237,7 @@ int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 	return ret;
 }
 
-int spassthrough_fd(Passthrough_t *dev)
+int spassthrough_fd(Passthrough_t *dev, int writer)
 {
 	return -1;
 }

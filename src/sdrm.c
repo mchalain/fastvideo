@@ -615,7 +615,7 @@ int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused)
 	return id;
 }
 
-int sdrm_fd(Display_t *disp)
+int sdrm_fd(Display_t *disp, int writer)
 {
 	return disp->fd;
 }
