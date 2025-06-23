@@ -5,6 +5,8 @@
 
 #include "config.h"
 
+#define EXT_API static
+
 typedef struct FastVideoDevice_ops_s FastVideoDevice_ops_t;
 typedef struct FastVideoDevice_s FastVideoDevice_t;
 struct FastVideoDevice_s

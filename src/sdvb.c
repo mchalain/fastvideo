@@ -30,7 +30,7 @@ struct DVB_s
 	int nbuffers;
 };
 
-DVB_t *sdvb_create(const char *devicename, device_type_e type, DVBConfig_t *config)
+EXT_API DVB_t *sdvb_create(const char *devicename, device_type_e type, DVBConfig_t *config)
 {
 	DVB_t *dev = NULL;
 	const char *device = devicename;
@@ -42,7 +42,7 @@ DVB_t *sdvb_create(const char *devicename, device_type_e type, DVBConfig_t *conf
 	return dev;
 }
 
-DVB_t *sdvb_create2(int fd, const char *devicename, device_type_e type, DVBConfig_t *config)
+EXT_API DVB_t *sdvb_create2(int fd, const char *devicename, device_type_e type, DVBConfig_t *config)
 {
 	uint16_t pids[5] = {0};
 	if (ioctl(fd, DMX_GET_PES_PIDS, pids) != 0)
@@ -84,7 +84,7 @@ DVB_t *sdvb_create2(int fd, const char *devicename, device_type_e type, DVBConfi
 	return dev;
 }
 
-int sdvb_requestbuffer(DVB_t *dev, enum buf_type_e t, ...)
+EXT_API int sdvb_requestbuffer(DVB_t *dev, enum buf_type_e t, ...)
 {
 	va_list ap;
 	va_start(ap, t);
@@ -191,12 +191,12 @@ int sdvb_requestbuffer(DVB_t *dev, enum buf_type_e t, ...)
 
 }
 
-int sdvb_fd(DVB_t *dev, int writer)
+EXT_API int sdvb_fd(DVB_t *dev, int writer)
 {
 	return dev->fd;
 }
 
-int sdvb_start(DVB_t *dev)
+EXT_API int sdvb_start(DVB_t *dev)
 {
 	if (ioctl(dev->fd, DMX_START, 0) != 0)
 		return -1;
@@ -204,7 +204,7 @@ int sdvb_start(DVB_t *dev)
 	return 0;
 }
 
-int sdvb_stop(DVB_t *dev)
+EXT_API int sdvb_stop(DVB_t *dev)
 {
 	if (ioctl(dev->fd, DMX_STOP, 0) != 0)
 		return -1;
@@ -212,7 +212,7 @@ int sdvb_stop(DVB_t *dev)
 	return 0;
 }
 
-int sdvb_dequeue(DVB_t *dev, void **mem, size_t *bytesused)
+EXT_API int sdvb_dequeue(DVB_t *dev, void **mem, size_t *bytesused)
 {
 	struct dmx_buffer buffer;
 	if (ioctl(dev->fd, DMX_DQBUF, &buffer) != 0)
@@ -226,7 +226,7 @@ int sdvb_dequeue(DVB_t *dev, void **mem, size_t *bytesused)
 	return buffer.index;
 }
 
-int sdvb_queue(DVB_t *dev, int index, void *mem, size_t bytesused)
+EXT_API int sdvb_queue(DVB_t *dev, int index, void *mem, size_t bytesused)
 {
 	struct dmx_buffer buffer;
 	buffer.index = index;
@@ -235,7 +235,7 @@ int sdvb_queue(DVB_t *dev, int index, void *mem, size_t bytesused)
 		return -1;
 	return 0;
 }
-void sdvb_destroy(DVB_t *dev)
+EXT_API void sdvb_destroy(DVB_t *dev)
 {
 	close(dev->fd);
 	free(dev);
