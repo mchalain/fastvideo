@@ -11,6 +11,7 @@ struct MPEG_TSConf_s
 	DeviceConf_t parent;
 	const char *host;
 	int port;
+	int pid;
 };
 
 typedef struct Proto_s Proto_t;

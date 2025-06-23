@@ -141,6 +141,7 @@ DeviceConf_t *mpegts_createconfig(void)
 	config->parent.fourcc = FOURCC_H264;
 	config->host = default_addr;
 	config->port = 5014;
+	config->pid = 0x41;
 #ifdef HAVE_JANSSON
 	config->parent.ops.loadconfiguration = mpegts_loadjsonconfiguration;
 #endif
@@ -387,7 +388,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	dev->protoctx = protoctx;
 
 	dev->header.sync = 'G';
-	dev->header.pid = 0x41;
+	dev->header.pid = config->pid;
 	dev->header.afi = 1;
 
 	dev->pes_header.sync[2] = 0x01;
@@ -573,6 +574,12 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 	{
 		int value = json_integer_value(port);
 		config->port = value;
+	}
+	json_t *pid = json_object_get(jconfig, "pid");
+	if (pid && json_is_integer(pid))
+	{
+		int value = json_integer_value(pid);
+		config->pid = value;
 	}
 library_end:
 	return 0;
