@@ -94,6 +94,7 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 
 	if (connector_id == -1 || encoder_id == -1)
 	{
+		err("drm: no display connected");
 		drmModeFreeResources(resources);
 		return -1;
 	}
