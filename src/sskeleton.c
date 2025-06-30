@@ -171,7 +171,7 @@ EXT_API int skeleton_fd(Dev_t *dev, int writer)
 	return -1;
 }
 
-EXT_API int skeleton_queue(Dev_t *dev, int id, void *mem, size_t size)
+EXT_API int skeleton_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 {
 	dev->buffers[id].state = queued;
 	/**
@@ -182,7 +182,7 @@ EXT_API int skeleton_queue(Dev_t *dev, int id, void *mem, size_t size)
 	return 0;
 }
 
-EXT_API int skeleton_dequeue(Dev_t *dev, void **mem, size_t *bytesused)
+EXT_API int skeleton_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags)
 {
 	FrameBuffer_t *buffer = NULL;
 	for (FrameBuffer_t *buffer = dev->buffers; buffer != NULL; buffer = buffer->next)
@@ -208,7 +208,7 @@ EXT_API int skeleton_start(Dev_t *dev)
 	{
 		for (FrameBuffer_t *buffer = dev->buffers; buffer != NULL; buffer = buffer->next)
 		{
-			skeleton_queue(dev, buffer->id);
+			skeleton_queue(dev, buffer->id, buffer->mem, buffer->size, 0);
 		}
 	}
 	return 0;

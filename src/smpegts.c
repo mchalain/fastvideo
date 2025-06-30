@@ -805,12 +805,13 @@ EXT_API int mpegts_fd(Dev_t *dev, int writer)
 	return dev->proto->fd(dev->protoctx);
 }
 
-EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size)
+EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 {
 	if (id < 0 || id > dev->nbuffers)
 		return -1;
 	FrameBuffer_t *buffer = &dev->buffers[id];
 	buffer->bytesused = size;
+	buffer->flags = flags;
 	if (buffer->dma_buf > 0)
 	{
 		if (buffer->mem)
@@ -839,7 +840,7 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size)
 	return 0;
 }
 
-EXT_API int mpegts_dequeue(Dev_t *dev, void **mem, size_t *bytesused)
+EXT_API int mpegts_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags)
 {
 	int id = dev->currentid;
 	if (id == -1)

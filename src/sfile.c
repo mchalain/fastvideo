@@ -34,7 +34,7 @@ struct File_s
 	FrameBuffer_t *buffers;
 	int lastbufferid;
 };
-EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused);
+EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int flags);
 
 EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
 {
@@ -191,7 +191,7 @@ EXT_API int sfile_start(File_t *dev)
 		dbg("start buffers enqueuing");
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
-			if (sfile_queue(dev, i, NULL, 0))
+			if (sfile_queue(dev, i, NULL, 0, 0))
 				return -1;
 		}
 	}
@@ -203,7 +203,7 @@ EXT_API int sfile_stop(File_t *dev)
 	return 0;
 }
 
-EXT_API int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
+EXT_API int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused, int *flags)
 {
 	int ret = dev->lastbufferid;
 	FrameBuffer_t *buffer = &dev->buffers[dev->lastbufferid];
@@ -216,13 +216,15 @@ EXT_API int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
 		*bytesused = buffer->bytesused;
 	if (mem && buffer->mem)
 		*mem = buffer->mem;
+	if (flags)
+		*flags = buffer->flags;
 	dev->lastbufferid++;
 	dev->lastbufferid %= dev->nbuffers;
 	buffer->state = dequeued;
 	return ret;
 }
 
-EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused)
+EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
 	if (index > dev->nbuffers)
 	{
@@ -285,6 +287,7 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused)
 		}
 		buffer->bytesused = ret;
 	}
+	buffer->flags = flags;
 	buffer->state = queued;
 	return 0;
 }

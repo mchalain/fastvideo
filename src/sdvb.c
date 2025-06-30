@@ -212,13 +212,15 @@ EXT_API int sdvb_stop(DVB_t *dev)
 	return 0;
 }
 
-EXT_API int sdvb_dequeue(DVB_t *dev, void **mem, size_t *bytesused)
+EXT_API int sdvb_dequeue(DVB_t *dev, void **mem, size_t *bytesused, int *flags)
 {
 	struct dmx_buffer buffer;
 	if (ioctl(dev->fd, DMX_DQBUF, &buffer) != 0)
 		return -1;
 	if (bytesused)
 		*bytesused = buffer.bytesused;
+	if (flags)
+		*flags = buffer.flags;
 	if (mem && dev->buffers[buffer.index].mem)
 	{
 		*mem = dev->buffers[buffer.index].mem + buffer.offset;
@@ -226,11 +228,12 @@ EXT_API int sdvb_dequeue(DVB_t *dev, void **mem, size_t *bytesused)
 	return buffer.index;
 }
 
-EXT_API int sdvb_queue(DVB_t *dev, int index, void *mem, size_t bytesused)
+EXT_API int sdvb_queue(DVB_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
 	struct dmx_buffer buffer;
 	buffer.index = index;
 	buffer.bytesused = bytesused;
+	buffer.flags = flags;
 	if (ioctl(dev->fd, DMX_QBUF, &buffer) != 0)
 		return -1;
 	return 0;

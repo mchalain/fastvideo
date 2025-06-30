@@ -20,6 +20,7 @@ struct PassBuffer_s
 	int dmabuf;
 	size_t size;
 	size_t bytesused;
+	int flags;
 	PassBuffer_t *next;
 	PassBuffer_t *previous;
 	enum
@@ -260,7 +261,7 @@ EXT_API int spassthrough_stop(Passthrough_t *dev)
 	return 0;
 }
 
-EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused)
+EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused, int *flags)
 {
 	PassBuffer_t *last = dev->fifo;
 	errno = EAGAIN;
@@ -270,7 +271,7 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 		return -1;
 	if (dev->type == device_input && (dev->state & MODE_SHOOTING))
 	{
-		int index = dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused);
+		int index = dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused, NULL);
 		if (index == last->index && dev->state & MODE_SHOOT)
 			dev->state &= ~MODE_SHOOTING;
 	}
@@ -287,15 +288,18 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 		*bytesused = last->bytesused;
 	if (mem)
 		*mem = last->mem;
+	if (flags)
+		*flags = last->flags;
 	return last->index;
 }
 
-EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused)
+EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
 	dev = dev->dup;
 	if (mem)
 		dev->buffers[index].mem = mem;
 	dev->buffers[index].bytesused = bytesused;
+	dev->buffers[index].flags = flags;
 	dev->buffers[index].state = PassBuffer_fill_e;
 #if 0
 	/** prepare fifo's items **/
@@ -309,7 +313,7 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 		(dev->state & (MODE_SHOOT | MODE_TEE)) &&
 		((dev->state & MODE_SHOOTING) == 0))
 	{
-		dev->branch.ops->queue(dev->branch.dev, index, mem, bytesused);
+		dev->branch.ops->queue(dev->branch.dev, index, mem, bytesused, 0);
 		dev->state |= MODE_SHOOTING;
 	}
 	return 0;

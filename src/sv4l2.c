@@ -1385,7 +1385,7 @@ int sv4l2_start(V4L2_t *dev)
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
 			dbg_buffer((&dev->buffers[i].v4l2));
-			if (sv4l2_queue(dev, i, NULL, 0))
+			if (sv4l2_queue(dev, i, NULL, 0, 0))
 				return -1;
 		}
 	}
@@ -1406,7 +1406,7 @@ int sv4l2_stop(V4L2_t *dev)
 	return 0;
 }
 
-int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused)
+int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused, int *flags)
 {
 	int ret = 0;
 	struct v4l2_buffer buf = {0};
@@ -1435,10 +1435,12 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused)
 	}
 	if (!ret && mem)
 		*mem = dev->buffers[buf.index].map[0];
+	if (flags)
+		*flags = buf.flags;
 	return buf.index;
 }
 
-int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused)
+int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
 	int ret = 0;
 	if (bytesused > 0)
@@ -1453,6 +1455,12 @@ int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused)
 	}
 	else
 		dev->periodic ++;
+	/**
+	 * the management of flags is currently unclear
+	 * it should be used to pass the format modifiers (see dma_buf kernel documentation)
+	 * but v4l2 driver doesn't support it.
+	 */
+	// dev->buffers[index].v4l2.flags = flags;
 	ret = ioctl(dev->fd, VIDIOC_QBUF, &dev->buffers[index].v4l2);
 	if (ret)
 	{

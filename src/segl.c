@@ -620,7 +620,7 @@ EXT_API int segl_stop(EGL_t *dev)
 	return 0;
 };
 
-static void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo)
+static void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo, int flags)
 {
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 
@@ -629,7 +629,7 @@ static void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused)
+EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flags)
 {
 	uint32_t width = dev->config->parent.width;
 	uint32_t height = dev->config->parent.height;
@@ -660,21 +660,21 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused)
 		glTexSubImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, mem);
 	}
 #endif
-	segl_queue_output(dev, id, bytesused, 0);
+	segl_queue_output(dev, id, bytesused, 0, flags);
 	dev->curbufferid = id;
 	if (dev->dup)
 		dev->dup->curbufferid = dev->curbufferid;
 	return dev->native->flush(dev->native_window);
 }
 
-EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused)
+EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 {
 	int id = dev->curbufferid;
 	dev->curbufferid = -1;
 	if (dev->type == device_input)
 	{
 		*bytesused = dev->buffers[0].size;
-		segl_queue_output(dev, id, *bytesused, dev->fbo);
+		segl_queue_output(dev, id, *bytesused, dev->fbo, 0);
 		if (id == -1)
 			errno = EAGAIN;
 		return id;

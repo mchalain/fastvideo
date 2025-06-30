@@ -144,7 +144,8 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 	int index = 0;
 	size_t bytesused = 0;
 	void *mem = NULL;
-	if ((index = input->ops->dequeue(input->dev, &mem, &bytesused)) < 0)
+	int flags = 0;
+	if ((index = input->ops->dequeue(input->dev, &mem, &bytesused, &flags)) < 0)
 	{
 		if (errno == EAGAIN)
 			return 0;
@@ -154,7 +155,7 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 	}
 	//dbg("transfer (%d) %s => %s %lu bytes", index, input->config->name, output->config->name, bytesused);
 
-	if (output->ops->queue(output->dev, index, mem, bytesused) < 0)
+	if (output->ops->queue(output->dev, index, mem, bytesused, flags) < 0)
 	{
 		if (errno == EAGAIN)
 			return 0;

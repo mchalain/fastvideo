@@ -136,10 +136,11 @@ int sv4l2_stop(V4L2_t *dev);
  * @param dev the V4L2_t object.
  * @param mem the pointer to the memory containing the data.
  * @param bytesused the size of data.
+ * @param flags few flags about the buffer (keyframe)
  *
  * @return the buffer index on success, otherwise -1.
  */
-int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused);
+int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused, int *flags);
 /**
  * @brief request to push a buffer into device.
  *
@@ -147,10 +148,11 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused);
  * @param id the index of the buffer to push.
  * @param mem userptr buffer.
  * @param bytesused the size of data.
+ * @param flags few flags about the buffer (keyframe)
  *
  * @return -1 on error, 0 otherwise.
  */
-int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused);
+int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused, int flags);
 /**
  * @brief set a rectaongle inseide the image to treat.
  *

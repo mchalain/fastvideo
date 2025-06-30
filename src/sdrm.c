@@ -574,7 +574,7 @@ static void page_flip_handler(int fd, unsigned int frame,
 	disp->buffers[(int)id].state = dequeued;
 }
 
-EXT_API int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused)
+EXT_API int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused, int flags)
 {
 	if (id > disp->nbuffers)
 	{
@@ -584,6 +584,7 @@ EXT_API int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused)
 	FrameBuffer_t *buffer = &disp->buffers[id];
 	if (bytesused == 0)
 		bytesused = buffer->size;
+	buffer->flags = flags;
 	if (bytesused > buffer->size)
 	{
 		warn("sfile: buffer too small %lu %lu", buffer->size, bytesused);
@@ -598,7 +599,7 @@ EXT_API int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused)
 	return 0;
 }
 
-EXT_API int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused)
+EXT_API int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused, int *flags)
 {
 	int id = disp->queueid;
 	FrameBuffer_t *buffer = &disp->buffers[id];

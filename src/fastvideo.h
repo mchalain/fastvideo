@@ -27,8 +27,8 @@ typedef int (*FastVideoDevice_requestbuffer_t)(void *dev, enum buf_type_e t, ...
 typedef int (*FastVideoDevice_eventfd_t)(void *dev, int writer);
 typedef int (*FastVideoDevice_start_t)(void *dev);
 typedef int (*FastVideoDevice_stop_t)(void *dev);
-typedef int (*FastVideoDevice_dequeue_t)(void *dev, void **mem, size_t *bytesused);
-typedef int (*FastVideoDevice_queue_t)(void *dev, int index, void *mem, size_t bytesused);
+typedef int (*FastVideoDevice_dequeue_t)(void *dev, void **mem, size_t *bytesused, int *flags);
+typedef int (*FastVideoDevice_queue_t)(void *dev, int index, void *mem, size_t bytesused, int flags);
 typedef void (*FastVideoDevice_destroy_t)(void *dev);
 
 struct FastVideoDevice_ops_s

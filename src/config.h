@@ -126,6 +126,7 @@ struct FrameBuffer_s
 	int dma_buf;
 	size_t size;
 	size_t bytesused;
+	int flags;
 	enum {
 		invalid,
 		dequeued,
