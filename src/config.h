@@ -114,27 +114,4 @@ int scommon_isnamed(json_t *jdevice, const char *name);
 inline int config_parseconfigfile(const char *name, const char *configfile, DeviceConf_t *devconfig) {return -1;};
 #endif
 
-/**
- * @brief share a same definition of buffer for the devices
- */
-typedef struct FrameBuffer_s FrameBuffer_t;
-struct FrameBuffer_s
-{
-	int id;
-	void *mem;
-	size_t offset;
-	int dma_buf;
-	size_t size;
-	size_t bytesused;
-	int flags;
-	enum {
-		invalid,
-		dequeued,
-		ready,
-		queued,
-	} state;
-	void *private;
-	FrameBuffer_t *next;
-};
-
 #endif

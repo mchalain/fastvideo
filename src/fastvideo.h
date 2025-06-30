@@ -64,4 +64,32 @@ int fastvideolist_islast(FastVideoList_t *list, void *entity);
 int fastvideolist_isfirst(FastVideoList_t *list, void *entity);
 void fastvideolist_destroy(FastVideoList_t *list, void(*destroy)(void *));
 
+/**
+ * @brief share a same definition of buffer for the devices
+ */
+enum
+{
+	FB_FLAGS_KEYFRAME = 0x00000008, /// V4L2_BUF_FLAG_KEYFRAME
+};
+
+typedef struct FrameBuffer_s FrameBuffer_t;
+struct FrameBuffer_s
+{
+	int id;
+	void *mem;
+	size_t offset;
+	int dma_buf;
+	size_t size;
+	size_t bytesused;
+	int flags;
+	enum {
+		invalid,
+		dequeued,
+		ready,
+		queued,
+	} state;
+	void *private;
+	FrameBuffer_t *next;
+};
+
 #endif
