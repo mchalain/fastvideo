@@ -32,6 +32,8 @@ struct V4l2Config_s
 	int mode;
 	int fps;
 	uint32_t transfer;
+	int periodic;
+	int periodiccontrol;
 };
 
 typedef struct V4L2Buffer_s V4L2Buffer_t;
@@ -54,6 +56,8 @@ struct V4L2_s
 	struct {
 		V4L2Buffer_t *(*createbuffers)(V4L2_t *dev, int number, enum v4l2_memory memory);
 	} ops;
+	int (*periodicfunc)(V4L2_t *dev, int bufferid);
+	int periodic;
 };
 
 /**

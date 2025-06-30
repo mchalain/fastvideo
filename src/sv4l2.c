@@ -1109,6 +1109,24 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 	return _sv4l2_control(ctrlfd, id, value, &queryctrl);
 }
 
+static int _v4l2_periodiccontrol(V4L2_t *dev, int bufferid)
+{
+	int ctrlfd = dev->fd;
+	struct v4l2_ext_control control = {0};
+	control.id = dev->config->periodiccontrol;
+	struct v4l2_ext_controls controls = {0};
+	controls.count = 1;
+	controls.controls = &control;
+	if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
+	{
+		err("sv4l2: periodic control error %m");
+		dev->config->periodiccontrol = 0;
+		dev->periodicfunc = NULL;
+		return -1;
+	}
+	return 0;
+}
+
 static int _sv4l2_treecontrols(int ctrlfd, int (*cb)(void *arg, struct v4l2_query_ext_ctrl *ctrl), void * arg)
 {
 	int nbctrls = 0;
@@ -1282,6 +1300,10 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 		config->parent.width = dev->width;
 		config->parent.height = dev->height;
 		config->parent.fourcc = dev->fourcc;
+		if (!(dev->mode & MODE_OUTPUT) && dev->config->periodic)
+		{
+			dev->periodicfunc = _v4l2_periodiccontrol;
+		}
 	}
 	return dev;
 }
@@ -1324,6 +1346,10 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	dup->config = malloc(sizeof(*dev->config));
 	memmove(dup->config, *pconfig, sizeof(*dev->config));
 	dup->config->parent.fourcc = dup->config->transfer;
+	if ((dup->mode & MODE_CAPTURE) && dup->config->periodic)
+	{
+		dup->periodicfunc = _v4l2_periodiccontrol;
+	}
 
 	if (_sv4l2_prepare(dup->fd, &dup->type, dup->mode, dup->config))
 	{
@@ -1419,10 +1445,18 @@ int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused)
 		dev->buffers[index].v4l2.bytesused = bytesused;
 	if (mem && dev->buffers[0].v4l2.memory == V4L2_MEMORY_USERPTR)
 		dev->buffers[index].ops.setmem(&dev->buffers[index], 0, mem, bytesused);
+	if (dev->config->periodic && dev->periodicfunc &&
+		dev->periodic == dev->config->periodic)
+	{
+		dev->periodic = 0;
+		dev->periodicfunc(dev, index);
+	}
+	else
+		dev->periodic ++;
 	ret = ioctl(dev->fd, VIDIOC_QBUF, &dev->buffers[index].v4l2);
 	if (ret)
 	{
-		err("sv4l2: %s(%s) queueing error %m", dev->name, (dev->mode & MODE_OUTPUT)?"output":"capture");
+		dbg("sv4l2: %s(%s) queueing error %m", dev->name, (dev->mode & MODE_OUTPUT)?"output":"capture");
 		dbg_buffer((&dev->buffers[index].v4l2));
 	}
 	return ret;
@@ -1721,7 +1755,7 @@ static int _v4l2_loadjsoncontrol(V4L2_t *dev, json_t *control)
 	}
 	else if (jvalue && json_is_integer(jvalue))
 	{
-		int32_t value = json_number_value(jvalue);
+		int32_t value = json_integer_value(jvalue);
 		if (sv4l2_control(dev, json_integer_value(jid), (void*)(long)value) != (void*)(long)-1)
 		{
 			ret = 1;
@@ -1905,6 +1939,24 @@ int _v4l2_addsubdevice(V4l2Config_t *config, json_t *subdevice, const char *name
 	return 0;
 }
 
+static int _v4l2_addaction(V4l2Config_t *config, json_t *action)
+{
+	if (action && json_is_object(action))
+	{
+		json_t *periodic = json_object_get(action, "periodic");
+		if (periodic && json_is_integer(periodic))
+		{
+			config->periodic = json_integer_value(periodic);
+		}
+		json_t *periodiccontrol = json_object_get(action, "periodiccontrol");
+		if (periodiccontrol && json_is_integer(periodiccontrol))
+		{
+			config->periodiccontrol = json_integer_value(periodiccontrol);
+		}
+	}
+	return 0;
+}
+
 int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 {
 	json_t *jconfig = entry;
@@ -1921,6 +1973,9 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 
 	json_t *subdevice = json_object_get(jconfig, "subdevices");
 	_v4l2_addsubdevice(config, subdevice, config->parent.name);
+
+	json_t *action = json_object_get(jconfig, "action");
+	_v4l2_addaction(config, action);
 
 library_end:
 	return 0;
