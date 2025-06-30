@@ -1435,8 +1435,8 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused, int *flags)
 	}
 	if (!ret && mem)
 		*mem = dev->buffers[buf.index].map[0];
-	if (flags)
-		*flags = buf.flags;
+	if (flags && (buf.flags & V4L2_BUF_FLAG_KEYFRAME))
+		*flags |= FB_FLAGS_KEYFRAME;
 	return buf.index;
 }
 

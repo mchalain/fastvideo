@@ -487,6 +487,10 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 
 	size_t length = dev->buffers[bufferid].bytesused;
 	void *buffer = dev->buffers[bufferid].mem;
+	if (dev->buffers[bufferid].flags & FB_FLAGS_KEYFRAME)
+	{
+		randomaccess = 0x40;
+	}
 	if (dev->config->periodic && dev->periodic == dev->config->periodic)
 	{
 		dev->periodic = 0;
