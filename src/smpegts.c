@@ -26,7 +26,7 @@
 #define MPEG_TS_LENGTH 188
 
 #define DUMPDATA 0
-#define PES_PTSDTS_ENABLE 0
+#define PES_PTSDTS_ENABLE 1
 #define PADDING_NULLPACKET 1
 
 typedef struct MPEGHeader_s MPEGHeader_t;
@@ -503,15 +503,18 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			buflength -= ret;
 			mtu -= ret;
 #if PES_PTSDTS_ENABLE
-			dev->pes_header.opt.dts[0] = ((dev->pcr >> 30 & 0x07) << 1) | 0x11;
-			dev->pes_header.opt.dts[1] = (dev->pcr >> 22 & 0x7f);
-			dev->pes_header.opt.dts[2] = ((dev->pcr >> 15 & 0x7f) << 1) | 0x01;
-			dev->pes_header.opt.dts[3] = (dev->pcr >> 7 & 0x7f);
-			dev->pes_header.opt.dts[4] = ((dev->pcr & 0x7f) << 1) | 0x01;
-#endif
-#if PES_PTSDTS_ENABLE
-			dev->pes_header.opt.pts[0] = ((pcr >> 30 & 0x07) << 1) | 0x31;
-			dev->pes_header.opt.pts[1] = (pcr >> 22 & 0x7f);
+			/// this extend the latency in all cases ?
+			pcr += 90; /// 90 ticks means 1ms
+			if (dev->pes_header.ptsi & 0x03)
+			{
+				dev->pes_header.opt.dts[0] = ((pcr >> 30 & 0x07) << 1) | 0x01 | 0x10;
+				dev->pes_header.opt.dts[1] = (pcr >> 23 & 0x7f);
+				dev->pes_header.opt.dts[2] = ((pcr >> 15 & 0x7f) << 1) | 0x01;
+				dev->pes_header.opt.dts[3] = (pcr >> 7 & 0x7f);
+				dev->pes_header.opt.dts[4] = ((pcr & 0x7f) << 1) | 0x01;
+			}
+			dev->pes_header.opt.pts[0] = ((pcr >> 30 & 0x07) << 1) | 0x01 | (dev->pes_header.ptsi << 4);
+			dev->pes_header.opt.pts[1] = (pcr >> 23 & 0x7f);
 			dev->pes_header.opt.pts[2] = ((pcr >> 15 & 0x7f) << 1) | 0x01;
 			dev->pes_header.opt.pts[3] = (pcr >> 7 & 0x7f);
 			dev->pes_header.opt.pts[4] = ((pcr & 0x7f) << 1) | 0x01;
@@ -603,8 +606,12 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	dev->pes_header.sync[2] = 0x01;
 	dev->pes_header.str_id = 0xe0;
 	dev->pes_header.mark = 0x2;
-#if PES_PTSDTS_ENABLE || 1
+#if PES_PTSDTS_ENABLE
+#if 0
 	dev->pes_header.ptsi = 0x3;
+#else
+	dev->pes_header.ptsi = 0x1;
+#endif
 #endif
 	dev->pes_header.hlen = sizeof(dev->pes_header.opt);
 
