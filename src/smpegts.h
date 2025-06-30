@@ -12,6 +12,7 @@ struct MPEG_TSConf_s
 	const char *host;
 	int port;
 	int pid;
+	int periodic;
 };
 
 typedef struct Proto_s Proto_t;

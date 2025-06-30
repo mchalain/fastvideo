@@ -234,6 +234,7 @@ struct Dev_s
 	uint8_t packetlen;
 	time_t start;
 	uint32_t pcr;
+	int periodic;
 };
 
 static FrameBuffer_t *_create_buffer(DeviceConf_t *config)
@@ -482,9 +483,17 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	int ret = 0;
 	dev->header.pusi = 1;
 	dev->header.afi = 1;
+	uint8_t randomaccess = 0;
 
 	size_t length = dev->buffers[bufferid].bytesused;
 	void *buffer = dev->buffers[bufferid].mem;
+	if (dev->config->periodic && dev->periodic == dev->config->periodic)
+	{
+		dev->periodic = 0;
+		randomaccess = 0x40;
+	}
+	else
+		dev->periodic++;
 #if DUMPDATA
 	if (dumpfd > 0)
 	{
@@ -545,8 +554,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			{
 				/// bits field indicated the pcr
 				adaptfield[1] = 0x10;
-				if (dev->buffers[bufferid].bytesused > dev->proto->mtu(dev->protoctx))
-					adaptfield[1] |= 0x40;
+				adaptfield[1] |= randomaccess;
 				/// pcr over 33bits
 				adaptfield[2] = (pcr >> 25) & 0xff;
 				adaptfield[3] = (pcr >> 17) & 0xff;
@@ -911,6 +919,12 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 	{
 		int value = json_integer_value(pid);
 		config->pid = value;
+	}
+	json_t *periodic = json_object_get(jconfig, "periodic");
+	if (periodic && json_is_integer(periodic))
+	{
+		int value = json_integer_value(periodic);
+		config->periodic = value;
 	}
 library_end:
 	return 0;
