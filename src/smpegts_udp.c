@@ -224,10 +224,14 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 static void proto_flush(void *arg)
 {
 	Proto_UDP_t *proto = (Proto_UDP_t *)arg;
-	proto_send(proto, NULL, 0, 0);
 #ifdef UDP_CORK
 	int value = 0;
 	setsockopt(proto->serverfd, IPPROTO_UDP, UDP_CORK, &value, sizeof(value));
+#endif
+	proto_send(proto, NULL, 0, 0);
+#ifdef UDP_CORK
+	int value = 1;
+	setsockopt(dev->serverfd, IPPROTO_UDP, UDP_CORK, &value, sizeof(value));
 #endif
 }
 

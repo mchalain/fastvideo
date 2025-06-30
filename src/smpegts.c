@@ -491,10 +491,6 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 		write(dumpfd, buffer, length);
 	}
 #endif
-#ifdef UDP_CORK
-	int value = 1;
-	setsockopt(dev->serverfd, IPPROTO_UDP, UDP_CORK, &value, sizeof(value));
-#endif
 	uint32_t pcr = 0;
 	struct timespec tp;
 	if (clock_gettime(CLOCK_TAI, &tp) == 0)
