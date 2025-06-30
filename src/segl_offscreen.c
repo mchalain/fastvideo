@@ -29,6 +29,9 @@ static const EGLint g_attributes[] = {
 	EGL_ALPHA_SIZE, 8,
 	//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
 	EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+	EGL_COLOR_BUFFER_TYPE, EGL_RGB_BUFFER,
+	EGL_BIND_TO_TEXTURE_RGBA , EGL_TRUE,
+	EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
 	EGL_NONE
 };
 

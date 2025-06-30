@@ -179,11 +179,13 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_BIND_TO_TEXTURE_RGB, &texturetype);
 		EGLint buffertype;
 		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_COLOR_BUFFER_TYPE, &buffertype);
-		dbg("segl: config[%.2d]\t%d/%d/%d/%d %s", i, redsize, greensize, bluesize, alphasize, (buffertype== EGL_LUMINANCE_BUFFER)?"LUMINANCE":(texturetype)?"RGB":"RGBA");
+		EGLint surfacetype;
+		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_SURFACE_TYPE, &surfacetype);
+		dbg("segl: config[%.2d]\t%s %d/%d/%d/%d %s", i, surfacetype == EGL_PBUFFER_BIT?"pbuffer":"window", redsize, greensize, bluesize, alphasize, (buffertype== EGL_LUMINANCE_BUFFER)?"LUMINANCE":(texturetype)?"RGB":"RGBA");
 	}
 #endif
-	EGLConfig eglConfig;
-	if (!eglChooseConfig(eglDisplay, native->attributes(ndisplay), &eglConfig, 1, &num_config))
+	EGLConfig eglConfig = EGL_NO_CONFIG_KHR;
+	if (eglChooseConfig(eglDisplay, native->attributes(ndisplay), &eglConfig, 1, &num_config) == EGL_FALSE || num_config == 0)
 	{
 		err("segl: failed to choose config: %d (%#x)", num_config, eglGetError());
 		native->destroy(ndisplay);
@@ -212,11 +214,16 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	}
 	else
 	{
+		EGLint texture_format = EGL_TEXTURE_RGBA;
+		EGLint texturergb = 0;
+		eglGetConfigAttrib(eglDisplay, eglConfig, EGL_BIND_TO_TEXTURE_RGB, &texturergb);
+		if (texturergb)
+			texture_format = EGL_TEXTURE_RGB;
 		warn("segl: surface on pbuffer");
 		EGLint pbufferAttribs[] = {
 			EGL_WIDTH, config->parent.width,
 			EGL_HEIGHT, config->parent.height,
-			EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
+			EGL_TEXTURE_FORMAT, texture_format,
 			EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
 			EGL_NONE,
 		};
