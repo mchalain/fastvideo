@@ -145,10 +145,15 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 	size_t bytesused = 0;
 	void *mem = NULL;
 	int flags = 0;
+	/// reset errno for the new loop
+	errno = 0;
+
 	if ((index = input->ops->dequeue(input->dev, &mem, &bytesused, &flags)) < 0)
 	{
 		if (errno == EAGAIN)
+		{
 			return 0;
+		}
 		if (errno)
 			err("%s buffer dequeuing error %m", input->config->name);
 		return -1;
@@ -158,7 +163,9 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 	if (output->ops->queue(output->dev, index, mem, bytesused, flags) < 0)
 	{
 		if (errno == EAGAIN)
+		{
 			return 0;
+		}
 		if (errno)
 			err("%s buffer queuing error %m", output->config->name);
 		return -1;
@@ -209,17 +216,21 @@ int main_loop(FastVideoList_t *pipes)
 			{
 				int fd;
 				fd = pipe->output->ops->eventfd(pipe->output->dev, 0);
-				FD_SET(fd, &rfds);
+				if (fd > 0)
+					FD_SET(fd, &rfds);
 				fd = pipe->output->ops->eventfd(pipe->output->dev, 1);
-				FD_SET(fd, &wfds);
+				if (fd > 0)
+					FD_SET(fd, &wfds);
 			}
 			if (pipe->input->ops->eventfd)
 			{
 				int fd;
 				fd = pipe->input->ops->eventfd(pipe->input->dev, 0);
-				FD_SET(fd, &rfds);
+				if (fd > 0)
+					FD_SET(fd, &rfds);
 				fd = pipe->input->ops->eventfd(pipe->input->dev, 1);
-				FD_SET(fd, &wfds);
+				if (fd > 0)
+					FD_SET(fd, &wfds);
 			}
 		}
 		if (timerfd > 0)
