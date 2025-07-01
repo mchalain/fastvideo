@@ -133,12 +133,13 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 			if (!strcmp(natives[i]->name, config->native))
 			{
 				native = natives[i];
-				break;
+				warn("segl: native %s", native->name);
+				ndisplay = native->display(config);
+				if (EGL_CAST(EGLint,ndisplay) != EGL_UNKNOWN)
+					break;
 			}
 		}
 	}
-	warn("segl: native %s", native->name);
-	ndisplay = native->display(config);
 
 	EGLDisplay eglDisplay = eglGetDisplay(ndisplay);
 
