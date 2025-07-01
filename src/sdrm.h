@@ -20,6 +20,8 @@ struct DisplayConf_s
 typedef struct Display_s Display_t;
 
 #ifdef HAVE_JANSSON
+Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayConf_t *config);
+
 int sdrm_capabilities(Display_t *disp, json_t *capabilities);
 
 int sdrm_loadjsonsettings(void *dev, void *jconfig);

@@ -401,7 +401,7 @@ static void sdrm_freebuffer(Display_t *disp, FrameBuffer_t *buffer)
 #endif
 }
 
-EXT_API Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayConf_t *config)
+Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayConf_t *config)
 {
 	if (type != device_output)
 	{
