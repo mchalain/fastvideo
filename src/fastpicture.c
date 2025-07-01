@@ -13,10 +13,10 @@
 int main_loop(V4L2_t *cam, File_t *file)
 {
 	int run = 1;
-	sv4l2_start(cam);
-	sfile_start(file);
-	int camfd = sv4l2_fd(cam);
-	int filefd = sfile_fd(file);
+	sv4l2_ops.start(cam);
+	sfile_ops.start(file);
+	int camfd = sv4l2_ops.eventfd(cam, 0);
+	int filefd = sfile_ops.eventfd(file, 0);
 	int maxfd = camfd;
 	while (run)
 	{
@@ -44,7 +44,7 @@ int main_loop(V4L2_t *cam, File_t *file)
 			int index = 0;
 			size_t bytesused = 0;
 			void *mem = NULL;
-			if ((index = sv4l2_dequeue(cam, &mem, &bytesused)) < 0)
+			if ((index = sv4l2_ops.dequeue(cam, &mem, &bytesused, NULL)) < 0)
 			{
 				err("camera buffer dequeuing error %m");
 				if (errno == EAGAIN)
@@ -53,7 +53,7 @@ int main_loop(V4L2_t *cam, File_t *file)
 				break;
 			}
 
-			if (sfile_queue(file, index, mem, bytesused) < 0)
+			if (sfile_ops.queue(file, index, mem, bytesused, 0) < 0)
 			{
 				err("file buffer queuing error %m");
 				if (errno == EAGAIN)
@@ -61,7 +61,7 @@ int main_loop(V4L2_t *cam, File_t *file)
 				run = 0;
 				break;
 			}
-			if ((index = sfile_dequeue(file, NULL, NULL)) < 0)
+			if ((index = sfile_ops.dequeue(file, NULL, NULL, NULL)) < 0)
 			{
 				err("file buffer dequeuing error %m");
 				if (errno == EAGAIN)
@@ -69,7 +69,7 @@ int main_loop(V4L2_t *cam, File_t *file)
 				run = 0;
 				break;
 			}
-			if (sv4l2_queue(cam, index, NULL, 0) < 0)
+			if (sv4l2_ops.queue(cam, index, NULL, 0, 0) < 0)
 			{
 				err("camera buffer queuing error %m");
 				if (errno == EAGAIN)
@@ -81,8 +81,8 @@ int main_loop(V4L2_t *cam, File_t *file)
 			run = 0; //one shot only
 		}
 	}
-	sv4l2_stop(cam);
-	sfile_stop(file);
+	sv4l2_ops.stop(cam);
+	sfile_ops.stop(file);
 	return 0;
 }
 
@@ -153,7 +153,7 @@ int main(int argc, char * const argv[])
 		config_parseconfigfile(configfile, _config_createdevice, &outconfig.parent);
 	}
 
-	V4L2_t *cam = sv4l2_create(inconfig.device, device_input, &inconfig);
+	V4L2_t *cam = sv4l2_ops.create(inconfig.device, device_input, &inconfig.parent);
 	if (!cam)
 	{
 		err("camera not available");
@@ -165,7 +165,7 @@ int main(int argc, char * const argv[])
 	outconfig.parent.fourcc = inconfig.parent.fourcc;
 	outconfig.parent.stride = inconfig.parent.stride;
 	outconfig.direction = File_Input_e;
-	File_t *file = sfile_create(outconfig.filename, device_output, &outconfig);
+	File_t *file = sfile_ops.create(outconfig.filename, device_output, &outconfig.parent);
 	if (!file)
 	{
 		err("file not available");
@@ -179,19 +179,19 @@ int main(int argc, char * const argv[])
 	int *dma_bufs = {0};
 	size_t size = 0;
 	int nbbufs = 0;
-	if (sv4l2_requestbuffer(cam, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
+	if (sv4l2_ops.requestbuffer(cam, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
 	{
 		err("camera dma buffer not allowed");
 		return -1;
 	}
-	if (sfile_requestbuffer(file, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
+	if (sfile_ops.requestbuffer(file, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
 	{
 		err("file dma buffers not linked");
 		return -1;
 	}
 	main_loop(cam, file);
 
-	sv4l2_destroy(cam);
-	sfile_destroy(file);
+	sv4l2_ops.destroy(cam);
+	sfile_ops.destroy(file);
 	return 0;
 }
