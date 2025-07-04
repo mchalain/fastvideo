@@ -85,68 +85,80 @@ static uint32_t find_crtc_for_connector(const drmModeRes *resources,
 	return -1;
 }
 
-static int init_drm(const char *device)
+static drmModeConnector *find_connector(drmModeRes *resources, uint32_t width, uint32_t height, int mode)
+{
+	drmModeConnector *connector = NULL;
+	for (int i = 0; i < resources->count_connectors; i++)
+	{
+		connector = drmModeGetConnector(drm.fd, resources->connectors[i]);
+		if (mode == 0 && connector->connection != DRM_MODE_CONNECTED)
+			continue;
+		for (int j = 0; j < connector->count_modes; j++)
+		{
+			drmModeModeInfo *current_mode = &connector->modes[j];
+
+			if (current_mode->vdisplay == height &&
+					current_mode->hdisplay >= width)
+			{
+				if (current_mode->hdisplay == width ||
+					(mode == 0x01 && current_mode->type & DRM_MODE_TYPE_PREFERRED))
+				{
+					drm.mode = current_mode;
+					break;
+				}
+			}
+		}
+		if (drm.mode)
+			break;
+		drmModeFreeConnector(connector);
+		connector = NULL;
+	}
+	return connector;
+}
+
+static int init_drm(const char *device, uint32_t width, uint32_t height)
 {
 	drmModeRes *resources;
 	drmModeConnector *connector = NULL;
 	drmModeEncoder *encoder = NULL;
-	int i, area;
 
 	drm.fd = open(device, O_RDWR);
 	dbg("segl: open %s",device);
 
-	if (drm.fd < 0) {
+	if (drm.fd < 0)
+	{
 		err("segl: could not open drm device %s", device);
 		return -1;
 	}
 
 	resources = drmModeGetResources(drm.fd);
-	if (!resources) {
+	if (!resources)
+	{
 		err("segl: drmModeGetResources failed: %m");
 		return -1;
 	}
 
 	/* find a connected connector: */
-	for (i = 0; i < resources->count_connectors; i++) {
-		connector = drmModeGetConnector(drm.fd, resources->connectors[i]);
-		if (connector->connection == DRM_MODE_CONNECTED) {
-			/* it's connected, let's use this! */
-			break;
-		}
-		drmModeFreeConnector(connector);
-		connector = NULL;
-	}
+	connector = find_connector(resources, width, height, 0);
 
-	if (!connector) {
+	if (!connector)
+	{
 		/* we could be fancy and listen for hotplug events and wait for
 		 * a connector..
 		 */
 		err("segl: no connected connector!");
-		return -1;
+		connector = find_connector(resources, width, height, 0x02);
 	}
 
-	/* find prefered mode or the highest resolution mode: */
-	for (i = 0, area = 0; i < connector->count_modes; i++) {
-		drmModeModeInfo *current_mode = &connector->modes[i];
-
-		if (current_mode->type & DRM_MODE_TYPE_PREFERRED) {
-			drm.mode = current_mode;
-		}
-
-		int current_area = current_mode->hdisplay * current_mode->vdisplay;
-		if (current_area > area) {
-			drm.mode = current_mode;
-			area = current_area;
-		}
-	}
-
-	if (!drm.mode) {
+	if (!drm.mode)
+	{
 		err("segl: could not find mode!");
-		return -1;
+		connector = drmModeGetConnector(drm.fd, resources->connectors[0]);
 	}
 
 	/* find encoder: */
-	for (i = 0; i < resources->count_encoders; i++) {
+	for (int i = 0; i < resources->count_encoders; i++)
+	{
 		encoder = drmModeGetEncoder(drm.fd, resources->encoders[i]);
 		if (encoder->encoder_id == connector->encoder_id)
 			break;
@@ -168,6 +180,7 @@ static int init_drm(const char *device)
 
 	drm.connector_id = connector->connector_id;
 
+	drmModeCrtc *saved_crtc = drmModeGetCrtc(drm.fd, drm.crtc_id);
 	return 0;
 }
 
@@ -465,9 +478,9 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	const char *device = config->device;
 	if (device == NULL)
 		device = "/dev/dri/card0";
-	if (init_drm(device))
+	if (init_drm(device, config->parent.width, config->parent.height))
 	{
-		return (EGLNativeDisplayType)NULL;
+		return EGL_CAST(EGLNativeDisplayType, EGL_UNKNOWN);
 	}
 	gbm.dev = gbm_create_device(drm.fd);
 
@@ -508,7 +521,7 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 	struct gbm_device *dev = (struct gbm_device *)display;
 
 	gbm.surface = gbm_surface_create(gbm.dev,
-			drm.mode->hdisplay, drm.mode->vdisplay,
+			width, height,
 			drm.fourcc,
 			GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 	if (!gbm.surface) {
@@ -540,11 +553,14 @@ static int native_flush(EGLNativeWindowType native_win)
 		fb = drm_fb_get_from_bo(old_bo);
 
 		/* set mode: */
-		int ret = drmModeSetCrtc(drm.fd, drm.crtc_id, fb->fb_id, 0, 0,
-				&drm.connector_id, 1, drm.mode);
-		if (ret) {
-			err("segl: failed to set mode: %m");
-			return -1;
+		if (drm.mode)
+		{
+			int ret = drmModeSetCrtc(drm.fd, drm.crtc_id, fb->fb_id, 0, 0,
+					&drm.connector_id, 1, drm.mode);
+			if (ret) {
+				err("segl: failed to set mode: %m");
+				return -1;
+			}
 		}
 		return 0;
 	}
