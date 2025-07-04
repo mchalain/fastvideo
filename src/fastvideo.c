@@ -407,7 +407,7 @@ int main(int argc, char * const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:t:j:w:h:DL:W:I");
+		opt = getopt(argc, argv, "i:o:t:j:w:h:DP:L:W:I");
 		switch (opt)
 		{
 			case 'i':
@@ -449,6 +449,9 @@ int main(int argc, char * const argv[])
 			break;
 			case 'L':
 				logfile = optarg;
+			break;
+			case 'P':
+				pidfile = optarg;
 			break;
 			case 'W':
 				if (chdir(optarg) != 0)
