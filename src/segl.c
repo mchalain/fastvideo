@@ -394,7 +394,7 @@ static int texturemem_link(EGL_t *dev, GLuint texture, void *mem, size_t size)
 	if(image == EGL_NO_IMAGE_KHR)
 	{
 		err("segl: Image creation error %#X", eglGetError());
-//		return -1;
+		return -1;
 	}
 
 	dev->buffers[dev->nbuffers].size = size;
@@ -417,11 +417,11 @@ static int texturedma_get(EGL_t *dev, int id)
 	EGLImage image = eglCreateImageKHR(dev->egldisplay, dev->eglcontext, EGL_GL_TEXTURE_2D,
 		(void *)(long)dev->buffers[id].dma_texture, attributes);
 #else
-	GLint tattributes[] = {
+	const EGLAttrib tattributes[] = {
 		EGL_IMAGE_PRESERVED, EGL_TRUE,
 		EGL_NONE,
 	};
-	GLint *attributes = tattributes;
+	const EGLAttrib *attributes = tattributes;
 
 	EGLImage image = eglCreateImage(dev->egldisplay, dev->eglcontext, EGL_GL_TEXTURE_2D,
 		(void *)(long)dev->buffers[id].dma_texture, attributes);
@@ -472,6 +472,8 @@ EXT_API int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 	{
 		case buf_type_dmabuf:
 		{
+			if (dev->type == device_input)
+				return -1;
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
@@ -490,6 +492,8 @@ EXT_API int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 		break;
 		case buf_type_memory:
 		{
+			if (dev->type == device_input)
+				return -1;
 			int ntargets = va_arg(ap, int);
 			void **targets = va_arg(ap, void **);
 			size_t size = va_arg(ap, size_t);
@@ -510,6 +514,8 @@ EXT_API int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 		break;
 		case buf_type_dmabuf | buf_type_master:
 		{
+			if (dev->type != device_input)
+				return -1;
 			int *ntargets = va_arg(ap, int *);
 			int **targets = va_arg(ap, int **);
 			size_t *size = va_arg(ap, size_t *);
@@ -529,6 +535,9 @@ EXT_API int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 							break;
 						}
 						dev->buffers[i].dma_fd = dma_fd;
+						eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
+						dev->buffers[i].dma_image = 0;
+						dev->buffers[i].modifiers = dev->config->parent.modifiers;
 					}
 					(*targets)[i] = dma_fd;
 					dbg("segl: export dmabuffer[%d]: %d %lu", i, dma_fd, dev->buffers[i].size);
@@ -558,6 +567,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		err("segl: device may not support duplication");
 		return NULL;
 	}
+	dev->type = device_output;
 	dup = malloc(sizeof(*dup));
 	if (!dup)
 		return NULL;
@@ -591,6 +601,9 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		if (dma_texture == 0)
 			break;
 		dup->buffers[i].dma_texture = dma_texture;
+		dup->buffers[i].size = dup->config->parent.width;
+		dup->buffers[i].size *= dup->config->parent.height;
+		dup->buffers[i].size *= fformat->stride_factor[0];
 
 		glTexImage2D(dup->buffers[i].textype, 0, fformat->internal,
 				dup->config->parent.width, dup->config->parent.height, 0,
@@ -634,11 +647,20 @@ EXT_API int segl_stop(EGL_t *dev)
 
 static void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo, int flags)
 {
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+#ifdef GLESV300
+	uint32_t width = dev->config->parent.width;
+	uint32_t height = dev->config->parent.height;
+
+	glPixelStorei(GL_PACK_ROW_LENGTH, width);
+	glPixelStorei(GL_PACK_IMAGE_HEIGHT, height);
+#endif
+	glPixelStorei(GL_PACK_ALIGNMENT, 4);
+
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glprog_run(dev->programs, id);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flags)
@@ -678,9 +700,17 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 		dev->buffers[id].modifiers = dev->config->parent.modifiers;
 	segl_queue_output(dev, id, bytesused, 0, flags);
 	dev->curbufferid = id;
+	int ret = dev->native->flush(dev->native_window);
 	if (dev->dup)
+	{
 		dev->dup->curbufferid = dev->curbufferid;
-	return dev->native->flush(dev->native_window);
+		segl_queue_output(dev->dup, id, dev->dup->buffers[id].size, dev->dup->fbo, 0);
+#if 1
+		glBindTexture(dev->dup->buffers[id].textype, dev->dup->buffers[id].dma_texture);
+		glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, width, height, 0);
+#endif
+	}
+	return ret;
 }
 
 EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
@@ -690,8 +720,6 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 	dev->curbufferid = -1;
 	if (dev->type == device_input)
 	{
-		*bytesused = dev->buffers[0].size;
-		segl_queue_output(dev, id, *bytesused, dev->fbo, 0);
 		if (id == -1)
 		{
 			errno = EAGAIN;
@@ -704,6 +732,7 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 	glUseProgram(0);
 	glBindTexture(dev->buffers[0].textype, 0);
 	glBindTexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	if (dev->native->sync(dev->native_window) < 0)
 		return -1;
 
@@ -712,6 +741,8 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 
 EXT_API int segl_fd(EGL_t *dev, int writer)
 {
+	if (writer && dev->curbufferid == -1)
+		return 0;
 	return dev->native->fd(dev->native_window);
 }
 
