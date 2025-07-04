@@ -84,6 +84,7 @@ struct DeviceConf_s
 	uint32_t width;
 	uint32_t height;
 	uint32_t stride;
+	uint64_t modifiers;
 	struct
 	{
 		int (*loadconfiguration)(void *storage, void *config);

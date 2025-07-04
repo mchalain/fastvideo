@@ -43,6 +43,7 @@ struct GLBuffer_s
 	GLuint pitch;
 	GLuint offset;
 	uint32_t size;
+	uint64_t modifiers;
 };
 
 typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
@@ -65,6 +66,7 @@ struct EGLConfig_s
 	const char *native;
 	const char *device;
 	uint32_t transfer;
+	uint64_t transfer_modifiers;
 	EGLConfig_Program_t *programs;
 };
 

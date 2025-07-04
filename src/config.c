@@ -19,6 +19,7 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 	json_t *height = NULL;
 	json_t *fourcc = NULL;
 	json_t *stride = NULL;
+	json_t *modifiers = NULL;
 
 	if (definition && json_is_array(definition))
 	{
@@ -49,6 +50,11 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 				{
 					fourcc = json_object_get(field, "value");
 				}
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "modifiers"))
+				{
+					modifiers = json_object_get(field, "value");
+				}
 			}
 		}
 	}
@@ -58,6 +64,7 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 		height = json_object_get(definition, "height");
 		fourcc = json_object_get(definition, "fourcc");
 		stride = json_object_get(definition, "stride");
+		modifiers = json_object_get(definition, "modifiers");
 	}
 	else
 		return 0;
@@ -80,6 +87,8 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 		const char *value = json_string_value(fourcc);
 		config->fourcc = FOURCC(value[0], value[1], value[2], value[3]);
 	}
+	if (modifiers && json_is_integer(modifiers))
+		config->modifiers = json_integer_value(modifiers);
 	return 0;
 }
 

@@ -35,6 +35,7 @@ struct Display_s
 	uint32_t plane_id;
 	drmModeCrtc *crtc;
 	uint32_t fourcc;
+	uint64_t modifiers;
 	int type;
 	int fd;
 	drmModeModeInfo mode;
@@ -332,6 +333,7 @@ static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uin
 	int bo_handle = (long)buffer->private;
 	uint32_t offsets[4] = { 0 };
 	uint32_t pitches[4] = { stride };
+	uint64_t modifiers[4] = { disp->modifiers };
 	uint32_t bo_handles[4] = { bo_handle };
 
 #if 0
@@ -350,8 +352,8 @@ static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uin
 	}
 #endif
 
-	if (drmModeAddFB2(disp->fd, width, height, disp->fourcc, bo_handles,
-		pitches, offsets, &buffer->id, 0))
+	if (drmModeAddFB2WithModifiers(disp->fd, width, height, disp->fourcc, bo_handles,
+		pitches, offsets, modifiers, &buffer->id, 0))
 	{
 		err("sdrm: Frame buffer unavailable 2 (%dx%d %.4s) %m", width, height, &disp->fourcc);
 		return -1;
@@ -366,6 +368,7 @@ static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, FrameBuffe
 
 	uint32_t offsets[4] = { 0 };
 	uint32_t pitches[4] = { stride };
+	uint64_t modifiers[4] = { disp->modifiers };
 
 	uint32_t handle;
 	if (drmPrimeFDToHandle(disp->fd, fd, &handle))
@@ -376,8 +379,8 @@ static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, FrameBuffe
 	buffer->private = (void *)(long)handle;
 	uint32_t bo_handles[4] = { handle };
 
-	if (drmModeAddFB2(disp->fd, disp->mode.hdisplay, disp->mode.vdisplay, disp->fourcc,
-		bo_handles, pitches, offsets, &buffer->id, 0))
+	if (drmModeAddFB2WithModifiers(disp->fd, disp->mode.hdisplay, disp->mode.vdisplay, disp->fourcc,
+		bo_handles, pitches, offsets, modifiers, &buffer->id, 0))
 	{
 		err("sdrm: Frame buffer unavailable 3 (%dx%d %.4s) %m", disp->mode.hdisplay, disp->mode.vdisplay, &disp->fourcc);
 		return -1;
@@ -425,6 +428,8 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 		disp->mode.vdisplay = config->parent.height;
 		if (config->parent.fourcc)
 			disp->fourcc = config->parent.fourcc;
+		if (config->parent.modifiers)
+			disp->modifiers = config->parent.modifiers;
 	}
 	if (sdrm_ids(disp, &disp->connector_id, &disp->encoder_id, &disp->crtc_id, &disp->mode) == -1)
 	{

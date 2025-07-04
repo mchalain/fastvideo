@@ -350,6 +350,8 @@ static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t si
 		EGL_DMA_BUF_PLANE0_FD_EXT, dma_fd,
 		EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
 		EGL_DMA_BUF_PLANE0_PITCH_EXT, stride,
+		EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, (uint32_t)(dev->config->parent.modifiers & ((((uint64_t)1) << 33) - 1)),
+		EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, (uint32_t)((dev->config->parent.modifiers>>32) & ((((uint64_t)1) << 33) - 1)),
 		EGL_NONE
 	};
 	dbg("segl: create image for dma %d : %dx%d %u %.4s", dma_fd, dev->config->parent.width, dev->config->parent.height, stride, (char*)&fourcc);
@@ -447,8 +449,6 @@ static int texturedma_get(EGL_t *dev, int id)
 	{
 		eglExportDMABUFImageMESA(dev->egldisplay, image, &dma_buf[0], &stride[0], &offset[0]);
 	}
-	if (modifiers)
-		err("segl: export modifed buffer %#x", modifiers);
 	if (dev->config->parent.fourcc && dev->config->parent.fourcc != fourcc)
 		err("segl: requests %.4s, obtains %.4s", &dev->config->parent.fourcc, &fourcc);
 	dev->config->parent.fourcc = fourcc;
@@ -456,6 +456,9 @@ static int texturedma_get(EGL_t *dev, int id)
 	dev->buffers[id].dma_image = image;
 	dev->buffers[id].size = stride[0] * dev->config->parent.height;
 	dev->buffers[id].pitch = stride[0];
+	dev->buffers[id].modifiers = modifiers;
+	if (modifiers != dev->config->parent.modifiers)
+		err("segl: format modifier present but not set (%d)", modifiers);
 
 	return dma_buf[0];
 }
@@ -563,6 +566,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	memcpy(*pconfig, dev->config, sizeof(*(dup->config)));
 	dup->config = *pconfig;
 	dup->config->parent.fourcc = dup->config->transfer;
+	dup->config->parent.modifiers = dup->config->transfer_modifiers;
 	dup->type = device_input;
 	dev->dup = dup;
 
@@ -639,6 +643,7 @@ static void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo, 
 
 EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flags)
 {
+	errno = 0;
 	uint32_t width = dev->config->parent.width;
 	uint32_t height = dev->config->parent.height;
 
@@ -668,6 +673,9 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 		glTexSubImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, mem);
 	}
 #endif
+	dev->buffers[id].modifiers = 0;
+	if (flags & FB_FLAGS_MODIFIER)
+		dev->buffers[id].modifiers = dev->config->parent.modifiers;
 	segl_queue_output(dev, id, bytesused, 0, flags);
 	dev->curbufferid = id;
 	if (dev->dup)
@@ -677,6 +685,7 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 
 EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 {
+	errno = 0;
 	int id = dev->curbufferid;
 	dev->curbufferid = -1;
 	if (dev->type == device_input)
@@ -684,7 +693,12 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 		*bytesused = dev->buffers[0].size;
 		segl_queue_output(dev, id, *bytesused, dev->fbo, 0);
 		if (id == -1)
+		{
 			errno = EAGAIN;
+			return id;
+		}
+		if (flags && dev->buffers[id].modifiers)
+			*flags |= FB_FLAGS_MODIFIER;
 		return id;
 	}
 	glUseProgram(0);
@@ -759,6 +773,12 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 		{
 			const char *value = json_string_value(transfer);
 			config->transfer = FOURCC(value[0], value[1], value[2], value[3]);
+		}
+		json_t *modifiers = json_object_get(definition, "transfer_modifiers");
+		if (modifiers && json_is_integer(modifiers))
+		{
+			uint64_t value = json_integer_value(modifiers);
+			config->transfer_modifiers = value;
 		}
 	}
 library_end:

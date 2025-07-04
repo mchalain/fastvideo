@@ -378,7 +378,7 @@ uint32_t sv4l2_getpixformat(V4L2_t *dev, int (*pixformat)(void *arg, struct v4l2
 	return pixelformat;
 }
 
-static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fourcc)
+static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fourcc, uint64_t modifiers)
 {
 	uint32_t pixelformat = 0;
 
@@ -877,6 +877,11 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 		break;
 		case buf_type_dmabuf:
 		{
+			if (dev->config->parent.modifiers)
+			{
+				err("V4l2 format currently doesn't support modifiers");
+				return -1;
+			}
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
@@ -1226,9 +1231,13 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config
 	*type = _v4l2_getbuftype(*type, mode);
 
 	uint32_t fourcc = 0;
+	uint64_t modifiers = 0;
 	if (config)
+	{
 		fourcc = config->parent.fourcc;
-	if (_v4l2_setpixformat(fd, *type, fourcc) == -1)
+		modifiers = config->parent.modifiers;
+	}
+	if (_v4l2_setpixformat(fd, *type, fourcc, modifiers) == -1)
 	{
 		err("pixel format error %m");
 		if (errno != EBUSY)
@@ -1421,8 +1430,8 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused, int *flags)
 	ret = ioctl(dev->fd, VIDIOC_DQBUF, &buf);
 	if (ret)
 	{
-		err("sv4l2: %s dequeueing error %m", dev->name);
-		dbg_buffer((&buf));
+//		dbg("sv4l2: %s dequeueing error %m", dev->name);
+//		dbg_buffer((&buf));
 		return -1;
 	}
 	if (!ret && bytesused)
@@ -1443,6 +1452,8 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused, int *flags)
 int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
 	int ret = 0;
+	if (flags & FB_FLAGS_MODIFIER && !dev->config->parent.modifiers)
+		err("sv4ll2: input format required not supported modifier");
 	if (bytesused > 0)
 		dev->buffers[index].v4l2.bytesused = bytesused;
 	if (mem && dev->buffers[0].v4l2.memory == V4L2_MEMORY_USERPTR)

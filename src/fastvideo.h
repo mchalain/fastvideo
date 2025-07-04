@@ -70,6 +70,7 @@ void fastvideolist_destroy(FastVideoList_t *list, void(*destroy)(void *));
 enum
 {
 	FB_FLAGS_KEYFRAME = 0x00000008, /// V4L2_BUF_FLAG_KEYFRAME
+	FB_FLAGS_MODIFIER = 0x00000001,
 };
 
 typedef struct FrameBuffer_s FrameBuffer_t;
