@@ -49,7 +49,7 @@ struct MPEGPAT_s
 	union {
 		struct {
 			uint16_t len:12;
-			uint16_t re1:3;
+			uint16_t res1:3;
 			uint16_t si:1;
 		};
 		uint16_t rlen __attribute__ ((packed));
@@ -76,7 +76,7 @@ struct MPEGPMT_s
 	union {
 		struct {
 			uint16_t len:12;
-			uint16_t re1:3;
+			uint16_t res1:3;
 			uint16_t si:1;
 		};
 		uint16_t rlen __attribute__ ((packed));
@@ -157,8 +157,8 @@ static const uint8_t default_pat[MPEG_TS_LENGTH] = {
 };
 
 static const uint8_t default_pmt[MPEG_TS_LENGTH] = {
-	  'G', 0x40, 0x40, 0x10, 0x00, 0x02, 0xb0, 0x12, 0x00, 0x01,
-	 0xc1, 0x00, 0x00, 0xe0, 0x40, 0xf0, 0x00, 0x03, 0xe0, 0x41,
+	  'G', 0x40, 0x41, 0x10, 0x00, 0x02, 0xb0, 0x12, 0x00, 0x01,
+	 0xc1, 0x00, 0x00, 0xe0, 0x42, 0xf0, 0x00, 0x03, 0xe0, 0x42,
 	 0xf0, 0x00, 0xaa, 0xaa, 0xaa, 0xaa, 0xff, 0xff, 0xff, 0xff,
 	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -430,6 +430,9 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 	int length = 0;
 	if (ret > 0 && mtu > dev->packetlen)
 	{
+		/**
+		 * send PMT packet
+		 */
 		int flags = MSG_MORE;
 		if (mtu < 2 * dev->packetlen)
 				flags = 0;
@@ -441,6 +444,9 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 	}
 	if (ret > 0 && mtu > dev->packetlen)
 	{
+		/**
+		 * send PAT packet
+		 */
 		length += ret;
 		int flags = MSG_MORE;
 		if (mtu < 2 * dev->packetlen)
@@ -733,7 +739,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 		if (config->parent.fourcc == FOURCC_H264)
 			dev->pmt.pmt.es1.type = 0x1b;
 		dev->pmt.header.pid = config->pid & 0x00ff;
-		dev->pmt.pmt.progid = 1; /// value for the TV programm
+		dev->pmt.pmt.progid = htons(1); /// value for the TV programm
 		dev->pmt.pmt.pcr_pid = config->pid + 1;
 		dev->pmt.pmt.es1.esid = config->pid + 1;
 		int start = sizeof(dev->pmt.header) + sizeof(dev->pmt.pointer);
