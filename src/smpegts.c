@@ -28,6 +28,7 @@
 #define DUMPDATA 0
 #define PES_PTSDTS_ENABLE 1
 #define PADDING_NULLPACKET 1
+#define PSI_SDTPACKET 1
 
 typedef struct MPEGHeader_s MPEGHeader_t;
 struct MPEGHeader_s
@@ -105,6 +106,46 @@ struct MPEGPMT_s
 	uint32_t crc __attribute__ ((packed));
 };
 
+typedef struct MPEGDST_s MPEGDST_t;
+struct MPEGDST_s
+{
+	uint8_t tbid;
+	union {
+		struct {
+			uint16_t len:12;
+			uint16_t res1:3;
+			uint16_t si:1;
+		};
+		uint16_t rlen __attribute__ ((packed));
+	} __attribute__ ((packed));
+	uint16_t extension __attribute__ ((packed));
+	uint8_t cni:1;
+	uint8_t ver:5;
+	uint8_t res2:2;
+	uint8_t secn;
+	uint8_t lsecn;
+	uint16_t netid __attribute__ ((packed));
+	uint8_t ff;
+	struct {
+		uint16_t id __attribute__ ((packed));
+		uint8_t sched:1;
+		uint8_t present:1;
+		uint8_t fc:6;
+		uint8_t status:3;
+		uint8_t freeca:1;
+		uint8_t desclooplen_h:4;
+		uint8_t desclooplen;
+		uint8_t tag;
+		uint8_t desclen;
+		uint8_t type;
+		uint8_t provlen;
+		uint8_t provider[9];
+		uint8_t namelen;
+		uint8_t name[9];
+	} service;
+	uint32_t crc __attribute__ ((packed));
+};
+
 typedef struct PESHeader_s PESHeader_t;
 struct PESHeader_s
 {
@@ -178,6 +219,30 @@ static const uint8_t default_pmt[MPEG_TS_LENGTH] = {
 	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 };
 
+#if PSI_SDTPACKET
+static const uint8_t default_sdt[MPEG_TS_LENGTH] = {
+	  'G', 0x40, 0x11, 0x10, 0x00, 0x42, 0xf0, 0x28, 0x00, 0x01,
+	 0xc1, 0x00, 0x00, 0x00, 0x01, 0xff, 0x00, 0x01, 0xfc, 0x80,
+	 0x16, 0x48, 0x14, 0x0A, 0x09,  'F',  'a',  's',  't',  'V',
+	  'i',  'd',  'e',  'o', 0x09, 0x00, 0x00, 0x00, 0x00, 0x00,
+	 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xaa, 0xaa, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+};
+#endif
+
 static uint8_t nullpacket[MPEG_TS_LENGTH] =
 {
 	 'G', 0x1f, 0xff, 0x10, 0xff, 0xff, 0xff, 0xff,
@@ -231,6 +296,17 @@ struct Dev_s
 		};
 		uint8_t raw[MPEG_TS_LENGTH];
 	} pmt;
+#if PSI_SDTPACKET
+	union
+	{
+		struct {
+			MPEGHeader_t header;
+			uint8_t pointer;
+			MPEGDST_t sdt;
+		};
+		uint8_t raw[MPEG_TS_LENGTH];
+	} sdt;
+#endif
 	uint8_t packetlen;
 	time_t start;
 	uint32_t pcr;
@@ -457,6 +533,23 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 		if (ret == dev->packetlen)
 			mtu -= ret;
 	}
+#if PSI_SDTPACKET
+	if (ret > 0 && mtu > dev->packetlen)
+	{
+		/**
+		 * send SDT packet
+		 */
+		length += ret;
+		int flags = MSG_MORE;
+		if (mtu < 2 * dev->packetlen)
+				flags = 0;
+		uint8_t cc = dev->sdt.header.cc;
+		dev->sdt.header.cc = (cc + 1) & 0x0f;
+		ret = dev->proto->send(dev->protoctx, dev->sdt.raw, dev->packetlen, flags);
+		if (ret == dev->packetlen)
+			mtu -= ret;
+	}
+#endif
 #if PADDING_NULLPACKET
 	while (ret > 0 && mtu > dev->packetlen)
 	{
@@ -750,7 +843,23 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 		uint32_t crc = crc32(&dev->pmt.raw[start], pmtlen);
 		dev->pmt.pmt.crc = htonl(crc);
 	}
-
+#if PSI_SDTPACKET
+	/// setup the sdt packet
+	{
+		memcpy(&dev->sdt, default_sdt, sizeof(dev->sdt));
+		memcpy(&dev->sdt.sdt.service.name, config->parent.name, 9);
+		if (config->parent.fourcc == FOURCC_H264)
+			dev->sdt.sdt.service.type = 0x1b;
+		/// default 0x03 is mpeg1l3
+		int start = sizeof(dev->sdt.header) + sizeof(dev->sdt.pointer);
+		uint16_t sdtlen = htons(dev->sdt.sdt.len & 0xff0f);
+		/// the bit fields structure doesn't work correctly
+		sdtlen = ((dev->sdt.raw[6] & 0x0f) << 8) | dev->sdt.raw[7];
+		sdtlen -= sizeof(dev->sdt.pointer);
+		uint32_t crc = crc32(&dev->sdt.raw[start], sdtlen);
+		dev->sdt.sdt.crc = htonl(crc);
+	}
+#endif
 	dev->packetlen = MPEG_TS_LENGTH;
 
 #if DUMPDATA
