@@ -636,6 +636,8 @@ EXT_API int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 {
 	EGL_t *dup = NULL;
+	uint32_t width = dev->config->parent.width;
+	uint32_t height = dev->config->parent.height;
 	if (dev->type != device_transfer)
 	{
 		err("segl: device may not support duplication");
@@ -653,12 +655,13 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	dup->config->parent.modifiers = dup->config->transfer_modifiers;
 	dup->type = device_input;
 	dev->dup = dup;
+	dbg("segl: duplicate %.4s %lux%lu", &dup->config->parent.fourcc, width, height);
 
 	GLuint glget = 0;
 	glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &glget);
-	if (glget <= dup->config->parent.width)
+	if (glget <= width)
 		warn("segl: width to large max %d", glget);
-	if (glget <= dup->config->parent.height)
+	if (glget <= height)
 		warn("segl: width to height max %d", glget);
 
 	const FourccFormat_t *fformat = fourcc_getformat(dup->config->parent.fourcc);
@@ -666,6 +669,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	/*  Framebuffer */
 	glGenFramebuffers(1, &dup->fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, dup->fbo);
+	dup->nbuffers = 0;
 	for (int i = 0; i < MAX_BUFFERS; i++, dup->nbuffers++)
 	{
 		GLuint dma_texture = 0;
@@ -675,16 +679,17 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		if (dma_texture == 0)
 			break;
 		dup->buffers[i].dma_texture = dma_texture;
-		dup->buffers[i].size = dup->config->parent.width;
-		dup->buffers[i].size *= dup->config->parent.height;
+		dup->buffers[i].size = width;
+		dup->buffers[i].size *= height;
 		dup->buffers[i].size *= fformat->stride_factor[0];
 
 		glTexImage2D(dup->buffers[i].textype, 0, fformat->internal,
-				dup->config->parent.width, dup->config->parent.height, 0,
-				fformat->full, fformat->data, NULL);
+				width, height, 0, fformat->full, fformat->data, NULL);
 
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 			dup->buffers[i].textype, dup->buffers[i].dma_texture, 0);
+		dup->nbuffers++;
+		break;
 	}
 	/* Sanity check. */
 	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
