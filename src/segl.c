@@ -58,6 +58,8 @@ struct EGL_s
 #define GL_TEXTURE_EXTERNAL_OES GL_TEXTURE_2D;
 #endif
 
+#define EXPORT_RENDER 1
+
 #ifndef EGL_KHR_image
 #error "this version of EGL doesn't support KHR Image"
 #endif
@@ -375,6 +377,7 @@ static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t si
 	dev->buffers[dev->nbuffers].dma_texture = dma_texture;
 	dev->buffers[dev->nbuffers].dma_image = dma_image;
 	dev->buffers[dev->nbuffers].textype = GL_TEXTURE_EXTERNAL_OES;
+	dev->buffers[dev->nbuffers].egltarget = EGL_GL_TEXTURE_2D;
 	dev->nbuffers++;
 
 	return 0;
@@ -404,6 +407,7 @@ static int texturemem_link(EGL_t *dev, GLuint texture, void *mem, size_t size)
 	dev->buffers[dev->nbuffers].dma_texture = texture;
 	dev->buffers[dev->nbuffers].dma_image = image;
 	dev->buffers[dev->nbuffers].textype = GL_TEXTURE_EXTERNAL_OES;
+	dev->buffers[dev->nbuffers].egltarget = EGL_GL_TEXTURE_2D;
 	dev->nbuffers++;
 
 	return 0;
@@ -462,7 +466,7 @@ static int texturedma_get(EGL_t *dev, int id)
 #if 0
 	GLint *attributes = NULL;
 
-	EGLImage image = eglCreateImageKHR(dev->egldisplay, dev->eglcontext, EGL_GL_TEXTURE_2D,
+	EGLImage image = eglCreateImageKHR(dev->egldisplay, dev->eglcontext, dev->buffers[id].egltarget,
 		(void *)(long)dev->buffers[id].dma_texture, attributes);
 #else
 	const EGLAttrib tattributes[] = {
@@ -471,10 +475,9 @@ static int texturedma_get(EGL_t *dev, int id)
 	};
 	const EGLAttrib *attributes = tattributes;
 
-	EGLImage image = eglCreateImage(dev->egldisplay, dev->eglcontext, EGL_GL_TEXTURE_2D,
+	EGLImage image = eglCreateImage(dev->egldisplay, dev->eglcontext, dev->buffers[id].egltarget,
 		(void *)(long)dev->buffers[id].dma_texture, attributes);
 #endif
-
 	if (image == EGL_NO_IMAGE)
 		return -1;
 
@@ -672,8 +675,30 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	dup->nbuffers = 0;
 	for (int i = 0; i < MAX_BUFFERS; i++, dup->nbuffers++)
 	{
+#if EXPORT_RENDER
+		GLuint format = fformat->internal;
+		glGenRenderbuffers(1, &dup->buffers[i].rbo);
+		glBindRenderbuffer(GL_RENDERBUFFER, dup->buffers[i].rbo);
+		/* Storage must be one of: */
+		/* GL_RGBA4, GL_RGB565, GL_RGB5_A1, GL_DEPTH_COMPONENT16, GL_STENCIL_INDEX8. */
+		glRenderbufferStorage(GL_RENDERBUFFER, format, width, height);
+		if (glGetError())
+			continue;
+
+		//glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_SAMPLES, &samples);
+		glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_INTERNAL_FORMAT, &format);
+		glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &width);
+		glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &height);
+		dbg("segl: renderbuffer %lux%lu %#x/%#x", width, height, format, fformat->internal);
+
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, dup->buffers[i].rbo);
+		dup->buffers[i].dma_texture = dup->buffers[i].rbo;
+		dup->buffers[i].textype = GL_RENDERBUFFER;
+		dup->buffers[i].egltarget = EGL_GL_RENDERBUFFER;
+#else
 		GLuint dma_texture = 0;
 		/// glFramebufferTexture2D support only GL_TEXTURE_2D
+		dup->buffers[i].egltarget = EGL_GL_TEXTURE_2D;
 		dup->buffers[i].textype = GL_TEXTURE_2D;
 		dma_texture = texture_create(dup, dup->buffers[i].textype);
 		if (dma_texture == 0)
@@ -688,6 +713,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 			dup->buffers[i].textype, dup->buffers[i].dma_texture, 0);
+#endif
 		dup->nbuffers++;
 		break;
 	}
@@ -728,6 +754,7 @@ static void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo, 
 {
 	dev->curbufferid = id;
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glBindRenderbuffer(GL_RENDERBUFFER, dev->buffers[id].rbo);
 
 #ifdef GLESV300
 	uint32_t width = dev->config->parent.width;

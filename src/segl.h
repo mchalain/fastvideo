@@ -35,7 +35,9 @@ struct GLBuffer_s
 	uint32_t fb_id;
 	int egl_fd;
 	GLenum textype;
+	EGLint egltarget;
 	GLuint dma_texture;
+	GLuint rbo;
 	EGLImageKHR dma_image;
 	uint32_t fourcc;
 	int dma_fd;
