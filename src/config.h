@@ -21,6 +21,7 @@
 #define FOURCC_R8		FOURCC('R','8',' ',' ')
 #define FOURCC_YUYV		FOURCC('Y','U','Y','V')
 #define FOURCC_YUY2		FOURCC('Y','U','Y','2')
+#define FOURCC_NV12		FOURCC('N','V','1','2')
 #define FOURCC_U008		FOURCC('U','0','0','8')
 #define FOURCC_JPEG		FOURCC('J','P','E','G')
 #define FOURCC_MJPG		FOURCC('M','J','P','G')
