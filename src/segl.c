@@ -409,6 +409,53 @@ static int texturemem_link(EGL_t *dev, GLuint texture, void *mem, size_t size)
 	return 0;
 }
 
+static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
+{
+	int ret = -1;
+	switch (t)
+	{
+		case buf_type_dmabuf:
+		{
+			int ntargets = va_arg(ap, int);
+			int *targets = va_arg(ap, int *);
+			size_t size = va_arg(ap, size_t);
+			for (int i = 0; i < ntargets; i++)
+			{
+				GLuint dma_texture = -1;
+				dma_texture = texture_create(dev, GL_TEXTURE_EXTERNAL_OES);
+				ret = texturedma_link(dev, dma_texture, targets[i], size);
+				glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, dev->buffers[i].dma_image);
+				eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
+				dev->buffers[i].dma_image = 0;
+				if (ret)
+					break;
+			}
+		}
+		break;
+		case buf_type_memory:
+		{
+			int ntargets = va_arg(ap, int);
+			void **targets = va_arg(ap, void **);
+			size_t size = va_arg(ap, size_t);
+			for (int i = 0; i < ntargets; i++)
+			{
+				GLuint texture = -1;
+				//GLuint textype = GL_TEXTURE_EXTERNAL_OES;
+				GLuint textype = GL_TEXTURE_2D;
+				texture = texture_create(dev, textype);
+				ret = texturemem_link(dev, texture, targets[i], size);
+//				glEGLImageTargetTexture2DOES(textype, dev->buffers[i].dma_image);
+//				eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
+				dev->buffers[i].dma_image = 0;
+				if (ret)
+					break;
+			}
+		}
+		break;
+	}
+	return ret;
+}
+
 static int texturedma_get(EGL_t *dev, int id)
 {
 /// the both have the same result
@@ -459,64 +506,25 @@ static int texturedma_get(EGL_t *dev, int id)
 	dev->buffers[id].pitch = stride[0];
 	dev->buffers[id].modifiers = modifiers;
 	if (modifiers != dev->config->parent.modifiers)
-		err("segl: format modifier present but not set (%d)", modifiers);
+		err("segl: format modifier present but not set (%d/%d)", modifiers, dev->config->parent.modifiers);
 
 	return dma_buf[0];
 }
 
-EXT_API int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
+static void *texturemem_get(EGL_t *dev, int id)
 {
-	va_list ap;
-	va_start(ap, t);
+	void *mem = calloc(1, dev->buffers[id].size);
+
+	return mem;
+}
+
+static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
+{
 	int ret = -1;
 	switch (t)
 	{
-		case buf_type_dmabuf:
-		{
-			if (dev->type == device_input)
-				return -1;
-			int ntargets = va_arg(ap, int);
-			int *targets = va_arg(ap, int *);
-			size_t size = va_arg(ap, size_t);
-			for (int i = 0; i < ntargets; i++)
-			{
-				GLuint dma_texture = -1;
-				dma_texture = texture_create(dev, GL_TEXTURE_EXTERNAL_OES);
-				ret = texturedma_link(dev, dma_texture, targets[i], size);
-				glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, dev->buffers[i].dma_image);
-				eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
-				dev->buffers[i].dma_image = 0;
-				if (ret)
-					break;
-			}
-		}
-		break;
-		case buf_type_memory:
-		{
-			if (dev->type == device_input)
-				return -1;
-			int ntargets = va_arg(ap, int);
-			void **targets = va_arg(ap, void **);
-			size_t size = va_arg(ap, size_t);
-			for (int i = 0; i < ntargets; i++)
-			{
-				GLuint texture = -1;
-				//GLuint textype = GL_TEXTURE_EXTERNAL_OES;
-				GLuint textype = GL_TEXTURE_2D;
-				texture = texture_create(dev, textype);
-				ret = texturemem_link(dev, texture, targets[i], size);
-//				glEGLImageTargetTexture2DOES(textype, dev->buffers[i].dma_image);
-//				eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
-				dev->buffers[i].dma_image = 0;
-				if (ret)
-					break;
-			}
-		}
-		break;
 		case buf_type_dmabuf | buf_type_master:
 		{
-			if (dev->type != device_input)
-				return -1;
 			int *ntargets = va_arg(ap, int *);
 			int **targets = va_arg(ap, int **);
 			size_t *size = va_arg(ap, size_t *);
@@ -551,11 +559,76 @@ EXT_API int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 			ret = (dev->nbuffers == 0);
 		}
 		break;
-		default:
-			err("segl: support only dmabuf");
-			va_end(ap);
-			return -1;
+		case buf_type_memory:
+		{
+			int ntargets = va_arg(ap, int);
+			void **targets = va_arg(ap, void **);
+			size_t size = va_arg(ap, size_t);
+			for (int i = 0; i < ntargets && i < dev->nbuffers; i++)
+			{
+				if (dev->buffers[i].memory)
+				{
+					free(dev->buffers[i].memory);
+					dev->buffers[i].memory = NULL;
+				}
+				if (dev->buffers[i].size > size)
+					err("segl: output buffer is too small for the image");
+				dev->buffers[i].memory = targets[i];
+				if (size > 0)
+					dev->buffers[i].size = size;
+				dbg("segl: push data into buffer %p (%lu)", dev->buffers[i].memory, dev->buffers[i].size);
+			}
+			ret = 0;
+		}
+		break;
+		case buf_type_memory | buf_type_master:
+		{
+			int *ntargets = va_arg(ap, int *);
+			void ***targets = va_arg(ap, void ***);
+			size_t *size = va_arg(ap, size_t *);
+			if (targets != NULL)
+			{
+				*targets = calloc(dev->nbuffers, sizeof(int));
+				for (int i = 0; i < dev->nbuffers; i++)
+				{
+					void *mem = dev->buffers[i].memory;
+					if (mem == NULL)
+					{
+						mem = texturemem_get(dev, i);
+						if (mem == NULL)
+						{
+							err("segl: export dma_buf error %p", mem);
+							dev->nbuffers = i;
+							break;
+						}
+						dev->buffers[i].memory = mem;
+						eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
+						dev->buffers[i].dma_image = 0;
+					}
+					(*targets)[i] = mem;
+					dbg("segl: export dmabuffer[%d]: %p %lu", i, mem, dev->buffers[i].size);
+				}
+			}
+			if (ntargets != NULL)
+				*ntargets = dev->nbuffers;
+			if (size != NULL)
+				*size = dev->buffers[0].size;
+			ret = (dev->nbuffers == 0);
+		}
+		break;
 	}
+	return ret;
+}
+
+EXT_API int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
+{
+	int ret = -1;
+	va_list ap;
+	va_start(ap, t);
+	if (dev->type != device_input)
+		ret = segl_requestbuffer_output(dev, t, ap);
+	else
+		ret = segl_requestbuffer_input(dev, t, ap);
 	va_end(ap);
 	return ret;
 }
