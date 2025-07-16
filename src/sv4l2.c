@@ -295,8 +295,7 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 		(type == device_input || type == device_control))
 		*mode |= MODE_CAPTURE;
 	if ((cap.device_caps & V4L2_CAP_VIDEO_M2M ||
-		cap.device_caps & V4L2_CAP_VIDEO_M2M_MPLANE) &&
-		(type == device_transfer || type == device_control))
+		cap.device_caps & V4L2_CAP_VIDEO_M2M_MPLANE))
 		*mode |= (MODE_CAPTURE | MODE_OUTPUT);
 	if ((cap.device_caps & V4L2_CAP_VIDEO_OUTPUT ||
 		cap.device_caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE) &&
