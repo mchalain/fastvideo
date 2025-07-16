@@ -134,6 +134,9 @@ int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, c
 		json_t *jdevice = NULL;
 		json_array_foreach(jconfig, index, jdevice)
 		{
+			json_t *disable = json_object_get(jdevice, "disable");
+			if (disable && json_is_true(disable))
+				continue;
 			if (!json_is_object(jdevice))
 				continue;
 			ret = main_parseconfigdevice(jdevice, cb, data);
@@ -241,6 +244,9 @@ int scommon_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devcon
 		json_t *jdevice = NULL;
 		json_array_foreach(jconfig, index, jdevice)
 		{
+			json_t *disable = json_object_get(jdevice, "disable");
+			if (disable && json_is_true(disable))
+				continue;
 			if (!json_is_object(jdevice))
 				continue;
 			if (scommon_isnamed(jdevice, name))
@@ -252,6 +258,9 @@ int scommon_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devcon
 	}
 	if (jconfig && json_is_object(jconfig))
 	{
+		json_t *disable = json_object_get(jconfig, "disable");
+		if (disable && json_is_true(disable))
+			return -1;
 		if (!scommon_isnamed(jconfig, name))
 			return -1;
 		json_t *definition = json_object_get(jconfig, "definition");
