@@ -1015,10 +1015,15 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 	else if (queryctrl->type == V4L2_CTRL_TYPE_STRING && value != NULL)
 	{
 		if (value != (void*)-1)
+		{
 			control.size = strlen(value) + 1;
+			control.string = value;
+		}
 		else
+		{
 			control.size = sizeof(string);
-		control.string = string;
+			control.string = string;
+		}
 	}
 	else if (queryctrl->type == V4L2_CTRL_TYPE_U8 ||
 			queryctrl->type == V4L2_CTRL_TYPE_U16 ||
@@ -1076,6 +1081,15 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 	case V4L2_CTRL_TYPE_U16:
 	case V4L2_CTRL_TYPE_U32:
 		warn("sv4l2: control %d %s => array", id, queryctrl->name);
+	break;
+	case V4L2_CTRL_TYPE_MENU:
+	{
+		struct v4l2_querymenu querymenu = {0};
+		querymenu.id = control.id;
+		querymenu.index = control.value;
+		ioctl(ctrlfd, VIDIOC_QUERYMENU, &querymenu);
+		warn("sv4l2: control %d %s => %s", id, queryctrl->name, querymenu.name);
+	}
 	break;
 	default:
 		warn("sv4l2: control %d %s => type(%d)", id, queryctrl->name, queryctrl->type);
@@ -1292,8 +1306,8 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 	dev->fd = fd;
 	dev->type = type;
 	dev->mode = mode;
-	if (mode & MODE_VERBOSE)
-		warn("sv4l2: create %s", devicename);
+	if (mode & MODE_VERBOSE && config)
+		warn("sv4l2: create %s, %s", devicename, config->device);
 	dev->ops.createbuffers = createbuffers_splane;
 	if (mode & MODE_MPLANE)
 	{
@@ -1332,8 +1346,6 @@ V4L2_t *sv4l2_create(const char *devicename, device_type_e type, V4l2Config_t *c
 	V4L2_t *dev = sv4l2_create2(fd, devicename, type, config);
 	if (dev == NULL)
 		close(fd);
-	else
-		warn("sv4l2: device %s", device);
 	return dev;
 }
 
