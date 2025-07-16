@@ -33,27 +33,27 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 				if (name && json_is_string(name) &&
 					!strcmp(json_string_value(name), "width"))
 				{
-					width = json_object_get(field, "value");
+					width = field;
 				}
 				if (name && json_is_string(name) &&
 					!strcmp(json_string_value(name), "height"))
 				{
-					height = json_object_get(field, "value");
+					height = field;
 				}
 				if (name && json_is_string(name) &&
 					!strcmp(json_string_value(name), "stride"))
 				{
-					stride = json_object_get(field, "value");
+					stride = field;
 				}
 				if (name && json_is_string(name) &&
 					!strcmp(json_string_value(name), "fourcc"))
 				{
-					fourcc = json_object_get(field, "value");
+					fourcc = field;
 				}
 				if (name && json_is_string(name) &&
 					!strcmp(json_string_value(name), "modifiers"))
 				{
-					modifiers = json_object_get(field, "value");
+					modifiers = field;
 				}
 			}
 		}
@@ -87,6 +87,8 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 		const char *value = json_string_value(fourcc);
 		config->fourcc = FOURCC(value[0], value[1], value[2], value[3]);
 	}
+	if (modifiers && json_is_object(modifiers))
+		modifiers = json_object_get(modifiers, "value");
 	if (modifiers && json_is_integer(modifiers))
 		config->modifiers = json_integer_value(modifiers);
 	return 0;
