@@ -847,7 +847,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	/// setup the sdt packet
 	{
 		memcpy(&dev->sdt, default_sdt, sizeof(dev->sdt));
-		memcpy(&dev->sdt.sdt.service.name, config->parent.name, 9);
+		memcpy(dev->sdt.sdt.service.name, config->parent.name, 9);
 		if (config->parent.fourcc == FOURCC_H264)
 			dev->sdt.sdt.service.type = 0x1b;
 		/// default 0x03 is mpeg1l3

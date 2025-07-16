@@ -31,12 +31,96 @@ struct Proto_UDP_s
 	size_t mtu;
 };
 
+static int proto_bindinterface(int sock, int family, unsigned long longaddress)
+{
+	int status = -1;
+	struct sockaddr* saddr = NULL;
+	socklen_t saddrlen = 0;
+	struct ifaddrs *ifa_list;
+	struct ifaddrs *ifa_main;
+	int ret = -1;
+	ret = getifaddrs(&ifa_list);
+	if (ret == 0)
+	{
+		for (ifa_main = ifa_list; ifa_main != NULL; ifa_main = ifa_main->ifa_next)
+		{
+			if (ifa_main->ifa_addr == NULL)
+				continue;
+			if (ifa_main->ifa_addr->sa_family != family)
+				continue;
+			if ((ifa_main->ifa_flags & IFF_UP) == 0)
+				continue;
+			if (ifa_main->ifa_flags & IFF_LOOPBACK)
+				continue;
+			family = ifa_main->ifa_addr->sa_family;
+			saddr = ifa_main->ifa_addr;
+			saddrlen = ifa_main->ifa_addr->sa_family == AF_INET?
+				sizeof(struct sockaddr_in) :
+				sizeof(struct sockaddr_in6);
+
+			char host[NI_MAXHOST];
+			getnameinfo(ifa_main->ifa_addr,
+			   (family == AF_INET) ? sizeof(struct sockaddr_in) :
+									 sizeof(struct sockaddr_in6),
+			   host, NI_MAXHOST,
+			   NULL, 0, NI_NUMERICHOST);
+			dbg("mpegts: interface %s %s %s %d", ifa_main->ifa_name, family == AF_INET?"IPv4": family == AF_INET6?"IPv6":"???", host, sock);
+			break;
+		}
+	}
+
+	if (saddr != NULL)
+		status = bind(sock, saddr, saddrlen);
+	if (status)
+		return status;
+
+	// check if the address is for multicast diffusion
+	if (IN_MULTICAST(htonl(longaddress)) ||
+		(family == AF_INET6 && htonl(longaddress) == 0xff020000))
+	{
+		if (! ifa_main->ifa_flags & IFF_MULTICAST)
+		{
+			err("smpegts: udp multicast interface not supported");
+			return -1;
+		}
+
+		// Set the outgoing interface to DEFAULT
+		status = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_IF, saddr, saddrlen);
+		if (status != 0)
+			warn("smpegts: not allowed to change interface");
+
+		unsigned char ttl = 3;
+		// Set multicast packet TTL to 3; default TTL is 1
+		status = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl,
+						sizeof(unsigned char));
+		if (status != 0)
+			warn("smpegts: not allowed to set TTL");
+
+		unsigned char one = 1;
+		// send multicast traffic to myself too
+		status = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, &one,
+						sizeof(unsigned char));
+		if (status != 0)
+			warn("smpegts: not allowed to make a loop on data sending");
+	}
+	else if (htonl(longaddress) > 0xff000000)
+	{
+		if (! ifa_main->ifa_flags & IFF_BROADCAST)
+		{
+			err("smpegts: udp broadcast interface not supported");
+			return -1;
+		}
+		status = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (void *)&(int){ 1 }, sizeof(int));
+		if (status == -1)
+			err("smpegts: udp broadcast error %m");
+	}
+	return status;
+}
+
 static void *proto_create(MPEG_TSConf_t *config)
 {
 	int sock = 0;
-	size_t mtu = 1500 - IP_HEADER_LENGTH - UDP_HEADER_LENGTH;
-	struct sockaddr* saddr = NULL;
-	socklen_t saddrlen = 0;
+	size_t mtu = 1500;
 	int family = 0;
 	struct sockaddr_in saddr_in = {0};
 
@@ -70,9 +154,9 @@ static void *proto_create(MPEG_TSConf_t *config)
 		longaddress = ((struct sockaddr_in6 *)rp->ai_addr)->sin6_addr.s6_addr32[0];
 		((struct sockaddr_in6 *)rp->ai_addr)->sin6_port = htons(config->port);
 	}
+	family = rp->ai_family;
 
-	int status = -1;
-	sock = socket(rp->ai_family, SOCK_DGRAM, IPPROTO_UDP);
+	sock = socket(family, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock < 0)
 		return NULL;
 
@@ -84,92 +168,7 @@ static void *proto_create(MPEG_TSConf_t *config)
 < 0)
 			warn("smpegts: setsockopt(SO_REUSEPORT) failed");
 #endif
-
-	struct ifaddrs *ifa_list;
-	struct ifaddrs *ifa_main;
-	int ret = -1;
-	ret = getifaddrs(&ifa_list);
-	if (ret == 0)
-	{
-		for (ifa_main = ifa_list; ifa_main != NULL; ifa_main = ifa_main->ifa_next)
-		{
-			if (ifa_main->ifa_addr == NULL)
-				continue;
-			if (ifa_main->ifa_addr->sa_family != rp->ai_family)
-				continue;
-			if ((ifa_main->ifa_flags & IFF_UP) == 0)
-				continue;
-			if (ifa_main->ifa_flags & IFF_LOOPBACK)
-				continue;
-			family = ifa_main->ifa_addr->sa_family;
-			saddr = ifa_main->ifa_addr;
-			saddrlen = ifa_main->ifa_addr->sa_family == AF_INET?
-				sizeof(struct sockaddr_in) :
-				sizeof(struct sockaddr_in6);
-
-			char host[NI_MAXHOST];
-			getnameinfo(ifa_main->ifa_addr,
-			   (family == AF_INET) ? sizeof(struct sockaddr_in) :
-									 sizeof(struct sockaddr_in6),
-			   host, NI_MAXHOST,
-			   NULL, 0, NI_NUMERICHOST);
-			dbg("mpegts: interface %s %s %s %d", ifa_main->ifa_name, family == AF_INET?"IPv4": family == AF_INET6?"IPv6":"???", host, sock);
-			break;
-		}
-	}
-
-	if (saddr != NULL)
-		status = bind(sock, saddr, saddrlen);
-
-	if (status == 0)
-	{
-		struct ifreq ifr;
-		memset(&ifr, 0, sizeof(ifr));
-		ifr.ifr_addr.sa_family = family;
-		if (ioctl(sock, SIOCGIFMTU, &ifr) != -1)
-			mtu = ifr.ifr_mtu - IP_HEADER_LENGTH - UDP_HEADER_LENGTH; /// size of udp/ip header
-
-		// check if the address is for multicast diffusion
-		if (IN_MULTICAST(htonl(longaddress)) ||
-			(family == AF_INET6 && htonl(longaddress) == 0xff020000))
-		{
-			if (! ifr.ifr_flags & IFF_MULTICAST)
-				err("smpegts: udp multicast interface not supported %s", config->host);
-			else
-				warn("smpegts: udp multicast to %s %d", config->host, config->port);
-
-			// Set the outgoing interface to DEFAULT
-			status = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_IF, saddr, saddrlen);
-			if (status != 0)
-				warn("smpegts: not allowed to change interface");
-
-			unsigned char ttl = 3;
-			// Set multicast packet TTL to 3; default TTL is 1
-			status = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl,
-							sizeof(unsigned char));
-			if (status != 0)
-				warn("smpegts: not allowed to set TTL");
-
-			unsigned char one = 1;
-			// send multicast traffic to myself too
-			status = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, &one,
-							sizeof(unsigned char));
-			if (status != 0)
-				warn("smpegts: not allowed to make a loop on data sending");
-		}
-		else if (htonl(longaddress) > 0xff000000)
-		{
-			status = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (void *)&(int){ 1 }, sizeof(int));
-			if (status == -1)
-				err("smpegts: udp broadcast error %m");
-			if (! ifr.ifr_flags & IFF_BROADCAST)
-				err("smpegts: udp broadcast interface not supported %s", config->host);
-			else
-				warn("smpegts: udp broadcast to %s %d", config->host, config->port);
-		}
-		else
-			warn("smpegts: udp unicast to %s %d", config->host, config->port);
-	}
+	int status = proto_bindinterface(sock, family, longaddress);
 
 	if (status)
 	{
@@ -177,12 +176,20 @@ static void *proto_create(MPEG_TSConf_t *config)
 		close(sock);
 		return NULL;
 	}
+
+	struct ifreq ifr;
+	memset(&ifr, 0, sizeof(ifr));
+	ifr.ifr_addr.sa_family = family;
+	if (ioctl(sock, SIOCGIFMTU, &ifr) != -1)
+		mtu = ifr.ifr_mtu;
+	warn("smpegts: udp to %s %d", config->host, config->port);
+
 	int flags;
 	flags = fcntl(sock, F_GETFL, 0);
 	fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 
 	Proto_UDP_t *proto = calloc(1, sizeof(*proto));
-	proto->mtu = mtu;
+	proto->mtu = mtu - IP_HEADER_LENGTH - UDP_HEADER_LENGTH; /// size of udp/ip header
 	proto->serverfd = sock;
 	proto->dest_size = rp->ai_addrlen;
 	memcpy(&proto->dest_addr, rp->ai_addr, rp->ai_addrlen);
