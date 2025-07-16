@@ -27,16 +27,17 @@
  * TODO split this file
  */
 #define MAX_BUFFERS 4
+#define TEST_FORMATMODIFIERS 0
 
 #define dbg_buffer_splane(v4l2) 		dbg("sv4l2: buf %d info:", v4l2->index); \
 		dbg("\ttype: %s", (v4l2->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)? "CAPTURE":"OUTPUT"); \
-		dbg("\tmemory: %s", (v4l2->memory == V4L2_MEMORY_DMABUF)? "DMABUF":"MMAP"); \
+		dbg("\tmemory: %s", (v4l2->memory == V4L2_MEMORY_DMABUF)? "DMABUF":(v4l2->memory == V4L2_MEMORY_MMAP)?"MMAP":"USERPTR"); \
 		dbg("\tdmafd: %d", v4l2->m.fd); \
 		dbg("\tlength: %u", v4l2->length); \
 		dbg("\tbytesused: %u", v4l2->bytesused);
 #define dbg_buffer_mplane(v4l2) 		dbg("sv4l2: mplane buf %d info:", v4l2->index); \
 		dbg("\ttype: %s", (v4l2->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)? "CAPTURE":"OUTPUT"); \
-		dbg("\tmemory: %s", (v4l2->memory == V4L2_MEMORY_DMABUF)? "DMABUF":"MMAP"); \
+		dbg("\tmemory: %s", (v4l2->memory == V4L2_MEMORY_DMABUF)? "DMABUF":(v4l2->memory == V4L2_MEMORY_MMAP)?"MMAP":"USERPTR"); \
 		dbg("\tdmafd: %d", v4l2->m.planes[0].m.fd); \
 		dbg("\tlength: %u", v4l2->m.planes[0].length); \
 		dbg("\tbytesused: %u", v4l2->bytesused);
@@ -875,7 +876,9 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 			if (dev->config->parent.modifiers)
 			{
 				err("V4l2 format currently doesn't support modifiers");
+#if TEST_FORMATMODIFIERS
 				return -1;
+#endif
 			}
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
