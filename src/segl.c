@@ -726,6 +726,7 @@ EXT_API int segl_stop(EGL_t *dev)
 
 static void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo, int flags)
 {
+	dev->curbufferid = id;
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
 #ifdef GLESV300
@@ -778,16 +779,12 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 	if (flags & FB_FLAGS_MODIFIER)
 		dev->buffers[id].modifiers = dev->config->parent.modifiers;
 	segl_queue_output(dev, id, bytesused, 0, flags);
-	dev->curbufferid = id;
 	int ret = dev->native->flush(dev->native_window);
 	if (dev->dup)
 	{
 		dev->dup->curbufferid = dev->curbufferid;
-		segl_queue_output(dev->dup, id, dev->dup->buffers[id].size, dev->dup->fbo, 0);
-#if 1
-		glBindTexture(dev->dup->buffers[id].textype, dev->dup->buffers[id].dma_texture);
-		glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, width, height, 0);
-#endif
+		dev->dup->curbufferid %= dev->dup->nbuffers;
+		segl_queue_output(dev->dup, dev->dup->curbufferid, dev->dup->buffers[id].size, dev->dup->fbo, 0);
 	}
 	return ret;
 }
