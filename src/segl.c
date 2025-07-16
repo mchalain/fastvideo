@@ -462,22 +462,15 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 
 static int texturedma_get(EGL_t *dev, int id)
 {
-/// the both have the same result
-#if 0
-	GLint *attributes = NULL;
-
-	EGLImage image = eglCreateImageKHR(dev->egldisplay, dev->eglcontext, dev->buffers[id].egltarget,
-		(void *)(long)dev->buffers[id].dma_texture, attributes);
-#else
 	const EGLAttrib tattributes[] = {
 		EGL_IMAGE_PRESERVED, EGL_TRUE,
 		EGL_NONE,
 	};
 	const EGLAttrib *attributes = tattributes;
 
-	EGLImage image = eglCreateImage(dev->egldisplay, dev->eglcontext, dev->buffers[id].egltarget,
+	/// eglCreateImage and eglCreateImageKHR have the same result
+	EGLImage image = eglCreateImageKHR(dev->egldisplay, dev->eglcontext, dev->buffers[id].egltarget,
 		(void *)(long)dev->buffers[id].dma_texture, attributes);
-#endif
 	if (image == EGL_NO_IMAGE)
 		return -1;
 
