@@ -803,6 +803,8 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 		}
 		if (flags && dev->buffers[id].modifiers)
 			*flags |= FB_FLAGS_MODIFIER;
+		if (bytesused)
+			*bytesused = dev->buffers[id].size;
 		return id;
 	}
 	glUseProgram(0);
