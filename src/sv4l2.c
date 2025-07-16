@@ -263,7 +263,6 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 		err("sv4l2: device %s not video %m", interface);
 		return -1;
 	}
-	warn("sv4l2: device %.32s", cap.card);
 	if (interface)
 		memcpy(interface, cap.card, sizeof(cap.card));
 #ifdef DEBUG
@@ -601,10 +600,9 @@ static int _v4l2_getbufferfd(V4L2_t *dev, int i, int plane)
 	return _v4l2buffer_exportdmafd(&dev->buffers[i], plane, dev->fd);
 }
 
-int sv4l2_requestbuffer_mmap(V4L2_t *dev)
+int sv4l2_requestbuffer_mmap(V4L2_t *dev, int count)
 {
 	int ret = 0;
-	int count = MAX_BUFFERS;
 	if (dev->buffers && dev->buffers[0].v4l2.memory == V4L2_MEMORY_MMAP)
 		return 0;
 	if (dev->buffers)
@@ -661,22 +659,20 @@ int sv4l2_requestbuffer_mmap(V4L2_t *dev)
 	return ret;
 }
 
-int sv4l2_requestbuffer_dmabuf(V4L2_t *dev)
+int sv4l2_requestbuffer_dmabuf(V4L2_t *dev, int count)
 {
-	int count = MAX_BUFFERS;
 	if (dev->buffers && dev->buffers[0].v4l2.memory == V4L2_MEMORY_DMABUF)
 		return 0;
 	V4L2Buffer_t *oldbuffers = NULL;
 	if (dev->mode & MODE_MASTER)
 	{
 		/// master request MMAP first to export the DMA in a second time
-		if (sv4l2_requestbuffer_mmap(dev) < 0)
+		if (sv4l2_requestbuffer_mmap(dev, count) < 0)
 		{
 			err("mmap error");
 			return -1;
 		}
 		oldbuffers = dev->buffers;
-		count = dev->nbuffers;
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
 			int dma_fd = _v4l2_getbufferfd(dev, i, 0);
@@ -767,7 +763,7 @@ int sv4l2_requestbuffer_userptr(V4L2_t *dev, int nmems, void *mems[], size_t siz
 	if (ioctl(dev->fd, VIDIOC_REQBUFS, &req) != 0)
 	{
 		if (errno == EINVAL)
-			err("sv4l2: UserPtr memory not supported");
+			err("sv4l2: UserPtr memory not supported by device");
 		else
 			err("Request buffer for mmap error %m");
 		return -1;
@@ -837,12 +833,12 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 	switch (t)
 	{
 		case buf_type_sv4l2 | buf_type_master:
-			ret = sv4l2_requestbuffer_dmabuf(dev);
+			ret = sv4l2_requestbuffer_dmabuf(dev, MAX_BUFFERS);
 		break;
 		case buf_type_sv4l2:
 		{
 			V4L2_t *master = va_arg(ap, V4L2_t *);
-			if ((ret = sv4l2_requestbuffer_dmabuf(dev)) == 0)
+			if ((ret = sv4l2_requestbuffer_dmabuf(dev, MAX_BUFFERS)) == 0)
 				ret = sv4l2_linkv4l2(dev, master);
 		}
 		break;
@@ -856,7 +852,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 		break;
 		case (buf_type_memory | buf_type_master):
 		{
-			ret = sv4l2_requestbuffer_mmap(dev);
+			ret = sv4l2_requestbuffer_mmap(dev, MAX_BUFFERS);
 			if (ret)
 				break;
 			int *ntargets = va_arg(ap, int *);
@@ -885,7 +881,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
-			if ((ret = sv4l2_requestbuffer_dmabuf(dev)) == 0)
+			if ((ret = sv4l2_requestbuffer_dmabuf(dev, ntargets)) == 0)
 			{
 				ret = sv4l2_linkdma(dev, ntargets, targets, size);
 			}
@@ -893,7 +889,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 		break;
 		case buf_type_dmabuf | buf_type_master:
 		{
-			ret = sv4l2_requestbuffer_dmabuf(dev);
+			ret = sv4l2_requestbuffer_dmabuf(dev, MAX_BUFFERS);
 			if (ret)
 				break;
 			int *ntargets = va_arg(ap, int *);
@@ -918,13 +914,16 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 			return -1;
 	}
 	va_end(ap);
-#ifdef DEBUG
+#if 0
 	for (int i = 0; i < dev->nbuffers; i++)
 	{
 		dbg_buffer((&dev->buffers[i].v4l2));
 	}
+	int length = 0;
+	if (dev->buffers)
+		length = dev->buffers[0].length;
+	dbg("sv4l2: %s %dx%d, %.4s %lu", dev->name, dev->width, dev->height, (char*)&dev->fourcc, length);
 #endif
-	dbg("sv4l2: %s %dx%d, %.4s %lu", dev->name, dev->width, dev->height, (char*)&dev->fourcc, dev->buffers[0].length);
 	return ret;
 }
 
@@ -1475,7 +1474,7 @@ int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused, int flags)
 	ret = ioctl(dev->fd, VIDIOC_QBUF, &dev->buffers[index].v4l2);
 	if (ret)
 	{
-		dbg("sv4l2: %s(%s) queueing error %m", dev->name, (dev->mode & MODE_OUTPUT)?"output":"capture");
+		dbg("sv4l2: %s(%s[%d]) queueing error %m", dev->name, (dev->mode & MODE_OUTPUT)?"output":"capture", index);
 		dbg_buffer((&dev->buffers[index].v4l2));
 	}
 	return ret;
