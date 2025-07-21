@@ -288,6 +288,8 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 		dbg("device %s vbi", interface);
 	if(cap.device_caps & V4L2_CAP_RADIO)
 		dbg("device %s radio", interface);
+	if(cap.device_caps & V4L2_CAP_EXT_PIX_FORMAT)
+		dbg("device %s Pixformat extension available", interface);
 	if(cap.device_caps & V4L2_CAP_IO_MC)
 		dbg("device %s media control available", interface);
 #endif
@@ -369,8 +371,8 @@ uint32_t sv4l2_getpixformat(V4L2_t *dev, int (*pixformat)(void *arg, struct v4l2
 	dbg("Formats:");
 	while (pixformat && ioctl(dev->fd, VIDIOC_ENUM_FMT, &fmtdesc) == 0)
 	{
-		dbg("\t%.4s => %s", (char*)&fmtdesc.pixelformat,
-				fmtdesc.description);
+		dbg("\t%.4s => %s %#x", (char*)&fmtdesc.pixelformat, fmtdesc.description,
+				fmtdesc.flags);
 		fmtdesc.index++;
 		pixformat(cbarg, &fmtdesc, (fmtdesc.pixelformat == pixelformat));
 	}
@@ -582,9 +584,10 @@ static int _v4l2_setfps(int fd, enum v4l2_buf_type type, int fps)
 			return -1;
 		}
 	}
-	dbg("Frame rate: %d/%d fps",
+	dbg("Frame rate: %d/%d fps (request %d/%d",
 			streamparm.parm.capture.timeperframe.denominator,
-			streamparm.parm.capture.timeperframe.numerator);
+			streamparm.parm.capture.timeperframe.numerator,
+			(fps > 0)?1:-fps, (fps > 0)?fps:1);
 	return fps;
 }
 
@@ -1046,7 +1049,11 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 	controls.controls = &control;
 	if (value != (void *)(long)-1)
 	{
-		if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
+		if (queryctrl->flags & V4L2_CTRL_FLAG_READ_ONLY)
+		{
+			err("sv4l2: control %d reaad-only", id);
+		}
+		else if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
 		{
 			err("sv4l2: control %d %s setting error %m", id, queryctrl->name);
 			return (void *)-1;
@@ -2218,6 +2225,8 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 	{
 		json_t *type = json_string(sv4l2_CTRLTYPE(ctrl->type));
 		json_object_set_new(control, "type", type);
+		if (ctrl->flags & V4L2_CTRL_FLAG_READ_ONLY)
+			json_object_set_new(control, "read-only", json_true());
 	}
 
 	switch (ctrl->type)
