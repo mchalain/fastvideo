@@ -19,7 +19,13 @@
 
 static EGLNativeDisplayType native_display(EGLConfig_t *config)
 {
-	return (EGLNativeDisplayType)EGL_DEFAULT_DISPLAY;
+	if (!_egl_hasextension(EGL_NO_DISPLAY, "EGL_EXT_platform_base"))
+		return (EGLNativeDisplayType)EGL_DEFAULT_DISPLAY;
+	if (!_egl_hasextension(EGL_NO_DISPLAY, "EGL_MESA_platform_surfaceless"))
+		return (EGLNativeDisplayType)EGL_DEFAULT_DISPLAY;
+	PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT = (void *) eglGetProcAddress("eglGetPlatformDisplayEXT");
+
+	return eglGetPlatformDisplayEXT(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
 }
 
 static const EGLint g_attributes[] = {
