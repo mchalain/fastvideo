@@ -98,6 +98,9 @@ int glprog_run(GLProgram_t *program, int bufid);
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
 void glprog_destroy(GLProgram_t *program);
 
+int _egl_hasextension(EGLDisplay eglDisplay, const char *extension);
+int segl_hasextension(EGL_t *dev, const char *extension);
+
 #ifdef HAVE_JANSSON
 int segl_loadjsonsettings(EGL_t *dev, void *jconfig);
 int segl_loadjsonconfiguration(void *arg, void *entry);

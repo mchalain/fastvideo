@@ -105,6 +105,17 @@ static const FourccFormat_t *fourcc_getformat(uint32_t fourcc)
 	return format;
 }
 
+int _egl_hasextension(EGLDisplay eglDisplay, const char *extension)
+{
+	const char *extensions = eglQueryString(eglDisplay, EGL_EXTENSIONS);
+	return (strstr(extensions, extension) != NULL);
+}
+
+int segl_hasextension(EGL_t *dev, const char *extension)
+{
+	return _egl_hasextension(dev->egldisplay, extension);
+}
+
 #ifdef DEBUG
 static int _egl_configinfo(EGLDisplay eglDisplay, EGLConfig eglConfig)
 {
