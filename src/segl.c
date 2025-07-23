@@ -754,6 +754,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 			dup->buffers[i].textype, dup->buffers[i].dma_texture, 0);
 #endif
 		dup->nbuffers++;
+		/// only one buffer
 		break;
 	}
 	/* Sanity check. */
@@ -764,6 +765,13 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		return NULL;
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	for (int i = dup->nbuffers; i < MAX_BUFFERS; i++, dup->nbuffers++)
+	{
+		dup->buffers[i].egltarget = dup->buffers[0].egltarget;
+		dup->buffers[i].textype = dup->buffers[0].textype;
+		dup->buffers[i].dma_texture = dup->buffers[0].dma_texture;
+		dup->buffers[i].size = dup->buffers[0].size;
+	}
 	return dup;
 }
 
