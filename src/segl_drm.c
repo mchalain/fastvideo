@@ -24,11 +24,6 @@
 # define GBM_FORMAT_ABGR16161616F DRM_FORMAT_ABGR16161616F
 #endif
 
-static struct {
-	struct gbm_device *dev;
-	struct gbm_surface *surface;
-} gbm;
-
 static struct drm_s {
 	uint32_t fourcc;
 	int fd;
@@ -63,13 +58,13 @@ static uint32_t find_crtc_for_encoder(const drmModeRes *resources,
 	return -1;
 }
 
-static uint32_t find_crtc_for_connector(const drmModeRes *resources,
+static uint32_t find_crtc_for_connector(int fd, const drmModeRes *resources,
 					const drmModeConnector *connector) {
 	int i;
 
 	for (i = 0; i < connector->count_encoders; i++) {
 		const uint32_t encoder_id = connector->encoders[i];
-		drmModeEncoder *encoder = drmModeGetEncoder(drm.fd, encoder_id);
+		drmModeEncoder *encoder = drmModeGetEncoder(fd, encoder_id);
 
 		if (encoder) {
 			const uint32_t crtc_id = find_crtc_for_encoder(resources, encoder);
@@ -85,13 +80,13 @@ static uint32_t find_crtc_for_connector(const drmModeRes *resources,
 	return -1;
 }
 
-static drmModeConnector *find_connector(drmModeRes *resources, uint32_t width, uint32_t height, int mode)
+static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t width, uint32_t height, drmModeModeInfo **mode, int force)
 {
 	drmModeConnector *connector = NULL;
 	for (int i = 0; i < resources->count_connectors; i++)
 	{
-		connector = drmModeGetConnector(drm.fd, resources->connectors[i]);
-		if (mode == 0 && connector->connection != DRM_MODE_CONNECTED)
+		connector = drmModeGetConnector(fd, resources->connectors[i]);
+		if (!force && connector->connection != DRM_MODE_CONNECTED)
 			continue;
 		for (int j = 0; j < connector->count_modes; j++)
 		{
@@ -101,14 +96,14 @@ static drmModeConnector *find_connector(drmModeRes *resources, uint32_t width, u
 					current_mode->hdisplay >= width)
 			{
 				if (current_mode->hdisplay == width ||
-					(mode == 0x01 && current_mode->type & DRM_MODE_TYPE_PREFERRED))
+					(current_mode->type & DRM_MODE_TYPE_PREFERRED))
 				{
-					drm.mode = current_mode;
+					*mode = current_mode;
 					break;
 				}
 			}
 		}
-		if (drm.mode)
+		if (*mode)
 			break;
 		drmModeFreeConnector(connector);
 		connector = NULL;
@@ -116,22 +111,15 @@ static drmModeConnector *find_connector(drmModeRes *resources, uint32_t width, u
 	return connector;
 }
 
-static int init_drm(const char *device, uint32_t width, uint32_t height)
+static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height)
 {
 	drmModeRes *resources;
 	drmModeConnector *connector = NULL;
 	drmModeEncoder *encoder = NULL;
 
-	drm.fd = open(device, O_RDWR);
-	dbg("segl: open %s",device);
-
-	if (drm.fd < 0)
-	{
-		err("segl: could not open drm device %s", device);
-		return -1;
-	}
-
-	resources = drmModeGetResources(drm.fd);
+	drm.fd = fd;
+	drm.fourcc = fourcc;
+	resources = drmModeGetResources(fd);
 	if (!resources)
 	{
 		err("segl: drmModeGetResources failed: %m");
@@ -139,7 +127,7 @@ static int init_drm(const char *device, uint32_t width, uint32_t height)
 	}
 
 	/* find a connected connector: */
-	connector = find_connector(resources, width, height, 0);
+	connector = find_connector(fd, resources, width, height, &drm.mode, 0);
 
 	if (!connector)
 	{
@@ -147,19 +135,19 @@ static int init_drm(const char *device, uint32_t width, uint32_t height)
 		 * a connector..
 		 */
 		err("segl: no connected connector!");
-		connector = find_connector(resources, width, height, 0x02);
+		connector = find_connector(fd, resources, width, height, &drm.mode, 1);
 	}
 
 	if (!drm.mode)
 	{
 		err("segl: could not find mode!");
-		connector = drmModeGetConnector(drm.fd, resources->connectors[0]);
+		connector = drmModeGetConnector(fd, resources->connectors[0]);
 	}
 
 	/* find encoder: */
 	for (int i = 0; i < resources->count_encoders; i++)
 	{
-		encoder = drmModeGetEncoder(drm.fd, resources->encoders[i]);
+		encoder = drmModeGetEncoder(fd, resources->encoders[i]);
 		if (encoder->encoder_id == connector->encoder_id)
 			break;
 		drmModeFreeEncoder(encoder);
@@ -169,7 +157,7 @@ static int init_drm(const char *device, uint32_t width, uint32_t height)
 	if (encoder) {
 		drm.crtc_id = encoder->crtc_id;
 	} else {
-		uint32_t crtc_id = find_crtc_for_connector(resources, connector);
+		uint32_t crtc_id = find_crtc_for_connector(fd, resources, connector);
 		if (crtc_id == 0) {
 			err("segl: no crtc found!");
 			return -1;
@@ -180,7 +168,7 @@ static int init_drm(const char *device, uint32_t width, uint32_t height)
 
 	drm.connector_id = connector->connector_id;
 
-	drmModeCrtc *saved_crtc = drmModeGetCrtc(drm.fd, drm.crtc_id);
+	drmModeCrtc *saved_crtc = drmModeGetCrtc(fd, drm.crtc_id);
 	return 0;
 }
 
@@ -189,9 +177,10 @@ drm_fb_destroy_callback(struct gbm_bo *bo, void *data)
 {
 	struct drm_fb *fb = data;
 	struct gbm_device *gbm = gbm_bo_get_device(bo);
+	int fd = gbm_bo_get_fd(bo);
 
 	if (fb->fb_id)
-		drmModeRmFB(drm.fd, fb->fb_id);
+		drmModeRmFB(fd, fb->fb_id);
 
 	free(fb);
 }
@@ -478,21 +467,27 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	const char *device = config->device;
 	if (device == NULL)
 		device = "/dev/dri/card0";
-	if (init_drm(device, config->parent.width, config->parent.height))
+	int fd = open(device, O_RDWR);
+
+	if (fd < 0)
 	{
+		err("segl: could not open drm device %s", device);
 		return EGL_CAST(EGLNativeDisplayType, EGL_UNKNOWN);
 	}
-	gbm.dev = gbm_create_device(drm.fd);
+
+	struct gbm_device *gbm = gbm_create_device(fd);
+	dbg("segl: open (%s) %s", device, gbm_device_get_backend_name(gbm));
 
 	uint32_t defaultfourcc = 0;
 	uint32_t requestfourcc = config->transfer;
 	if (requestfourcc == FOURCC_NV12)
 		requestfourcc = FOURCC_R8;
-	drm.fourcc = 0;
+	uint32_t fourcc = 0;
 	dbg("segl: screen formats (search %.4s):", &requestfourcc);
 	for (int i = 0; i < sizeof(g_formats)/sizeof(*g_formats); i++)
 	{
-		int ret = gbm_device_is_format_supported(gbm.dev, g_formats[i].fourcc, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+		int ret = gbm_device_is_format_supported(gbm, g_formats[i].fourcc,
+				GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
 		if (ret)
 		{
 			dbg("\t%.4s", &g_formats[i].fourcc);
@@ -500,12 +495,18 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 				defaultfourcc = g_formats[i].fourcc;
 		}
 		if (ret && requestfourcc && requestfourcc == g_formats[i].fourcc)
-			drm.fourcc = g_formats[i].fourcc;
+			fourcc = g_formats[i].fourcc;
 	}
-	if (! drm.fourcc)
-		drm.fourcc = defaultfourcc;
+	if (! fourcc)
+		fourcc = defaultfourcc;
 	dbg("segl: screen format %.4s", &drm.fourcc);
-	return (EGLNativeDisplayType)gbm.dev;
+
+	if (init_drm(fd, fourcc, config->parent.width, config->parent.height))
+	{
+		return EGL_CAST(EGLNativeDisplayType, EGL_UNKNOWN);
+	}
+
+	return (EGLNativeDisplayType)gbm;
 }
 
 static const GLint *native_attributes(EGLNativeDisplayType display)
@@ -521,25 +522,26 @@ static const GLint *native_attributes(EGLNativeDisplayType display)
 
 static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLuint width, GLuint height, const GLchar *name)
 {
-	struct gbm_device *dev = (struct gbm_device *)display;
+	struct gbm_device *gbm = (struct gbm_device *)display;
 
 	uint64_t modifiers[1] = {DRM_FORMAT_MOD_LINEAR};
 	int modifiers_length = 1;
-	gbm.surface = gbm_surface_create_with_modifiers(dev,
+	struct gbm_surface *surface =NULL;
+	surface = gbm_surface_create_with_modifiers(gbm,
 			width, height, drm.fourcc, modifiers, modifiers_length);
-	if (!gbm.surface)
-		gbm.surface = gbm_surface_create(dev, width, height, drm.fourcc,
+	if (!surface)
+		surface = gbm_surface_create(gbm, width, height, drm.fourcc,
 			GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
-	if (!gbm.surface)
-		gbm.surface = gbm_surface_create(dev, width, height, drm.fourcc,
+	if (!surface)
+		surface = gbm_surface_create(gbm, width, height, drm.fourcc,
 			GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 
-	if (!gbm.surface) {
+	if (!surface) {
 		err("segl: failed to create gbm surface %.4s", &drm.fourcc);
 		return (EGLNativeWindowType)NULL;
 	}
 
-	return (EGLNativeWindowType) gbm.surface;
+	return (EGLNativeWindowType) surface;
 }
 
 static int native_fd(EGLNativeWindowType native_win)
@@ -554,34 +556,32 @@ static int native_fd(EGLNativeWindowType native_win)
 static struct gbm_bo *old_bo = NULL;
 static int native_flush(EGLNativeWindowType native_win)
 {
-	struct gbm_surface *surface = gbm.surface;
+	struct gbm_surface *surface = (struct gbm_surface *)native_win;
+	struct gbm_bo *bo;
+	bo = gbm_surface_lock_front_buffer(surface);
+	struct drm_fb *fb;
+	fb = drm_fb_get_from_bo(bo);
+	struct drm_s *drm = fb->drm;
 
 	if (old_bo == NULL)
 	{
-		old_bo = gbm_surface_lock_front_buffer(surface);
-		struct drm_fb *fb;
-		fb = drm_fb_get_from_bo(old_bo);
-		dbg("segl: drm modifiers %lli", gbm_bo_get_modifier(old_bo));
+		dbg("segl: drm modifiers %lli", gbm_bo_get_modifier(bo));
 		/* set mode: */
-		if (drm.mode)
+		if (drm->mode)
 		{
-			int ret = drmModeSetCrtc(drm.fd, drm.crtc_id, fb->fb_id, 0, 0,
-					&drm.connector_id, 1, drm.mode);
+			int ret = drmModeSetCrtc(drm->fd, drm->crtc_id, fb->fb_id, 0, 0,
+					&drm->connector_id, 1, drm->mode);
 			if (ret) {
 				err("segl: failed to set mode: %m");
 				return -1;
 			}
 		}
+		old_bo = bo;
 		return 0;
 	}
-	struct gbm_bo *bo;
-	bo = gbm_surface_lock_front_buffer(surface);
-	struct drm_fb *fb;
-	fb = drm_fb_get_from_bo(bo);
-
-	drm.waiting_for_flip = 1;
-	int ret = drmModePageFlip(fb->drm->fd, fb->drm->crtc_id, fb->fb_id,
-			DRM_MODE_PAGE_FLIP_EVENT, &drm.waiting_for_flip);
+	drm->waiting_for_flip = 1;
+	int ret = drmModePageFlip(drm->fd, drm->crtc_id, fb->fb_id,
+			DRM_MODE_PAGE_FLIP_EVENT, &drm->waiting_for_flip);
 	if (ret)
 	{
 		err("segl: failed to queue page flip: %m");
@@ -597,7 +597,7 @@ static int native_flush(EGLNativeWindowType native_win)
 
 static int native_sync(EGLNativeWindowType native_win)
 {
-	struct gbm_surface *surface = gbm.surface;
+	struct gbm_surface *surface = (struct gbm_surface *)native_win;
 
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
