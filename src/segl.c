@@ -507,13 +507,13 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 	return ret;
 }
 
-static int texturedma_get(EGL_t *dev, int id)
+static int _egl_export_getdma(EGL_t *dev, int id)
 {
-	const EGLAttrib tattributes[] = {
+	const EGLint tattributes[] = {
 		EGL_IMAGE_PRESERVED, EGL_TRUE,
 		EGL_NONE,
 	};
-	const EGLAttrib *attributes = tattributes;
+	const EGLint *attributes = tattributes;
 
 	/// eglCreateImage and eglCreateImageKHR have the same result
 	EGLImage image = eglCreateImageKHR(dev->egldisplay, dev->eglcontext, dev->buffers[id].egltarget,
@@ -540,6 +540,8 @@ static int texturedma_get(EGL_t *dev, int id)
 	{
 		eglExportDMABUFImageMESA(dev->egldisplay, image, &dma_buf[0], &stride[0], &offset[0]);
 	}
+	if (stride[0] != dev->buffers[id].size / dev->config->parent.height)
+		err("segl: exported format not aligned");
 	if (dev->config->parent.fourcc && dev->config->parent.fourcc != fourcc)
 		err("segl: requests %.4s, obtains %.4s", &dev->config->parent.fourcc, &fourcc);
 	dev->config->parent.fourcc = fourcc;
@@ -549,21 +551,35 @@ static int texturedma_get(EGL_t *dev, int id)
 	dev->buffers[id].pitch = stride[0];
 	dev->buffers[id].modifiers = modifiers;
 	if (modifiers != dev->config->parent.modifiers)
-		err("segl: format modifier present but not set (%d/%d)", modifiers, dev->config->parent.modifiers);
+		err("segl: format modifier present but not set (%lld/%lld)", modifiers, dev->config->parent.modifiers);
 
 	return dma_buf[0];
 }
 
-static void *texturemem_get(EGL_t *dev, int id)
+static void *_egl_export_getmem(EGL_t *dev, int id)
 {
 	void *mem = calloc(1, dev->buffers[id].size);
-
+	dev->buffers[id].memory = mem;
 	return mem;
+}
+
+static void _egl_releasebuffer(EGL_t *dev, int id)
+{
+	if (dev->buffers[id].memory != NULL)
+		free(dev->buffers[id].memory);
+	dev->buffers[id].memory = NULL;
+	if (dev->buffers[id].dma_image)
+		eglDestroyImageKHR(dev->egldisplay, dev->buffers[id].dma_image);
+	dev->buffers[id].dma_image = 0;
 }
 
 static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 {
 	int ret = -1;
+	for (int i = 0; i < dev->nbuffers; i++)
+	{
+		_egl_releasebuffer(dev,i);
+	}
 	switch (t)
 	{
 		case buf_type_dmabuf | buf_type_master:
@@ -579,7 +595,7 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 					int dma_fd = dev->buffers[i].dma_fd;
 					if (dma_fd == 0)
 					{
-						dma_fd = texturedma_get(dev, i);
+						dma_fd = _egl_export_getdma(dev, i);
 						if (dma_fd <= 0)
 						{
 							err("segl: export dma_buf error %d", dma_fd);
@@ -607,13 +623,10 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 			int ntargets = va_arg(ap, int);
 			void **targets = va_arg(ap, void **);
 			size_t size = va_arg(ap, size_t);
+			/// here we can use several buffers
+			dev->nbuffers = ntargets;
 			for (int i = 0; i < ntargets && i < dev->nbuffers; i++)
 			{
-				if (dev->buffers[i].memory)
-				{
-					free(dev->buffers[i].memory);
-					dev->buffers[i].memory = NULL;
-				}
 				if (dev->buffers[i].size > size)
 					err("segl: output buffer is too small for the image");
 				dev->buffers[i].memory = targets[i];
@@ -634,22 +647,8 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 				*targets = calloc(dev->nbuffers, sizeof(int));
 				for (int i = 0; i < dev->nbuffers; i++)
 				{
-					void *mem = dev->buffers[i].memory;
-					if (mem == NULL)
-					{
-						mem = texturemem_get(dev, i);
-						if (mem == NULL)
-						{
-							err("segl: export dma_buf error %p", mem);
-							dev->nbuffers = i;
-							break;
-						}
-						dev->buffers[i].memory = mem;
-						eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
-						dev->buffers[i].dma_image = 0;
-					}
-					(*targets)[i] = mem;
-					dbg("segl: export dmabuffer[%d]: %p %lu", i, mem, dev->buffers[i].size);
+					(*targets)[i] = _egl_export_getmem(dev, i);
+					dbg("segl: export memory[%d]: %p %lu", i, dev->buffers[i].memory, dev->buffers[i].size);
 				}
 			}
 			if (ntargets != NULL)
@@ -872,6 +871,22 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 			*flags |= FB_FLAGS_MODIFIER;
 		if (bytesused)
 			*bytesused = dev->buffers[id].size;
+// not tested
+#if 0
+		if (dev->buffers[id].memory != NULL)
+		{
+			uint32_t width = dev->config->parent.width;
+			uint32_t height = dev->config->parent.height;
+			glFinish();
+			glBindTexture(dev->buffers[id].textype, dev->buffers[id].dma_texture);
+			glPixelStorei(GL_PACK_ALIGNMENT, 1);
+			glReadPixels(0, 0, width, height, dev->buffers[id].textype,
+					GL_UNSIGNED_BYTE, dev->buffers[id].memory);
+			glBindTexture(dev->buffers[id].textype, 0);
+			if (mem)
+				*mem = dev->buffers[id].memory;
+		}
+#endif
 		return id;
 	}
 	glUseProgram(0);
@@ -899,6 +914,10 @@ EXT_API void segl_destroy(EGL_t *dev)
 		eglDestroySurface(dev->egldisplay, dev->eglsurface);
 		eglDestroyContext(dev->egldisplay, dev->eglcontext);
 		dev->native->destroy(dev->native_display);
+	}
+	for (int i = 0; i < dev->nbuffers; i++)
+	{
+		_egl_releasebuffer(dev,i);
 	}
 	free(dev);
 }
