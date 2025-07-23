@@ -51,12 +51,9 @@ int _createdevices(void *data, const char *name, const char *type, void *config)
 		if (! strcmp(fastVideoDevice_ops[i]->name, type))
 		{
 			DeviceConf_t *devconfig = NULL;
-			devconfig = fastVideoDevice_ops[i]->createconfig();
+			devconfig = config_create(name, fastVideoDevice_ops[i], config);
 			if (devconfig)
 			{
-				devconfig->name = name;
-				devconfig->type = type;
-				devconfig->entry = config;
 				devconfig->ops.loadconfiguration(devconfig, config);
 				FastVideoDevice_t *device = NULL;
 				device = calloc(1, sizeof(*device));

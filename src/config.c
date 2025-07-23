@@ -218,6 +218,19 @@ int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data,
 	return ret;
 }
 
+DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *entry)
+{
+	DeviceConf_t *devconfig = NULL;
+	devconfig = ops->createconfig();
+	if (devconfig)
+	{
+		devconfig->name = name;
+		devconfig->type = ops->name;
+		devconfig->entry = entry;
+	}
+	return devconfig;
+}
+
 int scommon_isnamed(json_t *jdevice, const char *name)
 {
 	json_t *jname = json_object_get(jdevice, "name");
