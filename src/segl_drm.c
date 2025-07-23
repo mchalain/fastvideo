@@ -485,8 +485,11 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	gbm.dev = gbm_create_device(drm.fd);
 
 	uint32_t defaultfourcc = 0;
+	uint32_t requestfourcc = config->transfer;
+	if (requestfourcc == FOURCC_NV12)
+		requestfourcc = FOURCC_R8;
 	drm.fourcc = 0;
-	dbg("segl: screen formats (search %.4s):", &config->transfer);
+	dbg("segl: screen formats (search %.4s):", &requestfourcc);
 	for (int i = 0; i < sizeof(g_formats)/sizeof(*g_formats); i++)
 	{
 		int ret = gbm_device_is_format_supported(gbm.dev, g_formats[i].fourcc, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
@@ -496,7 +499,7 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 			if (!defaultfourcc)
 				defaultfourcc = g_formats[i].fourcc;
 		}
-		if (ret && config->transfer && config->transfer == g_formats[i].fourcc)
+		if (ret && requestfourcc && requestfourcc == g_formats[i].fourcc)
 			drm.fourcc = g_formats[i].fourcc;
 	}
 	if (! drm.fourcc)
@@ -520,10 +523,17 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 {
 	struct gbm_device *dev = (struct gbm_device *)display;
 
-	gbm.surface = gbm_surface_create(gbm.dev,
-			width, height,
-			drm.fourcc,
+	uint64_t modifiers[1] = {DRM_FORMAT_MOD_LINEAR};
+	int modifiers_length = 1;
+	gbm.surface = gbm_surface_create_with_modifiers(dev,
+			width, height, drm.fourcc, modifiers, modifiers_length);
+	if (!gbm.surface)
+		gbm.surface = gbm_surface_create(dev, width, height, drm.fourcc,
+			GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
+	if (!gbm.surface)
+		gbm.surface = gbm_surface_create(dev, width, height, drm.fourcc,
 			GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+
 	if (!gbm.surface) {
 		err("segl: failed to create gbm surface %.4s", &drm.fourcc);
 		return (EGLNativeWindowType)NULL;
@@ -551,7 +561,7 @@ static int native_flush(EGLNativeWindowType native_win)
 		old_bo = gbm_surface_lock_front_buffer(surface);
 		struct drm_fb *fb;
 		fb = drm_fb_get_from_bo(old_bo);
-
+		dbg("segl: drm modifiers %lli", gbm_bo_get_modifier(old_bo));
 		/* set mode: */
 		if (drm.mode)
 		{
