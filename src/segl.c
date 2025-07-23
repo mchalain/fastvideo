@@ -957,6 +957,7 @@ DeviceConf_t * segl_createconfig()
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = segl_loadjsonconfiguration;
 #endif
+	devconfig->transfer = FOURCC_XR24; /// XRGB8888
 	return (DeviceConf_t *)devconfig;
 }
 
