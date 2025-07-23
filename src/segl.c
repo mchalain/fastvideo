@@ -105,6 +105,54 @@ static const FourccFormat_t *fourcc_getformat(uint32_t fourcc)
 	return format;
 }
 
+#ifdef DEBUG
+static int _egl_configinfo(EGLDisplay eglDisplay, EGLConfig eglConfig)
+{
+	if (eglConfig == EGL_NO_CONFIG_KHR)
+		return -1;
+	EGLint id;
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_CONFIG_ID, &id);
+	EGLint redsize;
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_RED_SIZE, &redsize);
+	EGLint greensize;
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_GREEN_SIZE, &greensize);
+	EGLint bluesize;
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_BLUE_SIZE, &bluesize);
+	EGLint alphasize;
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_ALPHA_SIZE, &alphasize);
+	EGLint texturetype;
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_BIND_TO_TEXTURE_RGB, &texturetype);
+	EGLint buffertype;
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_COLOR_BUFFER_TYPE, &buffertype);
+	EGLint surfacetype;
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_SURFACE_TYPE, &surfacetype);
+	dbg("segl: config[%.2d]\t%s %d/%d/%d/%d %s", id, (surfacetype & EGL_PBUFFER_BIT)?"pbuffer":"window", redsize, greensize, bluesize, alphasize, (buffertype == EGL_LUMINANCE_BUFFER)?"LUMINANCE":(texturetype)?"RGB":"RGBA");
+	dbg("\t EGL_SURFACE_TYPE %#x", surfacetype);
+	EGLint value;
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_DEPTH_SIZE, &value);
+	dbg("\t EGL_DEPTH_SIZE %#x", value);
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_CONFIG_CAVEAT, &value);
+	dbg("\t EGL_CONFIG_CAVEAT %#x", value);
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_NATIVE_RENDERABLE, &value);
+	dbg("\t EGL_NATIVE_RENDERABLE %#x", value);
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_NATIVE_VISUAL_ID, &value);
+	dbg("\t EGL_NATIVE_VISUAL_ID %.4s", (value)?(char*)&value:"none");
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_NATIVE_VISUAL_TYPE, &value);
+	dbg("\t EGL_NATIVE_VISUAL_TYPE %#x", value);
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_SAMPLE_BUFFERS, &value);
+	dbg("\t EGL_SAMPLE_BUFFERS %#x", value);
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_SAMPLES, &value);
+	dbg("\t EGL_SAMPLES %#x", value);
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_CONFORMANT, &value);
+	dbg("\t EGL_CONFORMANT %#x", value);
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_LEVEL, &value);
+	dbg("\t EGL_LEVEL %#x", value);
+	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_MATCH_NATIVE_PIXMAP, &value);
+	dbg("\t EGL_MATCH_NATIVE_PIXMAP %#x", value);
+	return 0;
+}
+#endif
+
 EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *config)
 {
 	if (type != device_output && type != device_transfer)
@@ -163,45 +211,43 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 #ifndef GLSLV300
 	glEnable(GL_TEXTURE_EXTERNAL_OES);
 #endif
-	EGLint num_config;
-	eglGetConfigs(eglDisplay, NULL, 0, &num_config);
+	EGLint num_configs;
+	eglGetConfigs(eglDisplay, NULL, 0, &num_configs);
 
-#ifdef DEBUG
 	EGLConfig eglConfigs[20];
-	eglGetConfigs(eglDisplay, eglConfigs, 20, &num_config);
-	for (int i = 0; i < num_config; i++)
+	if (num_configs > 20)
 	{
-		EGLint redsize;
-		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_RED_SIZE, &redsize);
-		EGLint greensize;
-		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_GREEN_SIZE, &greensize);
-		EGLint bluesize;
-		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_BLUE_SIZE, &bluesize);
-		EGLint alphasize;
-		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_ALPHA_SIZE, &alphasize);
-		EGLint texturetype;
-		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_BIND_TO_TEXTURE_RGB, &texturetype);
-		EGLint buffertype;
-		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_COLOR_BUFFER_TYPE, &buffertype);
-		EGLint surfacetype;
-		eglGetConfigAttrib(eglDisplay, eglConfigs[i], EGL_SURFACE_TYPE, &surfacetype);
-		dbg("segl: config[%.2d]\t%s %d/%d/%d/%d %s", i, surfacetype == EGL_PBUFFER_BIT?"pbuffer":"window", redsize, greensize, bluesize, alphasize, (buffertype== EGL_LUMINANCE_BUFFER)?"LUMINANCE":(texturetype)?"RGB":"RGBA");
+		dbg("segl: choose %d/%d configs", 20, num_configs);
+		num_configs = 20;
+	}
+#ifdef DEBUG
+	eglGetConfigs(eglDisplay, eglConfigs, sizeof(eglConfigs)/ sizeof(*eglConfigs), &num_configs);
+	for (int i = 0; i < num_configs; i++)
+	{
+		_egl_configinfo(eglDisplay, eglConfigs[i]);
 	}
 #endif
-	EGLConfig eglConfig = EGL_NO_CONFIG_KHR;
-	if (eglChooseConfig(eglDisplay, native->attributes(ndisplay), &eglConfig, 1, &num_config) == EGL_FALSE || num_config == 0)
+	if (eglChooseConfig(eglDisplay, native->attributes(ndisplay), eglConfigs, num_configs, &num_configs) == EGL_FALSE || num_configs == 0)
 	{
-		err("segl: failed to choose config: %d (%#x)", num_config, eglGetError());
+		err("segl: failed to choose config: %d (%#x)", num_configs, eglGetError());
 		native->destroy(ndisplay);
 		return NULL;
 	}
+	dbg("segl: found %d configs", num_configs);
+	int configid = 0;
+#ifdef DEBUG
+	for (int i = 0; i < num_configs; i++)
+	{
+		_egl_configinfo(eglDisplay, eglConfigs[i]);
+	}
+#endif
 
 	static const EGLint context_attribs[] = {
 		EGL_CONTEXT_MAJOR_VERSION, 2,
 		EGL_NONE
 	};
 	EGLContext eglContext;
-	eglContext = eglCreateContext(eglDisplay, eglConfig, EGL_NO_CONTEXT, context_attribs);
+	eglContext = eglCreateContext(eglDisplay, eglConfigs[configid], EGL_NO_CONTEXT, context_attribs);
 	if (eglContext == NULL)
 	{
 		err("segl: failed to create context (%#x)", eglGetError());
@@ -214,13 +260,13 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	EGLSurface eglSurface = NULL;
 	if (nwindow != (EGLNativeWindowType)NULL)
 	{
-		eglSurface = eglCreateWindowSurface(eglDisplay, eglConfig, nwindow, NULL);
+		eglSurface = eglCreateWindowSurface(eglDisplay, eglConfigs[configid], nwindow, NULL);
 	}
 	else
 	{
 		EGLint texture_format = EGL_TEXTURE_RGBA;
 		EGLint texturergb = 0;
-		eglGetConfigAttrib(eglDisplay, eglConfig, EGL_BIND_TO_TEXTURE_RGB, &texturergb);
+		eglGetConfigAttrib(eglDisplay, eglConfigs[configid], EGL_BIND_TO_TEXTURE_RGB, &texturergb);
 		if (texturergb)
 			texture_format = EGL_TEXTURE_RGB;
 		warn("segl: surface on pbuffer");
@@ -229,10 +275,11 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 			EGL_HEIGHT, config->parent.height,
 			EGL_TEXTURE_FORMAT, texture_format,
 			EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
+			//EGL_LARGEST_PBUFFER, EGL_TRUE, // no visible change
 			EGL_NONE,
 		};
 
-		eglSurface = eglCreatePbufferSurface(eglDisplay, eglConfig, pbufferAttribs);
+		eglSurface = eglCreatePbufferSurface(eglDisplay, eglConfigs[configid], pbufferAttribs);
 	}
 	if (eglSurface == EGL_NO_SURFACE)
 	{
@@ -243,7 +290,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext);
 
 	GLint minswapinterval = 1;
-	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_MIN_SWAP_INTERVAL, &minswapinterval);
+	eglGetConfigAttrib(eglDisplay, eglConfigs[configid], EGL_MIN_SWAP_INTERVAL, &minswapinterval);
 	dbg("segl: swap interval %d", minswapinterval);
 	eglSwapInterval(eglDisplay, minswapinterval);
 
@@ -255,7 +302,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	dev->config = config;
 	dev->native = native;
 	dev->egldisplay = eglDisplay;
-	dev->eglconfig = eglConfig;
+	dev->eglconfig = eglConfigs[configid];
 	dev->eglcontext = eglContext;
 	dev->eglsurface = eglSurface;
 	dev->programs = programs;
