@@ -220,9 +220,9 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		native->destroy(ndisplay);
 		return NULL;
 	}
-#ifndef GLSLV300
+
 	glEnable(GL_TEXTURE_EXTERNAL_OES);
-#endif
+
 	EGLint num_configs;
 	eglGetConfigs(eglDisplay, NULL, 0, &num_configs);
 
@@ -272,7 +272,11 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	EGLSurface eglSurface = NULL;
 	if (nwindow != (EGLNativeWindowType)NULL)
 	{
-		eglSurface = eglCreateWindowSurface(eglDisplay, eglConfigs[configid], nwindow, NULL);
+		EGLint attribs[] = {
+			//EGL_GL_COLORSPACE,  EGL_GL_COLORSPACE_LINEAR,
+			EGL_NONE,
+		};
+		eglSurface = eglCreateWindowSurface(eglDisplay, eglConfigs[configid], nwindow, attribs);
 	}
 	else
 	{
@@ -282,7 +286,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		if (texturergb)
 			texture_format = EGL_TEXTURE_RGB;
 		warn("segl: surface on pbuffer");
-		EGLint pbufferAttribs[] = {
+		EGLint attribs[] = {
 			EGL_WIDTH, config->parent.width,
 			EGL_HEIGHT, config->parent.height,
 			EGL_TEXTURE_FORMAT, texture_format,
@@ -291,7 +295,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 			EGL_NONE,
 		};
 
-		eglSurface = eglCreatePbufferSurface(eglDisplay, eglConfigs[configid], pbufferAttribs);
+		eglSurface = eglCreatePbufferSurface(eglDisplay, eglConfigs[configid], attribs);
 	}
 	if (eglSurface == EGL_NO_SURFACE)
 	{
