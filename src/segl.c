@@ -732,14 +732,18 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		/* Storage must be one of: */
 		/* GL_RGBA4, GL_RGB565, GL_RGB5_A1, GL_DEPTH_COMPONENT16, GL_STENCIL_INDEX8. */
 		glRenderbufferStorage(GL_RENDERBUFFER, format, width, height);
-		if (glGetError())
-			continue;
+		dbg("segl: renderbuffer %lux%lu %#x/%#x", width, height, format, fformat->internal);
+		GLuint glerror = glGetError();
+		if (glerror)
+		{
+			err ("segl: Renderbuffer error %#x", glerror);
+			break;
+		}
 
 		//glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_SAMPLES, &samples);
 		glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_INTERNAL_FORMAT, &format);
 		glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &width);
 		glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &height);
-		dbg("segl: renderbuffer %lux%lu %#x/%#x", width, height, format, fformat->internal);
 
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, dup->buffers[i].rbo);
 		dup->buffers[i].dma_texture = dup->buffers[i].rbo;
@@ -760,6 +764,12 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 
 		glTexImage2D(dup->buffers[i].textype, 0, fformat->internal,
 				width, height, 0, fformat->full, fformat->data, NULL);
+		GLuint glerror = glGetError();
+		if (glerror)
+		{
+			err ("segl: Texturebuffer error %#x", glerror);
+			break;
+		}
 
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 			dup->buffers[i].textype, dup->buffers[i].dma_texture, 0);
@@ -821,8 +831,6 @@ static void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo, 
 	glPixelStorei(GL_PACK_ROW_LENGTH, width);
 	glPixelStorei(GL_PACK_IMAGE_HEIGHT, height);
 #endif
-	glPixelStorei(GL_PACK_ALIGNMENT, 4);
-
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 
 	glprog_run(dev->programs, id);
