@@ -161,11 +161,11 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 	}
 	//dbg("transfer (%d) %s => %s %lu bytes", index, input->config->name, output->config->name, bytesused);
 
-	if (output->ops->queue(output->dev, index, mem, bytesused, flags) < 0)
+	while (output->ops->queue(output->dev, index, mem, bytesused, flags) < 0)
 	{
 		if (errno == EAGAIN)
 		{
-			return 0;
+			continue;
 		}
 		if (errno)
 			err("%s buffer queuing error %m", output->config->name);
