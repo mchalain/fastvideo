@@ -28,6 +28,9 @@
  */
 #define MAX_BUFFERS 4
 #define TEST_FORMATMODIFIERS 0
+#ifndef V4L2_TRYRATIO
+#define V4L2_TRYRATIO 40
+#endif
 
 #define dbg_buffer_splane(v4l2) 		dbg("sv4l2: buf %d info:", v4l2->index); \
 		dbg("\ttype: %s", (v4l2->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)? "CAPTURE":"OUTPUT"); \
@@ -1474,6 +1477,17 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused, int *flags)
 	ret = ioctl(dev->fd, VIDIOC_DQBUF, &buf);
 	if (ret)
 	{
+		if (errno == EAGAIN && dev->config->fps != 0)
+		{
+			/**
+			 * with this waiting the stream seems faster
+			 */
+			useconds_t usec = -dev->config->fps * 1000000;
+			if (dev->config->fps > 0)
+				usec = 1000000 / dev->config->fps;
+			usec /= V4L2_TRYRATIO; /// we don't want to be late.
+			usleep(usec);
+		}
 //		dbg("sv4l2: %s dequeueing error %m", dev->name);
 //		dbg_buffer((&buf));
 		return -1;
