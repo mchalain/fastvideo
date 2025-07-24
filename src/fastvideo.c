@@ -290,7 +290,7 @@ int main_loop(FastVideoList_t *pipes)
 					killdaemon(NULL);
 					break;
 				}
-				if (!ret && fastvideolist_islast(pipes, pipe))
+				if (!ret && fastvideolist_islast(pipes, pipe) && errno == 0)
 					count++;
 			}
 		}
