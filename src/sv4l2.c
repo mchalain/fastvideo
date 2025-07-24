@@ -208,7 +208,7 @@ static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 	 */
 	if (type == 0 && (mode & MODE_OUTPUT))
 	{
-#ifdef HAS_V4L2_META
+#ifdef V4L2_HAS_META
 		if (mode & MODE_META)
 			type = V4L2_BUF_TYPE_META_OUTPUT;
 		else
@@ -217,7 +217,7 @@ static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 	}
 	else if ((type == 0 || type == -1) && (mode & MODE_CAPTURE))
 	{
-#ifdef HAS_V4L2_META
+#ifdef V4L2_HAS_META
 		if (mode & MODE_META)
 			type = V4L2_BUF_TYPE_META_CAPTURE;
 		else
@@ -226,7 +226,7 @@ static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 	}
 	else if (type == -1 && (mode & MODE_OUTPUT))
 	{
-#ifdef HAS_V4L2_META
+#ifdef V4L2_HAS_META
 		if (mode & MODE_META)
 			type = V4L2_BUF_TYPE_META_OUTPUT;
 		else
@@ -247,7 +247,7 @@ static enum v4l2_buf_type _v4l2_getbuftype(enum v4l2_buf_type type, int mode)
 		if (mode & MODE_CAPTURE)
 			return V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	}
-#ifdef HAS_V4L2_META
+#ifdef V4L2_HAS_META
 	if ((type == V4L2_BUF_TYPE_META_CAPTURE || type == V4L2_BUF_TYPE_META_OUTPUT) && (mode & MODE_META))
 	{
 		return type;
@@ -266,69 +266,92 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 	}
 	if (interface)
 		memcpy(interface, cap.card, sizeof(cap.card));
+
+	uint32_t caps = cap.capabilities;
+	if (caps & V4L2_CAP_DEVICE_CAPS)
+	{
+		dbg("sv4l2: device capabilities available on %s %#x", cap.card, cap.capabilities);
+		caps = cap.device_caps;
+	}
+#ifdef V4L2_HAS_META
+	/**
+	 * Some device may have two stream (data, meta)
+	 * by default the data is supported
+	 * and meta must be set inside the configuration.
+	 * We unset meta if the device may not support meta.
+	 */
+	if (!(caps & (V4L2_CAP_META_CAPTURE | V4L2_CAP_META_OUTPUT)))
+		*mode &= ~MODE_META;
+	else if (!(caps & (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_OUTPUT)))
+	{
+		*mode |= MODE_META;
+	}
+	else
+	{
+		dbg("sv4l2: meta data available on %s", cap.card);
+	}
+#endif
+
 #ifdef DEBUG
 	dbg("device %s capabilities %#X", interface, cap.device_caps);
-	if(cap.device_caps & V4L2_CAP_VIDEO_CAPTURE)
-		dbg("device %s capture (camera)", interface);
-	if(cap.device_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE)
-		dbg("device %s capture mplane", interface);
-	if(cap.device_caps & V4L2_CAP_VIDEO_OUTPUT)
-		dbg("device %s output", interface);
-	if(cap.device_caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE)
-		dbg("device %s output mplane", interface);
-	if(cap.device_caps & V4L2_CAP_VIDEO_OVERLAY)
-		dbg("device %s overlay", interface);
-	if(cap.device_caps & V4L2_CAP_VIDEO_M2M)
-		dbg("device %s memory to memory", interface);
-	if(cap.device_caps & V4L2_CAP_VIDEO_M2M_MPLANE)
-		dbg("device %s memory to memory mplane", interface);
-	if(cap.device_caps & V4L2_CAP_AUDIO)
-		dbg("device %s audio", interface);
-	if(cap.device_caps & V4L2_CAP_VBI_CAPTURE)
-		dbg("device %s vbi", interface);
-	if(cap.device_caps & V4L2_CAP_RADIO)
-		dbg("device %s radio", interface);
-	if(cap.device_caps & V4L2_CAP_EXT_PIX_FORMAT)
-		dbg("device %s Pixformat extension available", interface);
-	if(cap.device_caps & V4L2_CAP_IO_MC)
-		dbg("device %s media control available", interface);
+	if(caps & V4L2_CAP_VIDEO_CAPTURE)
+		dbg("device %s capture (camera)", cap.card);
+	if(caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE)
+		dbg("device %s capture mplane", cap.card);
+	if(caps & V4L2_CAP_VIDEO_OUTPUT)
+		dbg("device %s output", cap.card);
+	if(caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE)
+		dbg("device %s output mplane", cap.card);
+	if(caps & V4L2_CAP_VIDEO_OVERLAY)
+		dbg("device %s overlay", cap.card);
+	if(caps & V4L2_CAP_VIDEO_M2M)
+		dbg("device %s memory to memory", cap.card);
+	if(caps & V4L2_CAP_VIDEO_M2M_MPLANE)
+		dbg("device %s memory to memory mplane", cap.card);
+	if(caps & V4L2_CAP_AUDIO)
+		dbg("device %s audio", cap.card);
+	if(caps & V4L2_CAP_VBI_CAPTURE)
+		dbg("device %s vbi", cap.card);
+	if(caps & V4L2_CAP_RADIO)
+		dbg("device %s radio", cap.card);
+	if(caps & V4L2_CAP_EXT_PIX_FORMAT)
+		dbg("device %s Pixformat extension available", cap.card);
+	if(caps & V4L2_CAP_IO_MC)
+		dbg("device %s media control available", cap.card);
 #endif
-	if ((cap.device_caps & V4L2_CAP_VIDEO_CAPTURE ||
-		cap.device_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE) &&
+	if ((caps & V4L2_CAP_VIDEO_CAPTURE ||
+		caps & V4L2_CAP_META_CAPTURE ||
+		caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE) &&
 		(type == device_input || type == device_control))
 		*mode |= MODE_CAPTURE;
-	if ((cap.device_caps & V4L2_CAP_VIDEO_M2M ||
-		cap.device_caps & V4L2_CAP_VIDEO_M2M_MPLANE))
+	if ((caps & V4L2_CAP_VIDEO_M2M ||
+		caps & V4L2_CAP_VIDEO_M2M_MPLANE))
 		*mode |= (MODE_CAPTURE | MODE_OUTPUT);
-	if ((cap.device_caps & V4L2_CAP_VIDEO_OUTPUT ||
-		cap.device_caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE) &&
+	if ((caps & V4L2_CAP_VIDEO_OUTPUT ||
+		caps & V4L2_CAP_META_OUTPUT ||
+		caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE) &&
 		(type == device_output || type == device_control))
 		*mode |= MODE_OUTPUT;
-	if (cap.device_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE ||
-		cap.device_caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE ||
-		cap.device_caps & V4L2_CAP_VIDEO_M2M_MPLANE)
+	if (caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE ||
+		caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE ||
+		caps & V4L2_CAP_VIDEO_M2M_MPLANE)
 		*mode |= MODE_MPLANE;
-#ifdef HAS_V4L2_META
-	if (cap.device_caps & V4L2_CAP_META_CAPTURE ||
-		cap.device_caps & V4L2_CAP_META_OUTPUT)
-		*mode |= MODE_META;
-#endif
 #ifdef V4L2_CAP_IO_MC
-	if (cap.device_caps & V4L2_CAP_IO_MC)
+	if (caps & V4L2_CAP_IO_MC)
 		*mode |= MODE_MEDIACTL;
 #endif
 
 	if ((*mode & (MODE_CAPTURE | MODE_OUTPUT)) == 0)
 	{
-		err("sv4l2: %s bad device type", interface);
+		err("sv4l2: %s bad device type", cap.card);
 		return -1;
 	}
-	if (!(cap.device_caps & V4L2_CAP_STREAMING))
+	if (!(caps & V4L2_CAP_STREAMING))
 	{
-		err("sv4l2: device %s not camera", interface);
+		err("sv4l2: device %s not camera", cap.card);
 		return -1;
 	}
-	dbg("sv4l2: %s streaming available (%#x)", interface, *mode);
+	dbg("sv4l2: %s streaming available (%#x)", cap.card, *mode);
 	return 0;
 }
 
@@ -343,7 +366,7 @@ uint32_t sv4l2_getpixformat(V4L2_t *dev, int (*pixformat)(void *arg, struct v4l2
 		err("FMT not found %m");
 		return -1;
 	}
-#ifdef HAS_V4L2_META
+#ifdef V4L2_HAS_META
 	if (dev->type == V4L2_BUF_TYPE_META_CAPTURE || dev->type == V4L2_BUF_TYPE_META_OUTPUT)
 		pixelformat = fmt.fmt.meta.dataformat;
 	else
@@ -390,8 +413,9 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 		err("FMT not found %m");
 		return -1;
 	}
-#ifdef HAS_V4L2_META
-	if (type == V4L2_BUF_TYPE_META_CAPTURE || type == V4L2_BUF_TYPE_META_OUTPUT)
+#ifdef V4L2_HAS_META
+	int ismeta = (type == V4L2_BUF_TYPE_META_CAPTURE || type == V4L2_BUF_TYPE_META_OUTPUT);
+	if (ismeta)
 		pixelformat = fmt.fmt.meta.dataformat;
 #endif
 
@@ -416,8 +440,8 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 			pixelformat = formats[i].fourcc;
 		}
 	}
-#ifdef HAS_V4L2_META
-	if ((pixelformat) && (type == V4L2_BUF_TYPE_META_CAPTURE || type == V4L2_BUF_TYPE_META_OUTPUT))
+#ifdef V4L2_HAS_META
+	if ((pixelformat) && ismeta)
 		fmt.fmt.meta.dataformat = pixelformat;
 	else
 #endif
@@ -425,9 +449,14 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 		fmt.fmt.pix.pixelformat = pixelformat;
 	if (ioctl(fd, VIDIOC_S_FMT, &fmt) != 0)
 	{
+		err("sv4l2: FMT setting error %m");
 		return -1;
 	}
-	dbg("V4l2 settings: %.4s", (char*)&fmt.fmt.pix.pixelformat);
+#ifdef V4L2_HAS_META
+	dbg("V4l2 settings: %.4s", (char*)(ismeta?&fmt.fmt.meta.dataformat:&fmt.fmt.pix.pixelformat));
+#else
+	dbg("V4l2 settings: %.4s", (char*)(fmt.fmt.pix.pixelformat?&fmt.fmt.pix.pixelformat:&pixelformat));
+#endif
 	return fmt.fmt.pix.pixelformat;
 }
 
@@ -1244,12 +1273,6 @@ int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_query_ext_ctrl *ctrl, int (*c
 
 static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config_t *config)
 {
-	/// The same device may give Stream data and meta data.
-	/// Here we want only Stream data
-#ifdef HAS_V4L2_META
-	if (mode & MODE_META)
-		mode &= ~MODE_META;
-#endif
 	*type = _v4l2_getbuftype(*type, mode);
 
 	uint32_t fourcc = 0;
@@ -1408,7 +1431,8 @@ int sv4l2_start(V4L2_t *dev)
 {
 	enum v4l2_buf_type type = dev->type;
 	if (dev->type == V4L2_BUF_TYPE_VIDEO_CAPTURE ||
-		dev->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+		dev->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE ||
+		dev->type == V4L2_BUF_TYPE_META_CAPTURE)
 	{
 		dbg("sv4l2: %s start buffers enqueuing", dev->name);
 		for (int i = 0; i < dev->nbuffers; i++)
@@ -1928,10 +1952,34 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 	if (mode && json_is_string(mode))
 	{
 		const char *value = json_string_value(mode);
-		if (strstr(value,"capture"))
+		if (value && strstr(value,"capture"))
 			config->mode |= MODE_CAPTURE;
-		if (strstr(value,"output"))
+		if (value && strstr(value,"output"))
 			config->mode |= MODE_OUTPUT;
+#ifdef V4L2_HAS_META
+		if (value && strstr(value,"meta"))
+			config->mode |= MODE_META;
+#endif
+	}
+	if (mode && json_is_array(mode))
+	{
+		json_t *field = NULL;
+		int index = 0;
+		json_array_foreach(mode, index, field)
+		{
+			const char *value = json_string_value(field);
+			if (value == NULL)
+				continue;
+
+			if (!strncmp(value,"capture", 7))
+				config->mode |= MODE_CAPTURE;
+			if (!strncmp(value,"output", 6))
+				config->mode |= MODE_OUTPUT;
+#ifdef V4L2_HAS_META
+			if (!strncmp(value,"meta", 4))
+				config->mode |= MODE_META;
+#endif
+		}
 	}
 	return ret;
 }

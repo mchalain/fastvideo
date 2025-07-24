@@ -2,4 +2,4 @@ EGL=y
 DRM=y
 DVB=n
 
-HAS_V4L2_META=y
+V4L2_HAS_META=y
