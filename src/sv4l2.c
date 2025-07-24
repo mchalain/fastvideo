@@ -1984,8 +1984,14 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 	return ret;
 }
 
-int _v4l2_addsubdevice(V4l2Config_t *config, json_t *subdevice, const char *name)
+#if ADD_SUBDEVICES
+/**
+ * the subdevices should be useless for video
+ * It is enought to manage the subdevices independently for the controls
+ */
+int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevice, const char *name)
 {
+	int subdev_id = 0;
 	if (subdevice && json_is_array(subdevice))
 	{
 		json_t *field = NULL;
@@ -2010,21 +2016,27 @@ int _v4l2_addsubdevice(V4l2Config_t *config, json_t *subdevice, const char *name
 					}
 				}
 				if (jname && json_is_string(jname) &&
-					!strcmp(json_string_value(jname), name))
+					!strcmp(json_string_value(jname), name) &&
+					json_is_object(field))
 				{
-					subdevice = field;
-					break;
+					json_t *disable = json_object_get(field, "disable");
+					if (json_is_true(disable))
+						continue;
+
+					json_t *definition = json_object_get(field, "definition");
+					_v4l2_parsedefinition(definition, config);
+					if (subdev_id >= (sizeof(config->subdev_entries) / sizeof(*config->subdev_entries)))
+						break;
+					config->subdev_entries[subdev_id] = field;
+					subdev_id++;
 				}
 			}
+			if (subdev_id >= sizeof(config->subdev_entries)/sizeof(*config->subdev_entries))
 		}
-	}
-	if (subdevice && json_is_object(subdevice))
-	{
-		json_t *definition = json_object_get(subdevice, "definition");
-		_v4l2_parsedefinition(definition, config);
 	}
 	return 0;
 }
+#endif
 
 static int _v4l2_addaction(V4l2Config_t *config, json_t *action)
 {
@@ -2058,13 +2070,14 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	json_t *definition = json_object_get(jconfig, "definition");
 	_v4l2_parsedefinition(definition, config);
 
+#if ADD_SUBDEVICES
 	json_t *subdevice = json_object_get(jconfig, "subdevices");
-	_v4l2_addsubdevice(config, subdevice, config->parent.name);
+	_v4l2_addsubdevices(config, subdevice, config->parent.name);
+#endif
 
 	json_t *action = json_object_get(jconfig, "action");
 	_v4l2_addaction(config, action);
 
-library_end:
 	return 0;
 }
 

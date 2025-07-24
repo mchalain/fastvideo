@@ -34,6 +34,7 @@ struct V4l2Config_s
 	uint32_t transfer;
 	int periodic;
 	int periodiccontrol;
+	void *subdev_entries[4];
 };
 
 typedef struct V4L2Buffer_s V4L2Buffer_t;
