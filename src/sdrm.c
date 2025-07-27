@@ -25,6 +25,7 @@
 typedef struct Display_s Display_t;
 struct Display_s
 {
+	DisplayConf_t *config;
 #ifdef HAVE_LIBKMS
 	struct kms_driver *kms;
 	struct kms_bo *bo[MAX_BUFFERS];
@@ -476,6 +477,7 @@ EXT_API Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf
 		close(fd);
 	else
 		warn("sdrm: device %s", config->device);
+	disp->config = config;
 	return disp;
 }
 
