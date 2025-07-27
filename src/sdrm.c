@@ -142,13 +142,13 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 	return 0;
 }
 
-static uint64_t sdrm_properties(Display_t *disp, uint32_t plane_id, const char *property)
+static uint64_t sdrm_properties(Display_t *disp,  uint32_t type, uint32_t id, const char *property)
 {
 	uint64_t ret = 0;
 #if 1
 	drmModeObjectPropertiesPtr props;
 
-	props = drmModeObjectGetProperties(disp->fd, plane_id, DRM_MODE_OBJECT_PLANE);
+	props = drmModeObjectGetProperties(disp->fd, id, type);
 	for (int i = 0; i < props->count_props; i++)
 	{
 		drmModePropertyPtr prop;
@@ -221,13 +221,14 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	for (int i = 0; i < planes->count_planes; ++i)
 	{
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
-		int type = (int)sdrm_properties(disp, plane->plane_id, "type");
+		int type = (int)sdrm_properties(disp, DRM_MODE_OBJECT_PLANE, plane->plane_id, "type");
+		dbg("sdrm: Plane[%d] %u: %s", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
 		if (type == disp->type)
 		{
 			for (int j = 0; j < plane->count_formats; ++j)
 			{
 				uint32_t fourcc = plane->formats[j];
-				dbg("sdrm: Plane[%d] %u: 4cc %.4s", i, plane->plane_id, (char *)&fourcc);
+				dbg("\tformat %.4s", (char *)&fourcc);
 				if (plane->formats[j] == disp->fourcc)
 				{
 					ret = 0;
