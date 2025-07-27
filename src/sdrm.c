@@ -48,12 +48,13 @@ struct Display_s
 
 static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32_t *crtc_id, drmModeModeInfo *mode)
 {
+	int ret = -1;
 	drmModeResPtr resources;
 	resources = drmModeGetResources(disp->fd);
 	if (resources == NULL)
 	{
 		err("sdrm: No resource available");
-		return -1;
+		return ret;
 	}
 
 	int32_t connector_id = -1;
@@ -62,18 +63,16 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 	{
 		connector_id = resources->connectors[i];
 		drmModeConnectorPtr connector = drmModeGetConnector(disp->fd, connector_id);
-		if (connector->connection == DRM_MODE_CONNECTED && connector->count_modes > 0)
+		if (! connector)
+			continue;
+		if (connector->connection == DRM_MODE_CONNECTED &&
+			connector->count_modes > 0)
 		{
 			drmModeModeInfo *preferred = NULL;
 			if (mode->hdisplay && mode->vdisplay)
 				preferred = mode;
 			for (int m = 0; m < connector->count_modes; m++)
 			{
-				dbg("sdrm: mode: %s %dx%d %s",
-						connector->modes[m].name,
-						connector->modes[m].hdisplay,
-						connector->modes[m].vdisplay,
-						connector->modes[m].type & DRM_MODE_TYPE_PREFERRED ? "*" : "");
 				if (!preferred && connector->modes[m].type & DRM_MODE_TYPE_PREFERRED)
 				{
 					preferred = &connector->modes[m];
@@ -98,7 +97,7 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 	{
 		err("drm: no display connected");
 		drmModeFreeResources(resources);
-		return -1;
+		return ret;
 	}
 	*conn_id = connector_id;
 	*enc_id = encoder_id;
@@ -109,9 +108,9 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 		encoder = drmModeGetEncoder(disp->fd, resources->encoders[i]);
 		if(encoder != NULL)
 		{
-			dbg("sdrm: encoder %d found", encoder->encoder_id);
 			if(encoder->encoder_id == encoder_id)
 			{
+				dbg("sdrm: encoder %d found", encoder->encoder_id);
 				*crtc_id = encoder->crtc_id;
 				drmModeFreeEncoder(encoder);
 				break;
@@ -133,13 +132,15 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 	}
 	if (crtcindex == -1)
 	{
-		drmModeFreeResources(resources);
 		err("sdrm: crtc not available");
-		return -1;
 	}
-	dbg("sdrm: screen size %ux%u", disp->mode.hdisplay, disp->mode.vdisplay);
+	else
+	{
+		dbg("sdrm: screen size %ux%u", disp->mode.hdisplay, disp->mode.vdisplay);
+	}
+	ret = 0;
 	drmModeFreeResources(resources);
-	return 0;
+	return ret;
 }
 
 static uint64_t sdrm_properties(Display_t *disp,  uint32_t type, uint32_t id, const char *property, uint64_t value)
@@ -221,13 +222,14 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 
 	planes = drmModeGetPlaneResources(disp->fd);
 
+	*plane_id = (uint32_t)-1;
 	drmModePlanePtr plane;
 	for (int i = 0; i < planes->count_planes; ++i)
 	{
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
 		int type = (int)sdrm_properties(disp, DRM_MODE_OBJECT_PLANE, plane->plane_id, "type", (uint64_t)-1);
 		dbg("sdrm: Plane[%d] %u: %s", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
-		if (type == disp->type)
+		if (*plane_id == (uint32_t)-1 && type == disp->type)
 		{
 			for (int j = 0; j < plane->count_formats; ++j)
 			{
@@ -241,8 +243,10 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 			*plane_id = plane->plane_id;
 		}
 		drmModeFreePlane(plane);
+#ifndef DEBUG
 		if (ret == 0)
 			break;
+#endif
 	}
 	drmModeFreePlaneResources(planes);
 	if (ret == -1)
