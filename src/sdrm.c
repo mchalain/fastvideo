@@ -142,7 +142,7 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 	return 0;
 }
 
-static uint64_t sdrm_properties(Display_t *disp,  uint32_t type, uint32_t id, const char *property)
+static uint64_t sdrm_properties(Display_t *disp,  uint32_t type, uint32_t id, const char *property, uint64_t value)
 {
 	uint64_t ret = 0;
 #if 1
@@ -159,6 +159,10 @@ static uint64_t sdrm_properties(Display_t *disp,  uint32_t type, uint32_t id, co
 		{
 			// TODO: check if property must be freed
 			ret = props->prop_values[i];
+			if (value != (uint64_t) -1)
+			{
+				drmModeObjectSetProperty(disp->fd, id, type, props->props[i], value);
+			}
 			break;
 		}
 		if (prop)
@@ -221,7 +225,7 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	for (int i = 0; i < planes->count_planes; ++i)
 	{
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
-		int type = (int)sdrm_properties(disp, DRM_MODE_OBJECT_PLANE, plane->plane_id, "type");
+		int type = (int)sdrm_properties(disp, DRM_MODE_OBJECT_PLANE, plane->plane_id, "type", (uint64_t)-1);
 		dbg("sdrm: Plane[%d] %u: %s", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
 		if (type == disp->type)
 		{
