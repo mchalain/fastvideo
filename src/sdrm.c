@@ -215,6 +215,60 @@ static uint64_t sdrm_properties(Display_t *disp,  uint32_t type, uint32_t id, co
 	return ret;
 }
 
+#ifdef DEBUG
+static int sdrm_listconnector(Display_t *disp)
+{
+	drmModeResPtr resources;
+	resources = drmModeGetResources(disp->fd);
+	if (resources == NULL)
+	{
+		err("sdrm: No resource available");
+		return -1;
+	}
+
+	for(int i = 0; i < resources->count_connectors; ++i)
+	{
+		int32_t connector_id = -1;
+		connector_id = resources->connectors[i];
+		drmModeConnectorPtr connector = drmModeGetConnector(disp->fd, connector_id);
+		if (! connector)
+			continue;
+		dbg("connector id %d",connector->connector_id);
+		const char *type = drmModeGetConnectorTypeName(connector->connector_type);
+		if (type)
+			dbg("\ttype %s",type);
+		else
+			dbg("\ttype unkown");
+		dbg("\tconnected %d",connector->connection == DRM_MODE_CONNECTED);
+		dbg("\tencoder %lu",connector->encoder_id);
+
+		for (int m = 0; m < connector->count_modes; m++)
+		{
+			dbg("\tmode \"%s\": %dx%d %s",
+					connector->modes[m].name,
+					connector->modes[m].hdisplay,
+					connector->modes[m].vdisplay,
+					connector->modes[m].type & DRM_MODE_TYPE_PREFERRED ? "*" : "");
+		}
+		drmModeObjectPropertiesPtr props;
+
+		props = drmModeObjectGetProperties(disp->fd, connector_id, DRM_MODE_OBJECT_CONNECTOR);
+		for (int j = 0; j < props->count_props; j++)
+		{
+			drmModePropertyPtr prop;
+
+			prop = drmModeGetProperty(disp->fd, props->props[j]);
+			if (prop)
+			{
+				dbg("\tproperty %s %d", prop->name, prop->prop_id);
+				dbg("\t\t%s : %llu", prop->name, props->prop_values[j]);
+			}
+		}
+	}
+	return 0;
+}
+#endif
+
 static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 {
 	int ret = -1;
@@ -432,6 +486,9 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 	disp->fourcc = FOURCC('A','R','2','4');
 	disp->type = DRM_PLANE_TYPE_PRIMARY;
 
+#ifdef DEBUG
+	sdrm_listconnector(disp);
+#endif
 	if (config)
 	{
 		disp->mode.hdisplay = config->parent.width;
