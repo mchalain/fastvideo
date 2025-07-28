@@ -113,6 +113,11 @@ int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data,
 json_t *config_getdevices(json_t *jconfig);
 int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data);
 
+/**
+ * default configuration callback for the devices
+ */
+int scommon_loadconfiguration(void *arg, void *entry);
+
 json_t *scommon_getdevice(const char *name);
 int scommon_isnamed(json_t *jdevice, const char *name);
 #else

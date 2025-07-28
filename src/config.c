@@ -284,3 +284,17 @@ int scommon_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devcon
 	}
 	return 0;
 }
+
+int scommon_loadconfiguration(void *arg, void *entry)
+{
+	DeviceConf_t *devconfig = (DeviceConf_t *)arg;
+	json_t *jconfig = (json_t *)entry;
+
+	if (jconfig && json_is_object(jconfig))
+	{
+		json_t *definition = json_object_get(jconfig, "definition");
+		if (definition)
+			scommon_loaddefinition(devconfig, definition);
+	}
+	return 0;
+}
