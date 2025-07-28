@@ -11,6 +11,7 @@
 #include "sfile.h"
 
 static const char spassthrough[] = "spassthrough";
+static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry);
 
 typedef struct PassBuffer_s PassBuffer_t;
 struct PassBuffer_s
@@ -33,6 +34,7 @@ struct PassBuffer_s
 #define MODE_SHOOT 0x01
 #define MODE_SHOOTING 0x10
 #define MODE_TEE 0x02
+#define MODE_DRYRUN 0x04
 
 struct Passthrough_config_s
 {
@@ -76,7 +78,7 @@ DeviceConf_t * spassthrough_createconfig(void)
 
 EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Passthrough_config_t *config)
 {
-	if (type != device_transfer)
+	if (type == device_input)
 	{
 		err("spassthrough: %s bad device type", config->parent.name);
 		return NULL;
@@ -94,7 +96,7 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 	dup->dup = dev;
 	dev->dup = dup;
 	dev->config = *pconfig;
-	if (dev->config->mode & MODE_SHOOT)
+	if (dev->config->branch.type != 0)
 	{
 		FastVideoDevice_ops_t *opss[] = {
 			&sfile_ops,
@@ -124,7 +126,7 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 
 EXT_API int spassthrough_loadsettings(Passthrough_t *dev, void *configentry)
 {
-	return 0;
+	return spassthrough_loadjsonsettings(dev, configentry);
 }
 
 static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems, int *dmabufs, size_t size)
@@ -155,13 +157,14 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 	{
 		case buf_type_memory:
 		{
-			if (!dev->dup || dev->buffers)
+			if (dev->buffers)
 				break;
 			int ntargets = va_arg(ap, int);
 			void **targets = va_arg(ap, void **);
 			size_t size = va_arg(ap, size_t);
 			_passthrough_createbuffers(dev, ntargets, targets, NULL, size);
-			_passthrough_createbuffers(dev->dup, ntargets, targets, NULL, size);
+			if (dev->dup)
+				_passthrough_createbuffers(dev->dup, ntargets, targets, NULL, size);
 			ret = 0;
 			if (dev->type == device_input && dev->branch.dev)
 			{
@@ -194,13 +197,14 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 		break;
 		case buf_type_dmabuf:
 		{
-			if (!dev->dup || dev->buffers)
+			if (dev->buffers)
 				break;
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
 			_passthrough_createbuffers(dev, ntargets, NULL, targets, size);
-			_passthrough_createbuffers(dev->dup, ntargets, NULL, targets, size);
+			if (dev->dup)
+				_passthrough_createbuffers(dev->dup, ntargets, NULL, targets, size);
 			ret = 0;
 			if (dev->type == device_input && dev->branch.dev)
 			{
@@ -264,16 +268,19 @@ EXT_API int spassthrough_stop(Passthrough_t *dev)
 EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused, int *flags)
 {
 	PassBuffer_t *last = dev->fifo;
-	errno = EAGAIN;
-	if (last == NULL)
+	if (last == NULL || last->state == PassBuffer_free_e)
+	{
+		errno = EAGAIN;
 		return -1;
-	if (last->state == PassBuffer_free_e)
-		return -1;
-	if (dev->type == device_input && (dev->state & MODE_SHOOTING))
+	}
+	if (dev->branch.dev && (dev->state & MODE_SHOOTING))
 	{
 		int index = dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused, NULL);
 		if (index == last->index && dev->state & MODE_SHOOT)
+		{
 			dev->state &= ~MODE_SHOOTING;
+			dev->state &= ~MODE_SHOOT; /// shoot only once
+		}
 	}
 	last->state = PassBuffer_free_e;
 	/** the real fifo is useless as the entry is immediately pushed **/
@@ -295,7 +302,10 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 
 EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
-	dev = dev->dup;
+	if (!(dev->state | MODE_DRYRUN))
+	{
+		dev = dev->dup;
+	}
 	if (mem)
 		dev->buffers[index].mem = mem;
 	dev->buffers[index].bytesused = bytesused;
@@ -309,9 +319,8 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 #endif
 	/** insert into fifo **/
 	dev->fifo = &dev->buffers[index];
-	if ((dev->type == device_input) &&
-		(dev->state & (MODE_SHOOT | MODE_TEE)) &&
-		((dev->state & MODE_SHOOTING) == 0))
+	if ((dev->branch.dev) &&
+		(dev->state & (MODE_SHOOT | MODE_TEE)))
 	{
 		dev->branch.ops->queue(dev->branch.dev, index, mem, bytesused, 0);
 		dev->state |= MODE_SHOOTING;
@@ -329,25 +338,44 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 	free(dev);
 }
 
+static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry)
+{
+	json_t *jconfig = entry;
+	json_t *jcontrols = json_object_get(jconfig,"controls");
+	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
+	{
+		jconfig = jcontrols;
+	}
+	json_t *jdryrun = json_object_get(jconfig, "dryrun");
+	if (jdryrun && json_is_true(jdryrun))
+		dev->state |= MODE_DRYRUN;
+	else if (jdryrun)
+		dev->state &= ~MODE_DRYRUN;
+	json_t *jshoot = json_object_get(jconfig, "shoot");
+	if (jshoot && json_is_true(jshoot))
+		dev->state |= MODE_SHOOT;
+	else if (jdryrun)
+		dev->state &= ~MODE_SHOOT;
+	json_t *jtee = json_object_get(jconfig, "tee");
+	if (jtee && json_is_true(jtee))
+		dev->state |= MODE_TEE;
+	else if (jdryrun)
+		dev->state &= ~MODE_TEE;
+	return 0;
+}
+
 EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry)
 {
 	json_t *jconfig = entry;
 
 	Passthrough_config_t *config = (Passthrough_config_t *)arg;
-	json_t *mode = json_object_get(jconfig, "mode");
-	if (mode && json_is_string(mode))
-	{
-		const char *value = json_string_value(mode);
-		if (!strncasecmp(value, "shoot",6))
-			config->mode = MODE_SHOOT;
-	}
 	json_t *branch = json_object_get(jconfig, "branch");
 	config->branch.entry = branch;
-	if (mode && json_is_object(mode))
+	if (branch && json_is_object(branch))
 	{
-		json_t *name = json_object_get(jconfig, "name");
+		json_t *name = json_object_get(branch, "name");
 		config->branch.name = json_string_value(name);
-		json_t *type = json_object_get(jconfig, "type");
+		json_t *type = json_object_get(branch, "type");
 		config->branch.type = json_string_value(type);
 	}
 
