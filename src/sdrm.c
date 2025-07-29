@@ -550,16 +550,13 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 		free(disp);
 		return NULL;
 	}
-#ifdef HAVE_LIBKMS
-	if (kms_create(fd, &disp->kms))
-		err("sdrm: kms create error");
-#endif
+	if (disp->crtc_id)
+		disp->mode_id = sdrm_properties(disp, DRM_MODE_OBJECT_CRTC, disp->crtc_id, "MODE_ID", -1);
 
 	if (config)
 	{
 		config->parent.dev = disp;
 	}
-	warn("sdrm: create %s", name);
 	return disp;
 }
 
@@ -572,7 +569,7 @@ EXT_API Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf
 	}
 	int fd = 0;
 	if (!access(config->device, R_OK | W_OK))
-		fd = open(config->device, O_RDWR);
+		fd = open(config->device, O_RDWR| O_NONBLOCK | O_CLOEXEC);
 	else
 		fd = drmOpen(config->device, NULL);
 	if (fd < 0)
@@ -600,6 +597,7 @@ EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 			int *ntargets = va_arg(ap, int *);
 			void **targets = va_arg(ap, void **);
 			size_t *psize = va_arg(ap, size_t *);
+			disp->nbuffers = 0;
 			if (targets != NULL)
 			{
 				*targets = calloc(disp->nbuffers, sizeof(void*));
@@ -687,7 +685,15 @@ static void page_flip_handler(int fd, unsigned int frame,
 {
 	Display_t *disp = data;
 	int id = disp->queueid;
-	disp->buffers[(int)id].state = dequeued;
+	if (id != -1)
+		disp->buffers[(int)id].state = ready;
+	/**
+	 * queueid = -1 will force the main application
+	 * to have the fd = 0 and wait the queueing
+	 * But why the fd is not blocked into the select call
+	 * after the drmHandleEvent and must wait the drmModePageFlip ?
+	 */
+	disp->queueid = -1;
 }
 
 EXT_API int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused, int flags)
@@ -701,44 +707,79 @@ EXT_API int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused, int
 	if (bytesused == 0)
 		bytesused = buffer->size;
 	buffer->flags = flags;
+	if (buffer->mem)
+		munmap(buffer->mem, buffer->size);
 	if (bytesused > buffer->size)
 	{
 		warn("sfile: buffer too small %lu %lu", buffer->size, bytesused);
 	}
 	drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[(int)id].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
 	buffer->state = queued;
-	drmEventContext evctx = {
-				.version = DRM_EVENT_CONTEXT_VERSION,
-				.page_flip_handler = page_flip_handler,
-	};
-	drmHandleEvent(disp->fd, &evctx);
+	disp->queueid = id;
 	return 0;
 }
 
 EXT_API int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused, int *flags)
 {
 	int id = disp->queueid;
-	FrameBuffer_t *buffer = &disp->buffers[id];
-	if (buffer->state != dequeued)
+	FrameBuffer_t *buffer = NULL;
+	if (id >= 0)
+		buffer = &disp->buffers[id];
+	if (!buffer || buffer->state != queued)
 	{
 		errno = EAGAIN;
 		return -1;
 	}
+	drmEventContext evctx = {
+				.version = DRM_EVENT_CONTEXT_VERSION,
+				.page_flip_handler = page_flip_handler,
+	};
+	int ret ;
+	do {
+		ret = drmHandleEvent(disp->fd, &evctx);
+	} while (!ret);
+	errno = 0;
+	if (buffer->state != ready)
+	{
+		errno = EAGAIN;
+		return -1;
+	}
+	if (buffer->mem) /// the value is set but the memory is unmaped
+		buffer->mem = (uint32_t *)mmap(NULL, buffer->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+			disp->fd, buffer->offsets[0]);
 	if (bytesused)
 		*bytesused = buffer->size;
 	if (mem && buffer->mem)
 		*mem = buffer->mem;
-	disp->queueid++;
-	disp->queueid %= disp->nbuffers;
+	buffer->state = dequeued;
 	return id;
 }
 
 EXT_API int sdrm_fd(Display_t *disp, int writer)
 {
+	if (writer == 1)
+		return -1;
+	if (disp->queueid == -1)
+		return 0;
+	if (disp->type == device_input)
+		return disp->out_fd;
 	return disp->fd;
 }
 
 EXT_API int sdrm_start(Display_t *disp)
+{
+	if (disp->type == device_input)
+	{
+		for (int i = 0; i < disp->nbuffers; i++)
+		{
+			sdrm_queue(disp, i, disp->buffers[i].mem, 0, 0);
+		}
+	}
+	disp->queueid = -1;
+	return 0;
+}
+
+int sdrm_stop(Display_t *disp)
 {
 	return 0;
 }
@@ -915,11 +956,6 @@ int sdrm_loadjsonconfiguration(void *arg, void *entry)
 }
 #endif
 
-int sdrm_stop(Display_t *disp)
-{
-	return 0;
-}
-
 void sdrm_destroy(Display_t *disp)
 {
 	drmModeFreeCrtc(disp->crtc);
@@ -946,7 +982,7 @@ FastVideoDevice_ops_t sdrm_ops = {
 	.duplicate = (FastVideoDevice_duplicate_t)NULL,
 	.loadsettings = (FastVideoDevice_loadsettings_t)sdrm_loadsettings,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)sdrm_requestbuffer,
-	.eventfd = (FastVideoDevice_eventfd_t)NULL,
+	.eventfd = (FastVideoDevice_eventfd_t)sdrm_fd,
 	.start = (FastVideoDevice_start_t)sdrm_start,
 	.stop = (FastVideoDevice_stop_t)sdrm_stop,
 	.dequeue = (FastVideoDevice_dequeue_t)sdrm_dequeue,
