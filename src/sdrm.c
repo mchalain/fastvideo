@@ -30,8 +30,9 @@ struct Display_s
 	uint32_t plane_id;
 	drmModeCrtc *crtc;
 	uint32_t fourcc;
-	uint64_t modifiers;
-	int type;
+	uint64_t modifier;
+	int plane_type;
+	device_type_e type;
 	int fd;
 	drmModeModeInfo mode;
 	FrameBuffer_t buffers[MAX_BUFFERS];
@@ -326,7 +327,7 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
 		int type = (int)sdrm_properties(disp, DRM_MODE_OBJECT_PLANE, plane->plane_id, "type", (uint64_t)-1);
 		dbg("  [%d] %u: %s", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
-		if (*plane_id == (uint32_t)-1 && type == disp->type)
+		if (*plane_id == (uint32_t)-1 && type == disp->plan_type)
 		{
 			for (int j = 0; j < plane->count_formats; ++j)
 			{
@@ -353,7 +354,7 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	return ret;
 }
 
-static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, FrameBuffer_t *buffer)
+static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, uint64_t modifier, FrameBuffer_t *buffer)
 {
 	uint32_t bo_handle = (long)buffer->private;
 	uint32_t stride;
@@ -416,8 +417,12 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 		break;
 	}
 
-	if (drmModeAddFB2(disp->fd, width, height, fourcc, handles,
-		buffer->strides, buffer->offsets, &buffer->id, 0))
+	uint64_t modifiers[4] = { modifier };
+	int flags = 0;
+	if (modifier)
+		flags = DRM_MODE_FB_MODIFIERS;
+	if (drmModeAddFB2WithModifiers(disp->fd, width, height, fourcc, handles,
+		buffer->strides, buffer->offsets, modifiers, &buffer->id, 0))
 	{
 		err("sdrm: Frame buffer unavailable 2 (%dx%d %.4s) %m", width, height, &disp->fourcc);
 		return -1;
@@ -429,7 +434,7 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 static int sdrm_buffer_memory(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, FrameBuffer_t *buffer)
 {
 	int bo_handle = (long)buffer->private;
-	sdrm_buffer_generic(disp, width, height, fourcc, buffer);
+	sdrm_buffer_generic(disp, width, height, fourcc, disp->modifier, buffer);
 	struct drm_mode_map_dumb map = {
 		.handle = bo_handle,
 	};
@@ -438,33 +443,22 @@ static int sdrm_buffer_memory(Display_t *disp, uint32_t width, uint32_t height, 
 		err("sdrm: dumb map error %m");
 		return -1;
 	}
-	buffer->mem = (uint32_t *)mmap(NULL, buffer->size, PROT_READ | PROT_WRITE, MAP_SHARED,
-		disp->fd, map.offset);
-#endif
+	buffer->offsets[0] = map.offset;
+	/// set the value of mem to force the use of memory during the queueing
+	buffer->mem = (uint32_t *)mmap(NULL, buffer->size, PROT_READ | PROT_WRITE,
+		MAP_SHARED, disp->fd, buffer->offsets[0]);
 
-	uint32_t stride = buffer->size / height;
-	if (drmModeAddFB(disp->fd, width, height, 24, 32, stride,
-		bo_handle, &buffer->id))
-	{
-		err("sdrm: Frame buffer unavailable 1 (%dx%d %.4s) %m", width, height, &fourcc);
-		return -1;
-	}
+	munmap(buffer->mem, buffer->size);
 	return 0;
 }
 
 static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, FrameBuffer_t *buffer)
 {
 
-	sdrm_buffer_generic(disp, width, height, fourcc, buffer);
+	sdrm_buffer_generic(disp, width, height, fourcc, disp->modifier, buffer);
 
-	uint32_t stride = buffer->size / disp->mode.vdisplay;
 	int bo_handle = (long)buffer->private;
-	uint32_t offsets[4] = { 0 };
-	uint32_t pitches[4] = { stride };
-	uint64_t modifiers[4] = { disp->modifiers };
-	uint32_t bo_handles[4] = { bo_handle };
 
-#if 0
 	struct drm_prime_handle prime = {0};
 	prime.handle = bo_handle;
 
@@ -473,30 +467,18 @@ static int sdrm_buffer_dma(Display_t *disp, uint32_t width, uint32_t height, uin
 		err("sdrm: dmabuf not allowed %m");
 	}
 	buffer->dma_buf = prime.fd;
-#else
-	if (drmPrimeHandleToFD(disp->fd, bo_handle, DRM_CLOEXEC, &buffer->dma_buf))
-	{
-		err("sdrm: dmabuf not allowed %m");
-	}
-#endif
 
-	if (drmModeAddFB2WithModifiers(disp->fd, width, height, disp->fourcc, bo_handles,
-		pitches, offsets, modifiers, &buffer->id, 0))
-	{
-		err("sdrm: Frame buffer unavailable 2 (%dx%d %.4s) %m", width, height, &disp->fourcc);
-		return -1;
-	}
 	return 0;
 }
 
 static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, FrameBuffer_t *buffer)
 {
 	buffer->size = size;
-	uint32_t stride = buffer->size / disp->mode.vdisplay;
+	buffer->width = disp->mode.hdisplay;
+	buffer->height = disp->mode.vdisplay;
+	buffer->strides[0] = buffer->size / disp->mode.vdisplay;
 
-	uint32_t offsets[4] = { 0 };
-	uint32_t pitches[4] = { stride };
-	uint64_t modifiers[4] = { disp->modifiers };
+	uint64_t modifiers[4] = { disp->modifier };
 
 	uint32_t handle;
 	if (drmPrimeFDToHandle(disp->fd, fd, &handle))
@@ -505,12 +487,15 @@ static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, FrameBuffe
 		return -1;
 	}
 	buffer->private = (void *)(long)handle;
-	uint32_t bo_handles[4] = { handle };
 
-	if (drmModeAddFB2WithModifiers(disp->fd, disp->mode.hdisplay, disp->mode.vdisplay, disp->fourcc,
-		bo_handles, pitches, offsets, modifiers, &buffer->id, 0))
+	uint32_t bo_handles[4] = { handle };
+	int flags = 0;
+	if (disp->modifier)
+		flags = DRM_MODE_FB_MODIFIERS;
+	if (drmModeAddFB2WithModifiers(disp->fd, buffer->width, buffer->height, disp->fourcc,
+		bo_handles, buffer->strides, buffer->offsets, modifiers, &buffer->id, 0))
 	{
-		err("sdrm: Frame buffer unavailable 3 (%dx%d %.4s) %m", disp->mode.hdisplay, disp->mode.vdisplay, &disp->fourcc);
+		err("sdrm: Frame buffer unavailable 3 (%dx%d %.4s) %m", buffer->width, buffer->height, &disp->fourcc);
 		return -1;
 	}
 	return 0;
@@ -538,7 +523,9 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 	Display_t *disp = calloc(1, sizeof(*disp));
 	disp->fd = fd;
 	disp->fourcc = FOURCC('A','R','2','4');
-	disp->type = DRM_PLANE_TYPE_PRIMARY;
+	disp->plane_type = DRM_PLANE_TYPE_PRIMARY;
+	disp->type = type;
+	disp->name = name;
 
 #ifdef DEBUG
 	sdrm_listconnector(disp);
@@ -551,7 +538,7 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 		if (config->parent.fourcc)
 			disp->fourcc = config->parent.fourcc;
 		if (config->parent.modifiers)
-			disp->modifiers = config->parent.modifiers;
+			disp->modifier = config->parent.modifiers;
 	}
 	if (sdrm_ids(disp, &disp->connector_id, &disp->encoder_id, &disp->crtc_id, &disp->mode) == -1)
 	{
@@ -655,6 +642,7 @@ EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 			int *ntargets = va_arg(ap, int *);
 			int **targets = va_arg(ap, int **);
 			size_t *psize = va_arg(ap, size_t *);
+			disp->nbuffers = 0;
 			if (targets != NULL)
 			{
 				*targets = calloc(disp->nbuffers, sizeof(int));
