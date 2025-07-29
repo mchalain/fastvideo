@@ -13,9 +13,6 @@
 #include <xf86drmMode.h>
 #include <drm.h>
 #include <drm_fourcc.h>
-#ifdef HAVE_LIBKMS
-#include <kms.h>
-#endif
 
 #include "log.h"
 #include "sdrm.h"
@@ -26,10 +23,7 @@ typedef struct Display_s Display_t;
 struct Display_s
 {
 	DisplayConf_t *config;
-#ifdef HAVE_LIBKMS
-	struct kms_driver *kms;
-	struct kms_bo *bo[MAX_BUFFERS];
-#endif
+	const char *name;
 	uint32_t connector_id;
 	uint32_t encoder_id;
 	uint32_t crtc_id;
@@ -312,60 +306,81 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 
 static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, FrameBuffer_t *buffer)
 {
-	int bo_handle = (long)buffer->private;
-#ifdef HAVE_LIBKMS
-	unsigned attr[] = {
-		KMS_BO_TYPE, KMS_BO_TYPE_SCANOUT_X8R8G8B8,
-		KMS_WIDTH, width,
-		KMS_HEIGHT, height,
-		KMS_TERMINATE_PROP_LIST
-	};
-
-	struct kms_bo *bo = NULL;
-	if (kms_bo_create(disp->kms, attr, &bo))
-	{
-		err("sdrm: kms bo error");
-		return -1;
-	}
-	if (kms_bo_get_prop(bo, KMS_HANDLE, &bo_handle))
-	{
-		err("sdrm: kms bo handle error");
-		return -1;
-	}
-	buffer->private = (void *)(long)bo_handle;
-	disp->bo[buffer->id] = bo;
-#else
+	uint32_t bo_handle = (long)buffer->private;
+	uint32_t stride;
+	uint64_t size;
+	int bpp = 32;
 	dbg("sdrm: buffer for width %u height %u ", width, height);
+	switch (fourcc)
+	{
+		case FOURCC_RGBP:
+		case FOURCC_YUYV:
+			bpp = 16;
+		break;
+		case FOURCC_NV12:
+			bpp = 8;
+		break;
+	}
+#if 0
 	struct drm_mode_create_dumb gem = {
 		.width = width,
 		.height = height,
-		.bpp = 32,
+		.bpp = bpp,
 	};
 	if (drmIoctl(disp->fd, DRM_IOCTL_MODE_CREATE_DUMB, &gem) == -1)
 	{
 		err("sdrm: dumb allocation error %m");
 		return -1;
 	}
-
-	buffer->private = (void *)(long)gem.handle;
-	buffer->size = gem.size;
+	bo_handle = (void *)(long)gem.handle;
+	stride = gem.pitch;
+	size = gem.size;
+#else
+	drmModeCreateDumbBuffer(disp->fd, width, height, bpp, 0, &bo_handle, &stride, &size);
 #endif
+
+	buffer->private = (void*)bo_handle;
+	buffer->size = size;
+	buffer->nplanes = 1;
+	buffer->width = width;
+	buffer->height = height;
+	buffer->strides[0] = stride;
+
+	uint32_t handles[4] = {0};
+	handles[0] = (long)buffer->private;
+	switch (fourcc)
+	{
+		case FOURCC_YUYV:
+			handles[1] = handles[0];
+			buffer->strides[1] = buffer->strides[0] / 2;
+			buffer->offsets[1] = buffer->strides[0] * height;
+			handles[2] = handles[0];
+			buffer->strides[2] = buffer->strides[1];
+			buffer->offsets[2] = buffer->offsets[1] + buffer->strides[1] * height;
+			buffer->nplanes = 3;
+		break;
+		case FOURCC_NV12:
+			handles[1] = handles[0];
+			buffer->strides[1] = buffer->strides[0];
+			buffer->offsets[1] = buffer->strides[0] * height;
+			buffer->nplanes = 2;
+		break;
+	}
+
+	if (drmModeAddFB2(disp->fd, width, height, fourcc, handles,
+		buffer->strides, buffer->offsets, &buffer->id, 0))
+	{
+		err("sdrm: Frame buffer unavailable 2 (%dx%d %.4s) %m", width, height, &disp->fourcc);
+		return -1;
+	}
 
 	return 0;
 }
 
-static int sdrm_buffer_mmap(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, FrameBuffer_t *buffer)
+static int sdrm_buffer_memory(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, FrameBuffer_t *buffer)
 {
 	int bo_handle = (long)buffer->private;
 	sdrm_buffer_generic(disp, width, height, fourcc, buffer);
-#ifdef HAVE_LIBKMS
-	struct kms_bo *bo = disp->bo[buffer->id];
-	if (kms_bo_map(bo, &buffer->memory))
-	{
-		err("sdrm: kms bo map error");
-		return -1;
-	}
-#else
 	struct drm_mode_map_dumb map = {
 		.handle = bo_handle,
 	};
@@ -455,17 +470,7 @@ static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, FrameBuffe
 static void sdrm_freebuffer(Display_t *disp, FrameBuffer_t *buffer)
 {
 	drmModeRmFB(disp->fd, buffer->id);
-#ifdef HAVE_LIBKMS
-	kms_bo_unmap(disp->bo[buffer->id]);
-	kms_bo_destroy(disp->bo[buffer->id]);
-#else
-	int bo_handle = (long)buffer->private;
-	struct drm_mode_destroy_dumb dumb = {
-		.handle = bo_handle,
-	};
-	munmap(buffer->mem, buffer->size);
-	drmIoctl(disp->fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dumb);
-#endif
+	drmModeDestroyDumbBuffer(disp->fd, (uint32_t)(long)buffer->private);
 }
 
 Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayConf_t *config)
@@ -563,7 +568,7 @@ EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 				*targets = calloc(disp->nbuffers, sizeof(void*));
 				for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 				{
-					if (sdrm_buffer_mmap(disp,  disp->mode.hdisplay, disp->mode.vdisplay,
+					if (sdrm_buffer_memory(disp,  disp->mode.hdisplay, disp->mode.vdisplay,
 						disp->fourcc, &disp->buffers[i]) == -1)
 					{
 						err("sdrm: buffer %d allocation error", i);
