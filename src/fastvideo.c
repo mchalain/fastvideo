@@ -161,15 +161,13 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 	}
 	//dbg("transfer (%d) %s => %s %lu bytes", index, input->config->name, output->config->name, bytesused);
 
-	while (output->ops->queue(output->dev, index, mem, bytesused, flags) < 0)
+	if (output->ops->queue(output->dev, index, mem, bytesused, flags) < 0)
 	{
-		if (errno == EAGAIN)
+		if (errno != EAGAIN)
 		{
-			continue;
-		}
-		if (errno)
 			err("%s buffer queuing error %m", output->config->name);
-		return -1;
+			return -1;
+		}
 	}
 	return 0;
 }
@@ -216,7 +214,7 @@ int main_loop(FastVideoList_t *pipes)
 			if (pipe->output->ops->eventfd)
 			{
 				int fd;
-				fd = pipe->output->ops->eventfd(pipe->output->dev, 0);
+				fd = pipe->output->ops->eventfd(pipe->output->dev, 2);
 				if (fd > 0)
 					FD_SET(fd, &rfds);
 				fd = pipe->output->ops->eventfd(pipe->output->dev, 1);
@@ -281,7 +279,10 @@ int main_loop(FastVideoList_t *pipes)
 			int outfd = -1;
 			if (pipe->output->ops->eventfd)
 				outfd = pipe->output->ops->eventfd(pipe->output->dev, 1);
+			if (outfd < 0)
+				outfd = pipe->output->ops->eventfd(pipe->output->dev, 2);
 			if (outfd < 0 ||
+				(outfd > 0 && FD_ISSET(outfd, &rfds)) ||
 				(outfd > 0 && FD_ISSET(outfd, &wfds)))
 			{
 				ret = main_transferbuffer(pipe->output, pipe->input);
