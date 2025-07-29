@@ -144,15 +144,13 @@ static uint64_t sdrm_properties(Display_t *disp,  uint32_t type, uint32_t id, co
 	drmModeObjectPropertiesPtr props;
 
 	props = drmModeObjectGetProperties(disp->fd, id, type);
-	for (int i = 0; i < props->count_props; i++)
+	for (int i = 0; props && i < props->count_props; i++)
 	{
 		drmModePropertyPtr prop;
 
 		prop = drmModeGetProperty(disp->fd, props->props[i]);
-		dbg("sdrm: property %s", prop->name);
 		if (prop && !strcmp(prop->name, property))
 		{
-			// TODO: check if property must be freed
 			ret = props->prop_values[i];
 			if (value != (uint64_t) -1)
 			{
@@ -261,6 +259,56 @@ static int sdrm_listconnector(Display_t *disp)
 	}
 	return 0;
 }
+
+static int sdrm_listproperties(Display_t *disp,  uint32_t type)
+{
+	drmModeResPtr resources;
+	resources = drmModeGetResources(disp->fd);
+	if (resources == NULL)
+	{
+		err("sdrm: No resource available");
+		return -1;
+	}
+	int count = 0;
+	int32_t *id = NULL;
+	switch (type)
+	{
+		case DRM_MODE_OBJECT_CONNECTOR:
+			count = resources->count_connectors;
+			id = resources->connectors;
+		break;
+		case DRM_MODE_OBJECT_PLANE:
+			count = 0;
+		break;
+		case DRM_MODE_OBJECT_CRTC:
+			count = resources->count_crtcs;
+			id = resources->crtcs;
+		break;
+		case DRM_MODE_OBJECT_ENCODER:
+			count = resources->count_encoders;
+			id = resources->encoders;
+		break;
+	}
+	for(int i = 0; i < count; ++i)
+	{
+		drmModeObjectPropertiesPtr props;
+
+		props = drmModeObjectGetProperties(disp->fd, id[i], type);
+		dbg("sdrm: type %#x[%d] %lu", type, i, id[i]);
+		for (int j = 0;props && j < props->count_props; j++)
+		{
+			drmModePropertyPtr prop;
+
+			prop = drmModeGetProperty(disp->fd, props->props[j]);
+			if (prop)
+			{
+				dbg("\tproperty %s %d", prop->name, prop->prop_id);
+				dbg("\t\t%s : %llu", prop->name, props->prop_values[j]);
+			}
+		}
+	}
+	return 0;
+}
 #endif
 
 static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
@@ -272,11 +320,12 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 
 	*plane_id = (uint32_t)-1;
 	drmModePlanePtr plane;
+	dbg("sdrm: Plane");
 	for (int i = 0; i < planes->count_planes; ++i)
 	{
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
 		int type = (int)sdrm_properties(disp, DRM_MODE_OBJECT_PLANE, plane->plane_id, "type", (uint64_t)-1);
-		dbg("sdrm: Plane[%d] %u: %s", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
+		dbg("  [%d] %u: %s", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
 		if (*plane_id == (uint32_t)-1 && type == disp->type)
 		{
 			for (int j = 0; j < plane->count_formats; ++j)
@@ -493,6 +542,7 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 
 #ifdef DEBUG
 	sdrm_listconnector(disp);
+	sdrm_listproperties(disp, DRM_MODE_OBJECT_CRTC);
 #endif
 	if (config)
 	{
