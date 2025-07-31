@@ -27,6 +27,25 @@
 
 #define MAX_BUFFERS 4
 
+typedef enum {
+	SDRM_PROPID_CRTC_ID,
+	SDRM_PROPID_MODE_ID,
+	SDRM_PROPID_FB_ID,
+	SDRM_PROPID_ACTIVE,
+	SDRM_PROPID_SRC_X,
+	SDRM_PROPID_SRC_Y,
+	SDRM_PROPID_SRC_W,
+	SDRM_PROPID_SRC_H,
+	SDRM_PROPID_CRTC_X,
+	SDRM_PROPID_CRTC_Y,
+	SDRM_PROPID_CRTC_W,
+	SDRM_PROPID_CRTC_H,
+	SDRM_PROPID_LAST
+} properties_id;
+
+#define SDRM_FLAGS_ATOMIC_COMMIT 0x0001
+#define SDRM_FLAGS_MODESET 0x0002
+
 typedef struct Display_s Display_t;
 struct Display_s
 {
@@ -35,9 +54,13 @@ struct Display_s
 	uint32_t connector_id;
 	uint32_t encoder_id;
 	uint32_t crtc_id;
+	int crtcindex;
 	uint32_t plane_id;
+	uint32_t mode_id;
+	uint32_t properties[SDRM_PROPID_LAST];
 	drmModeCrtc *crtc;
 	uint32_t fourcc;
+	int bpp;
 	uint64_t modifier;
 	int plane_type;
 	device_type_e type;
@@ -47,6 +70,7 @@ struct Display_s
 	int nbuffers;
 	int buf_id;
 	int queueid;
+	int flags;
 };
 
 static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32_t *crtc_id, drmModeModeInfo *mode)
@@ -80,7 +104,7 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 				{
 					preferred = &connector->modes[m];
 				}
-				if (preferred && connector->modes[m].hdisplay == preferred->hdisplay &&
+				if (connector->modes[m].hdisplay == preferred->hdisplay &&
 								connector->modes[m].vdisplay == preferred->vdisplay)
 				{
 					preferred = &connector->modes[m];
@@ -124,16 +148,16 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 			err("sdrm: get a null encoder pointer");
 	}
 
-	int crtcindex = -1;
+	disp->crtcindex = -1;
 	for(int i=0; i < resources->count_crtcs; ++i)
 	{
 		if (resources->crtcs[i] == *crtc_id)
 		{
-			crtcindex = i;
+			disp->crtcindex = i;
 			break;
 		}
 	}
-	if (crtcindex == -1)
+	if (disp->crtcindex == -1)
 	{
 		err("sdrm: crtc not available");
 	}
@@ -143,6 +167,28 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 	}
 	ret = 0;
 	drmModeFreeResources(resources);
+	return ret;
+}
+
+static uint32_t sdrm_propertyid(Display_t *disp,  uint32_t type, uint32_t id, const char *property)
+{
+	uint32_t ret = -1;
+	drmModeObjectPropertiesPtr props;
+
+	props = drmModeObjectGetProperties(disp->fd, id, type);
+	for (int i = 0; props && i < props->count_props; i++)
+	{
+		drmModePropertyPtr prop;
+
+		prop = drmModeGetProperty(disp->fd, props->props[i]);
+		if (prop && !strcmp(prop->name, property))
+		{
+			ret = props->props[i];
+		}
+		if (prop)
+			drmModeFreeProperty(prop);
+	}
+	drmModeFreeObjectProperties(props);
 	return ret;
 }
 
@@ -310,7 +356,7 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
 		int type = (int)sdrm_properties(disp, DRM_MODE_OBJECT_PLANE, plane->plane_id, "type", (uint64_t)-1);
 		dbg("  [%d] %u: %s", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
-		if (*plane_id == (uint32_t)-1 && type == disp->plan_type)
+		if (*plane_id == (uint32_t)-1 && plane->possible_crtcs & (1 << disp->crtcindex) && type == disp->plane_type)
 		{
 			for (int j = 0; j < plane->count_formats; ++j)
 			{
@@ -378,6 +424,7 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 
 	buffer->private = (void*)bo_handle;
 	buffer->size = size;
+	buffer->bpp = bpp;
 	buffer->nplanes = 1;
 	buffer->width = width;
 	buffer->height = height;
@@ -464,6 +511,7 @@ static int sdrm_buffer_setdma(Display_t *disp, uint32_t size, int fd, FrameBuffe
 	buffer->width = disp->mode.hdisplay;
 	buffer->height = disp->mode.vdisplay;
 	buffer->strides[0] = buffer->size / disp->mode.vdisplay;
+	buffer->bpp = (buffer->strides[0] / buffer->width) * 8;
 
 	uint64_t modifiers[4] = { disp->modifier };
 
@@ -494,6 +542,114 @@ static void sdrm_freebuffer(Display_t *disp, FrameBuffer_t *buffer)
 	drmModeDestroyDumbBuffer(disp->fd, (uint32_t)(long)buffer->private);
 }
 
+static int sdrm_atomic_prepare(Display_t *disp, drmModeModeInfo *mode)
+{
+	if (drmModeCreatePropertyBlob(disp->fd, mode, sizeof(*mode), &disp->mode_id))
+	{
+		err("sdrm: blob create error %m");
+		return -1;
+	}
+
+	disp->properties[SDRM_PROPID_CRTC_ID] = sdrm_propertyid(disp, DRM_MODE_OBJECT_CONNECTOR, disp->connector_id, "CRTC_ID");
+	uint32_t prop_plane_crtc_id = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "CRTC_ID");
+	if (prop_plane_crtc_id != disp->properties[SDRM_PROPID_CRTC_ID])
+	{
+		warn("sdrm: CRTC_ID for plane(%lu) and connector(%lu) differents", prop_plane_crtc_id, disp->properties[SDRM_PROPID_CRTC_ID]);
+	}
+	disp->properties[SDRM_PROPID_MODE_ID] = sdrm_propertyid(disp, DRM_MODE_OBJECT_CRTC, disp->crtc_id, "MODE_ID");
+	disp->properties[SDRM_PROPID_ACTIVE] = sdrm_propertyid(disp, DRM_MODE_OBJECT_CRTC, disp->crtc_id, "ACTIVE");
+	disp->properties[SDRM_PROPID_FB_ID] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "FB_ID");
+	disp->properties[SDRM_PROPID_SRC_X] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "SRC_X");
+	disp->properties[SDRM_PROPID_SRC_Y] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "SRC_Y");
+	disp->properties[SDRM_PROPID_SRC_W] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "SRC_W");
+	disp->properties[SDRM_PROPID_SRC_H] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "SRC_H");
+	disp->properties[SDRM_PROPID_CRTC_X] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "CRTC_X");
+	disp->properties[SDRM_PROPID_CRTC_Y] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "CRTC_Y");
+	disp->properties[SDRM_PROPID_CRTC_W] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "CRTC_W");
+	disp->properties[SDRM_PROPID_CRTC_H] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "CRTC_H");
+	for (int i = 0; i < SDRM_PROPID_LAST; i++)
+	{
+		if (disp->properties[i] == (uint32_t)-1)
+		{
+			err("sdrm: property %d not found", i);
+			return -1;
+		}
+	}
+	return 0;
+}
+
+static int sdrm_atomic_commit(Display_t *disp, FrameBuffer_t *buffer)
+{
+	drmModeAtomicReq *req;
+	req = drmModeAtomicAlloc();
+
+	if (!(disp->flags & SDRM_FLAGS_MODESET))
+	{
+		if (drmModeAtomicAddProperty(req, disp->connector_id, disp->properties[SDRM_PROPID_CRTC_ID], disp->crtc_id) < 0)
+			goto commit_error;
+		if (drmModeAtomicAddProperty(req, disp->crtc_id, disp->properties[SDRM_PROPID_MODE_ID], disp->mode_id) < 0)
+			goto commit_error;
+		if (drmModeAtomicAddProperty(req, disp->crtc_id, disp->properties[SDRM_PROPID_ACTIVE], 1) < 0)
+			goto commit_error;
+	}
+	if (drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_FB_ID], buffer->id) < 0)
+		goto commit_error;
+	if (drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_CRTC_ID], disp->crtc_id) < 0) /// <=== failed ???
+		goto commit_error;
+	/// the src rectangle must be move from 16 bits without any reason found ???
+	if (disp->properties[SDRM_PROPID_SRC_X] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_SRC_X], 0 << 16) < 0)
+		goto commit_error;
+	if (disp->properties[SDRM_PROPID_SRC_Y] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_SRC_Y], 0 << 16) < 0)
+		goto commit_error;
+	if (disp->properties[SDRM_PROPID_SRC_W] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_SRC_W], buffer->width << 16) < 0)
+		goto commit_error;
+	if (disp->properties[SDRM_PROPID_SRC_H] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_SRC_H], buffer->height << 16) < 0)
+		goto commit_error;
+	if (disp->properties[SDRM_PROPID_CRTC_X] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_CRTC_X], 0) < 0)
+		goto commit_error;
+	if (disp->properties[SDRM_PROPID_CRTC_Y] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_CRTC_Y], 0) < 0)
+		goto commit_error;
+	if (disp->properties[SDRM_PROPID_CRTC_W] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_CRTC_W], buffer->width) < 0)
+		goto commit_error;
+	if (disp->properties[SDRM_PROPID_CRTC_H] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_CRTC_H], buffer->height) < 0)
+		goto commit_error;
+
+	int flags = DRM_MODE_ATOMIC_TEST_ONLY;
+	if (!(disp->flags & SDRM_FLAGS_MODESET))
+		flags |= DRM_MODE_ATOMIC_ALLOW_MODESET;
+	if (!(disp->flags & SDRM_FLAGS_MODESET) && drmModeAtomicCommit(disp->fd, req, flags, NULL) < 0)
+	{
+		err("sdrm: atomic commit test failed %m");
+		goto commit_error;
+	}
+
+	flags = DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK;
+	if (!(disp->flags & SDRM_FLAGS_MODESET))
+	{
+		flags |= DRM_MODE_ATOMIC_ALLOW_MODESET;
+		disp->flags |= SDRM_FLAGS_MODESET;
+	}
+	if (drmModeAtomicCommit(disp->fd, req, flags, disp) < 0)
+	{
+		err("sdrm: atomic commit failed %m");
+		goto commit_error;
+	}
+	drmModeAtomicFree(req);
+
+	return 0;
+commit_error:
+	drmModeAtomicFree(req);
+	return -1;
+}
+
 Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayConf_t *config)
 {
 	if (type != device_output)
@@ -514,6 +670,13 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 	disp->type = type;
 	disp->name = name;
 
+#ifndef SDRM_DISABLE_ATOMIC_COMMIT
+	if (drmSetMaster(fd))
+		err("sdrm: setmaster failed %m");
+	/// enable atomic and writeback before setting the primary connector
+	if (drmSetClientCap(fd, DRM_CLIENT_CAP_ATOMIC, 1))
+		err("sdrm: atomic not supported %m");
+#endif
 #ifdef DEBUG
 	sdrm_listconnector(disp);
 	sdrm_listproperties(disp, DRM_MODE_OBJECT_CRTC);
@@ -552,10 +715,6 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 	if (disp->crtc_id && ! disp->mode_id)
 		disp->mode_id = sdrm_properties(disp, DRM_MODE_OBJECT_CRTC, disp->crtc_id, "MODE_ID", -1);
 
-	if (config)
-	{
-		config->parent.dev = disp;
-	}
 	return disp;
 }
 
@@ -666,16 +825,25 @@ EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 	}
 	va_end(ap);
 
-	disp->crtc = drmModeGetCrtc(disp->fd, disp->crtc_id);
-	if (drmModeSetCrtc(disp->fd, disp->crtc_id, disp->buffers[0].id, 0, 0, &disp->connector_id, 1, &disp->mode))
+	if (disp->flags & SDRM_FLAGS_ATOMIC_COMMIT)
 	{
-		err("srdm: Crtc setting error %m");
-		for (int j = 0; j < MAX_BUFFERS; j++)
-			sdrm_freebuffer(disp, &disp->buffers[j]);
-		free(disp);
-		return -1;
+		if (sdrm_atomic_commit(disp, &disp->buffers[0]))
+		{
+			return -1;
+		}
 	}
-	drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[0].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
+	else
+	{
+		disp->crtc = drmModeGetCrtc(disp->fd, disp->crtc_id);
+		if (disp->crtc && drmModeSetCrtc(disp->fd, disp->crtc_id, disp->buffers[0].id, 0, 0, &disp->connector_id, 1, &disp->mode))
+		{
+			err("srdm: Crtc setting error %m");
+			return -1;
+		}
+		disp->flags |= SDRM_FLAGS_MODESET;
+		drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[0].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
+	}
+
 	return 0;
 }
 
@@ -712,7 +880,18 @@ EXT_API int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused, int
 	{
 		warn("sfile: buffer too small %lu %lu", buffer->size, bytesused);
 	}
-	drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[(int)id].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
+	if (disp->flags & SDRM_FLAGS_ATOMIC_COMMIT)
+	{
+		if (sdrm_atomic_commit(disp, &disp->buffers[(int)id]))
+		{
+			err("sdrm: atomic flip commit error %m");
+			return -1;
+		}
+	}
+	else
+	{
+		drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[(int)id].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
+	}
 	buffer->state = queued;
 	disp->queueid = id;
 	return 0;
@@ -961,6 +1140,10 @@ void sdrm_destroy(Display_t *disp)
 	for (int j = 0; j < MAX_BUFFERS; j++)
 		sdrm_freebuffer(disp, &disp->buffers[j]);
 	close(disp->fd);
+	if (disp->mode_id)
+	{
+		drmModeDestroyPropertyBlob(disp->fd, disp->mode_id);
+	}
 	free(disp);
 }
 
