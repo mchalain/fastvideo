@@ -40,6 +40,7 @@ typedef enum {
 	SDRM_PROPID_CRTC_Y,
 	SDRM_PROPID_CRTC_W,
 	SDRM_PROPID_CRTC_H,
+	SDRM_PROPID_ROTATION,
 	SDRM_PROPID_LAST
 } properties_id;
 
@@ -71,6 +72,7 @@ struct Display_s
 	int buf_id;
 	int queueid;
 	int flags;
+	uint32_t rotation;
 };
 
 static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32_t *crtc_id, drmModeModeInfo *mode)
@@ -567,12 +569,13 @@ static int sdrm_atomic_prepare(Display_t *disp, drmModeModeInfo *mode)
 	disp->properties[SDRM_PROPID_CRTC_Y] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "CRTC_Y");
 	disp->properties[SDRM_PROPID_CRTC_W] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "CRTC_W");
 	disp->properties[SDRM_PROPID_CRTC_H] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "CRTC_H");
+	disp->properties[SDRM_PROPID_ROTATION] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "rotation");
 	for (int i = 0; i < SDRM_PROPID_LAST; i++)
 	{
 		if (disp->properties[i] == (uint32_t)-1)
 		{
 			err("sdrm: property %d not found", i);
-			return -1;
+			//return -1;
 		}
 	}
 	return 0;
@@ -621,6 +624,8 @@ static int sdrm_atomic_commit(Display_t *disp, FrameBuffer_t *buffer)
 	if (disp->properties[SDRM_PROPID_CRTC_H] != (uint32_t)-1 &&
 		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_CRTC_H], buffer->height) < 0)
 		goto commit_error;
+	if (disp->properties[SDRM_PROPID_ROTATION] != (uint32_t)-1)
+		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_ROTATION], disp->rotation);
 
 	int flags = DRM_MODE_ATOMIC_TEST_ONLY;
 	if (!(disp->flags & SDRM_FLAGS_MODESET))
@@ -669,6 +674,7 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 	disp->plane_type = DRM_PLANE_TYPE_PRIMARY;
 	disp->type = type;
 	disp->name = name;
+	disp->rotation = DRM_MODE_ROTATE_0;
 
 #ifndef SDRM_DISABLE_ATOMIC_COMMIT
 	if (drmSetMaster(fd))
@@ -1110,10 +1116,55 @@ int sdrm_capabilities(Display_t *disp, json_t *capabilities)
 	return 0;
 }
 
+static uint32_t sdrm_setrotation(Display_t *disp, json_t *jrotation)
+{
+	int ret = -1;
+	if (jrotation && json_is_integer(jrotation))
+	{
+		int rotation = json_integer_value(jrotation);
+		if (rotation < 45)
+			disp->rotation |= DRM_MODE_ROTATE_0;
+		else if (rotation < 135)
+			disp->rotation |= DRM_MODE_ROTATE_90;
+		else if (rotation < 225)
+			disp->rotation |= DRM_MODE_ROTATE_180;
+		else if (rotation < 315)
+			disp->rotation |= DRM_MODE_ROTATE_270;
+		else
+			disp->rotation = DRM_MODE_ROTATE_0;
+		ret = 0;
+	}
+	if (jrotation && json_is_string(jrotation))
+	{
+		const char *value = json_string_value(jrotation);
+		if (!strcasecmp(value, "90"))
+			disp->rotation |= DRM_MODE_ROTATE_90;
+		else if (!strcasecmp(value, "180"))
+			disp->rotation |= DRM_MODE_ROTATE_180;
+		else if (!strcasecmp(value, "270"))
+			disp->rotation |= DRM_MODE_ROTATE_270;
+		else if (!strcasecmp(value, "reflect"))
+			disp->rotation |= DRM_MODE_REFLECT_X;
+	}
+	return ret;
+}
+
 int sdrm_loadjsonsettings(void *arg, void *entry)
 {
 	json_t *jconfig = entry;
 	Display_t *disp = (Display_t *)arg;
+	json_t *jrotation = json_object_get(jconfig, "rotation");
+
+	if (sdrm_setrotation(disp, jrotation) &&
+		jrotation && json_is_array(jrotation))
+	{
+		int index;
+		json_t *jentry;
+		json_array_foreach(jrotation, index, jentry)
+		{
+			sdrm_setrotation(disp, jentry);
+		}
+	}
 	return 0;
 }
 
