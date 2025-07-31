@@ -17,6 +17,14 @@
 #include "log.h"
 #include "sdrm.h"
 
+/**
+ * The DRM driver debug system differs from the dev_dbg system
+ * enable full traces:
+ * > echo 0x19F > /sys/module/drm/parameters/debug
+ */
+
+#define sdrm_dbg(...)
+
 #define MAX_BUFFERS 4
 
 typedef struct Display_s Display_t;
@@ -141,70 +149,35 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 static uint64_t sdrm_properties(Display_t *disp,  uint32_t type, uint32_t id, const char *property, uint64_t value)
 {
 	uint64_t ret = 0;
-#if 1
 	drmModeObjectPropertiesPtr props;
 
 	props = drmModeObjectGetProperties(disp->fd, id, type);
+	sdrm_dbg("sdrm: property for %#x", type);
 	for (int i = 0; props && i < props->count_props; i++)
 	{
 		drmModePropertyPtr prop;
 
 		prop = drmModeGetProperty(disp->fd, props->props[i]);
-		if (prop && !strcmp(prop->name, property))
-		{
-			ret = props->prop_values[i];
-			if (value != (uint64_t) -1)
-			{
-				drmModeObjectSetProperty(disp->fd, id, type, props->props[i], value);
-			}
-			break;
-		}
 		if (prop)
+		{
+#ifdef DEBUG
+			sdrm_dbg("\t%s [%lu] => %lu", prop->name, props->props[i], props->prop_values[i]);
+#endif
+			if (!strcmp(prop->name, property))
+			{
+				ret = props->prop_values[i];
+				if (value != (uint64_t) -1)
+				{
+					drmModeObjectSetProperty(disp->fd, id, type, props->props[i], value);
+				}
+#ifndef DEBUG
+				break;
+#endif
+			}
 			drmModeFreeProperty(prop);
+		}
 	}
 	drmModeFreeObjectProperties(props);
-#else
-	struct drm_mode_obj_get_properties counter = {
-		.obj_id = plane_id,
-		.obj_type = DRM_MODE_OBJECT_PLANE,
-	};
-	if (drmIoctl(disp->fd, DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &counter) == -1)
-	{
-		err("sdrm: Properties count error %m");
-		return -1;
-	}
-    size_t count = counter.count_props;
-    uint32_t *ids = calloc(count, sizeof (*ids));
-    uint64_t *values = calloc(count, sizeof (*values));
-	struct drm_mode_obj_get_properties props = {
-        .props_ptr = (uintptr_t)(void *)ids,
-        .prop_values_ptr = (uintptr_t)(void *)values,
-        .count_props = count,
-        .obj_id = plane_id,
-        .obj_type = DRM_MODE_OBJECT_PLANE,
-    };
-	if (drmIoctl(disp->fd, DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &props) == -1)
-	{
-		err("sdrm: Properties get error %m");
-		return -1;
-	}
-    for (size_t i = 0; i < props.count_props; i++)
-    {
-		struct drm_mode_get_property prop = {
-			.prop_id = ids[i],
-		};
-		if (drmIoctl(disp->fd, DRM_IOCTL_MODE_GETPROPERTY, &prop) == -1)
-		{
-			err("sdrm: Property %#x get error %m", ids[i]);
-			continue;
-		}
-		if (!strcmp(property, prop.name))
-		{
-			ret = values[i];
-			break;
-		}
-	}
-#endif
 	return ret;
 }
 
@@ -271,23 +244,34 @@ static int sdrm_listproperties(Display_t *disp,  uint32_t type)
 		return -1;
 	}
 	int count = 0;
-	int32_t *id = NULL;
+	int32_t defid = 0;
+	int32_t *id = &defid;
+	const char *name;
+	const char *connector_name = "connector";
+	const char *crtc_name = "crtc";
+	const char *plane_name = "plane";
+	const char *encoder_name = "encoder";
 	switch (type)
 	{
 		case DRM_MODE_OBJECT_CONNECTOR:
 			count = resources->count_connectors;
 			id = resources->connectors;
+			name = connector_name;
 		break;
 		case DRM_MODE_OBJECT_PLANE:
-			count = 0;
+			count = 1;
+			*id = disp->plane_id;
+			name = plane_name;
 		break;
 		case DRM_MODE_OBJECT_CRTC:
 			count = resources->count_crtcs;
 			id = resources->crtcs;
+			name = crtc_name;
 		break;
 		case DRM_MODE_OBJECT_ENCODER:
 			count = resources->count_encoders;
 			id = resources->encoders;
+			name = encoder_name;
 		break;
 	}
 	for(int i = 0; i < count; ++i)
@@ -295,11 +279,10 @@ static int sdrm_listproperties(Display_t *disp,  uint32_t type)
 		drmModeObjectPropertiesPtr props;
 
 		props = drmModeObjectGetProperties(disp->fd, id[i], type);
-		dbg("sdrm: type %#x[%d] %lu", type, i, id[i]);
-		for (int j = 0;props && j < props->count_props; j++)
+		dbg("sdrm: properties %s[%d] %lu", name, i, id[i]);
+		for (int j = 0; props && j < props->count_props; j++)
 		{
 			drmModePropertyPtr prop;
-
 			prop = drmModeGetProperty(disp->fd, props->props[j]);
 			if (prop)
 			{
@@ -331,14 +314,18 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 		{
 			for (int j = 0; j < plane->count_formats; ++j)
 			{
+#ifndef DEBUG
+				if (plane->possible_crtcs & (1 << disp->crtcindex))
+					break;
+#endif
 				uint32_t fourcc = plane->formats[j];
 				dbg("\tformat %.4s", (char *)&fourcc);
-				if (plane->formats[j] == disp->fourcc)
+				if (plane->formats[j] == disp->fourcc && plane->possible_crtcs & (1 << disp->crtcindex))
 				{
 					ret = 0;
+					*plane_id = plane->plane_id;
 				}
 			}
-			*plane_id = plane->plane_id;
 		}
 		drmModeFreePlane(plane);
 #ifndef DEBUG
@@ -530,6 +517,7 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 #ifdef DEBUG
 	sdrm_listconnector(disp);
 	sdrm_listproperties(disp, DRM_MODE_OBJECT_CRTC);
+	sdrm_listproperties(disp, DRM_MODE_OBJECT_ENCODER);
 #endif
 	if (config)
 	{
@@ -550,7 +538,18 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 		free(disp);
 		return NULL;
 	}
-	if (disp->crtc_id)
+#ifdef DEBUG
+	sdrm_listproperties(disp, DRM_MODE_OBJECT_PLANE);
+#endif
+
+#ifndef SDRM_DISABLE_ATOMIC_COMMIT
+	if (!sdrm_atomic_prepare(disp, &disp->mode))
+	{
+		disp->flags |= SDRM_FLAGS_ATOMIC_COMMIT;
+		dbg("sdrm: run in atomic mode");
+	}
+#endif
+	if (disp->crtc_id && ! disp->mode_id)
 		disp->mode_id = sdrm_properties(disp, DRM_MODE_OBJECT_CRTC, disp->crtc_id, "MODE_ID", -1);
 
 	if (config)
