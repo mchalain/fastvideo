@@ -78,10 +78,20 @@ struct FrameBuffer_s
 {
 	int id;
 	void *mem;
-	size_t offset;
+	off_t map_offset;
 	int dma_buf;
-	size_t size;
+	int nplanes;
+	struct {
+		size_t size;
+		uint32_t strides[4];
+		uint32_t offsets[4];
+		int bpp;
+	};
 	size_t bytesused;
+	struct {
+		uint32_t width;
+		uint32_t height;
+	};
 	int flags;
 	enum {
 		invalid,

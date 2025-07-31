@@ -20,7 +20,7 @@ static FrameBuffer_t *_create_buffer(DeviceConf_t *config)
 	buffer->size = 1024;
 	buffer->mem = malloc(buffer->size);
 	buffer->dma_buf = 0;
-	buffer->offset = 0;
+	buffer->map_offset = 0;
 	return buffer;
 }
 static void _destroy_buffer(FrameBuffer_t *buffer)
