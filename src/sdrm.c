@@ -75,28 +75,61 @@ struct Display_s
 	uint32_t rotation;
 };
 
+/// build the connector pipeline
 static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32_t *crtc_id, drmModeModeInfo *mode)
 {
-	int ret = -1;
 	drmModeResPtr resources;
 	resources = drmModeGetResources(disp->fd);
 	if (resources == NULL)
 	{
-		err("sdrm: No resource available");
-		return ret;
+		err("sdrm: resources not  availables");
+		return -1;
 	}
 
-	int32_t connector_id = -1;
-	int32_t encoder_id = -1;
+	/// search a free encoder
+	uint32_t encoder_id = 0;
+	for(int i=0; i < resources->count_encoders; ++i)
+	{
+		drmModeEncoderPtr encoder;
+		encoder = drmModeGetEncoder(disp->fd, resources->encoders[i]);
+		if(encoder != NULL)
+		{
+			encoder_id = encoder->encoder_id;
+			for(int i = 0; i < resources->count_connectors; ++i)
+			{
+				drmModeConnectorPtr connector = drmModeGetConnector(disp->fd, resources->connectors[i]);
+				if (! connector)
+					continue;
+				if(encoder->encoder_id == connector->encoder_id)
+				{
+					encoder_id = 0;
+					break;
+				}
+				drmModeFreeConnector(connector);
+			}
+			drmModeFreeEncoder(encoder);
+		}
+	}
+
+	/// find a connected connector
+	uint32_t connector_type = 0;
+	uint32_t connector_id = 0;
 	for(int i = 0; i < resources->count_connectors; ++i)
 	{
-		connector_id = resources->connectors[i];
-		drmModeConnectorPtr connector = drmModeGetConnector(disp->fd, connector_id);
+		drmModeConnectorPtr connector = drmModeGetConnector(disp->fd, resources->connectors[i]);
 		if (! connector)
 			continue;
-		if (connector->connection == DRM_MODE_CONNECTED &&
-			connector->count_modes > 0)
+		if (disp->type == device_transfer &&
+			connector->connector_type != DRM_MODE_CONNECTOR_WRITEBACK)
+			continue;
+		if (connector->connection == DRM_MODE_CONNECTED)
 		{
+			/// if connector has not an encoder, use the freed one
+			if (!encoder_id ||
+				(encoder_id && connector->encoder_id && connector->encoder_id != encoder_id))
+				encoder_id = connector->encoder_id;
+
+			/// search the modeinfo to store into a blob and push into the CRTC
 			drmModeModeInfo *preferred = NULL;
 			if (mode->hdisplay && mode->vdisplay)
 				preferred = mode;
@@ -106,8 +139,9 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 				{
 					preferred = &connector->modes[m];
 				}
-				if (connector->modes[m].hdisplay == preferred->hdisplay &&
-								connector->modes[m].vdisplay == preferred->vdisplay)
+				if (preferred &&
+					connector->modes[m].hdisplay == preferred->hdisplay &&
+					connector->modes[m].vdisplay == preferred->vdisplay)
 				{
 					preferred = &connector->modes[m];
 				}
@@ -115,43 +149,40 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 			if (preferred == NULL || preferred == mode)
 				preferred = &connector->modes[0];
 			memcpy(mode, preferred, sizeof(*mode));
-			encoder_id = connector->encoder_id;
+			connector_id = connector->connector_id;
+			connector_type = connector->connector_type;
 			drmModeFreeConnector(connector);
 			break;
 		}
 		drmModeFreeConnector(connector);
 	}
 
-	if (connector_id == -1 || encoder_id == -1)
+	if (connector_id == 0 || encoder_id == 0)
 	{
-		err("drm: no display connected");
+		err("sdrm: display not connected");
 		drmModeFreeResources(resources);
-		return ret;
+		return -1;
 	}
 	*conn_id = connector_id;
 	*enc_id = encoder_id;
-
-	for(int i=0; i < resources->count_encoders; ++i)
+	drmModeEncoderPtr encoder;
+	encoder = drmModeGetEncoder(disp->fd, encoder_id);
+	if(encoder != NULL)
 	{
-		drmModeEncoderPtr encoder;
-		encoder = drmModeGetEncoder(disp->fd, resources->encoders[i]);
-		if(encoder != NULL)
+		if (encoder->crtc_id)
+			*crtc_id = encoder->crtc_id;
+		for(int j = 0;!*crtc_id && j < resources->count_crtcs; ++j)
 		{
-			if(encoder->encoder_id == encoder_id)
+			if (encoder->possible_crtcs & (1 << j))
 			{
-				dbg("sdrm: encoder %d found", encoder->encoder_id);
-				*crtc_id = encoder->crtc_id;
-				drmModeFreeEncoder(encoder);
-				break;
+				*crtc_id = resources->crtcs[j];
 			}
-			drmModeFreeEncoder(encoder);
 		}
-		else
-			err("sdrm: get a null encoder pointer");
+		drmModeFreeEncoder(encoder);
 	}
 
 	disp->crtcindex = -1;
-	for(int i=0; i < resources->count_crtcs; ++i)
+	for(int i=0;*crtc_id && i < resources->count_crtcs; ++i)
 	{
 		if (resources->crtcs[i] == *crtc_id)
 		{
@@ -159,17 +190,22 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 			break;
 		}
 	}
+	drmModeFreeResources(resources);
 	if (disp->crtcindex == -1)
 	{
-		err("sdrm: crtc not available");
+		err("sdrm: connector not available");
+		return -1;
 	}
-	else
+	if (drmModeCreatePropertyBlob(disp->fd, mode, sizeof(*mode), &disp->mode_id))
 	{
-		dbg("sdrm: screen size %ux%u", disp->mode.hdisplay, disp->mode.vdisplay);
+		err("sdrm: blob creation error %m");
+		return -1;
 	}
-	ret = 0;
-	drmModeFreeResources(resources);
-	return ret;
+
+	const char *type = drmModeGetConnectorTypeName(connector_type);
+	dbg("sdrm: connector %lu %s, encoder %lu, crtc %lu", disp->connector_id,
+		type, disp->encoder_id, disp->crtc_id);
+	return 0;
 }
 
 static uint32_t sdrm_propertyid(Display_t *disp,  uint32_t type, uint32_t id, const char *property)
@@ -515,12 +551,6 @@ static void sdrm_freebuffer(Display_t *disp, FrameBuffer_t *buffer)
 
 static int sdrm_atomic_prepare(Display_t *disp, drmModeModeInfo *mode)
 {
-	if (drmModeCreatePropertyBlob(disp->fd, mode, sizeof(*mode), &disp->mode_id))
-	{
-		err("sdrm: blob create error %m");
-		return -1;
-	}
-
 	disp->properties[SDRM_PROPID_CRTC_ID] = sdrm_propertyid(disp, DRM_MODE_OBJECT_CONNECTOR, disp->connector_id, "CRTC_ID");
 	uint32_t prop_plane_crtc_id = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "CRTC_ID");
 	if (prop_plane_crtc_id != disp->properties[SDRM_PROPID_CRTC_ID])
@@ -671,6 +701,9 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 		free(disp);
 		return NULL;
 	}
+	if (disp->crtc_id && disp->mode_id)
+		sdrm_properties(disp, DRM_MODE_OBJECT_CRTC, disp->crtc_id, "MODE_ID", disp->mode_id);
+
 	if (sdrm_plane(disp, &disp->plane_id) == -1)
 	{
 		free(disp);
@@ -679,16 +712,6 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 #ifdef DEBUG
 	sdrm_listproperties(disp, DRM_MODE_OBJECT_PLANE);
 #endif
-
-#ifndef SDRM_DISABLE_ATOMIC_COMMIT
-	if (!sdrm_atomic_prepare(disp, &disp->mode))
-	{
-		disp->flags |= SDRM_FLAGS_ATOMIC_COMMIT;
-		dbg("sdrm: run in atomic mode");
-	}
-#endif
-	if (disp->crtc_id && ! disp->mode_id)
-		disp->mode_id = sdrm_properties(disp, DRM_MODE_OBJECT_CRTC, disp->crtc_id, "MODE_ID", -1);
 
 	for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 	{
@@ -781,7 +804,6 @@ static int sdrm_requestbuffer_output(Display_t *disp, enum buf_type_e t, va_list
 		break;
 		case buf_type_dmabuf | buf_type_master:
 		{
-			dbg("request buf_type_dmabuf");
 			int *ntargets = va_arg(ap, int *);
 			int **targets = va_arg(ap, int **);
 			size_t *psize = va_arg(ap, size_t *);
@@ -793,12 +815,12 @@ static int sdrm_requestbuffer_output(Display_t *disp, enum buf_type_e t, va_list
 				{
 					if (sdrm_buffer_dumb(disp, &disp->buffers[i]))
 					{
-						err("sdrm: buffer master error %m");
+						err("sdrm: output buffer master error %m");
 						break;
 					}
 					if (sdrm_buffer_setdma(disp, (long)disp->buffers[i].private, &disp->buffers[i]) == -1)
 					{
-						err("sdrm: buffer %d allocation error", i);
+						err("sdrm: output buffer %d allocation error", i);
 						break;
 					}
 					(*targets)[i] = disp->buffers[i].dma_buf;
@@ -822,36 +844,27 @@ static int sdrm_requestbuffer_output(Display_t *disp, enum buf_type_e t, va_list
 			return -1;
 		}
 	}
-	if (disp->flags & SDRM_FLAGS_ATOMIC_COMMIT)
+
+#ifndef SDRM_DISABLE_ATOMIC_COMMIT
+	if (!sdrm_atomic_prepare(disp, &disp->mode))
 	{
-		if (sdrm_atomic_commit(disp, &disp->buffers[0]))
-		{
-			return -1;
-		}
+		disp->flags |= SDRM_FLAGS_ATOMIC_COMMIT;
+		dbg("sdrm: run in atomic mode");
 	}
-	else
-	{
-		disp->crtc = drmModeGetCrtc(disp->fd, disp->crtc_id);
-		if (disp->crtc && drmModeSetCrtc(disp->fd, disp->crtc_id, disp->buffers[0].id, 0, 0, &disp->connector_id, 1, &disp->mode))
-		{
-			err("srdm: Crtc setting error %m");
-			return -1;
-		}
-		disp->flags |= SDRM_FLAGS_MODESET;
-		drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[0].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
-	}
+#endif
 
 	return 0;
 }
 
 EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 {
+	int ret = -1;
 	va_list ap;
 	va_start(ap, t);
 	if (disp->type != device_input)
-		sdrm_requestbuffer_output(disp, t, ap);
+		ret = sdrm_requestbuffer_output(disp, t, ap);
 	va_end(ap);
-	return 0;
+	return ret;
 }
 
 static void page_flip_handler(int fd, unsigned int frame,
@@ -958,6 +971,27 @@ EXT_API int sdrm_start(Display_t *disp)
 		for (int i = 0; i < disp->nbuffers; i++)
 		{
 			sdrm_queue(disp, i, disp->buffers[i].mem, 0, 0);
+		}
+	}
+	else
+	{
+		if (disp->flags & SDRM_FLAGS_ATOMIC_COMMIT)
+		{
+			if (sdrm_atomic_commit(disp, &disp->buffers[0]))
+			{
+				return -1;
+			}
+		}
+		else
+		{
+			disp->crtc = drmModeGetCrtc(disp->fd, disp->crtc_id);
+			if (disp->crtc && drmModeSetCrtc(disp->fd, disp->crtc_id, disp->buffers[0].id, 0, 0, &disp->connector_id, 1, &disp->mode))
+			{
+				err("srdm: Crtc setting error %m");
+				return -1;
+			}
+			disp->flags |= SDRM_FLAGS_MODESET;
+			drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[0].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
 		}
 	}
 	disp->queueid = -1;
