@@ -729,10 +729,8 @@ EXT_API Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf
 	return disp;
 }
 
-EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
+static int sdrm_requestbuffer_output(Display_t *disp, enum buf_type_e t, va_list ap)
 {
-	va_list ap;
-	va_start(ap, t);
 	switch (t)
 	{
 		case (buf_type_memory | buf_type_master):
@@ -813,10 +811,8 @@ EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 		}
 		break;
 		default:
-			va_end(ap);
 			return -1;
 	}
-	va_end(ap);
 
 	for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 	{
@@ -845,6 +841,16 @@ EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 		drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[0].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
 	}
 
+	return 0;
+}
+
+EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
+{
+	va_list ap;
+	va_start(ap, t);
+	if (disp->type != device_input)
+		sdrm_requestbuffer_output(disp, t, ap);
+	va_end(ap);
 	return 0;
 }
 
