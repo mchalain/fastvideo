@@ -135,6 +135,19 @@
     },
     "id": 18,
     "media": "media4"
+  },
+  {
+    "name": ["isp1-meta"],
+    "type": "v4l2",
+    "device": "/dev/video23",
+    "media": "media1",
+    "definition":{
+      "mode": ["capture","meta"],
+      "fourcc": "BSTA",
+      "fps": 30,
+      "end": true
+    },
+    "end": true
   },{
     "name": ["dec-h264","bcm2835-codec-decode-source"],
     "type": "v4l2",
@@ -167,9 +180,6 @@
     "type": "v4l2",
     "device": "/dev/video11",
     "definition": {
-      "~ourcc":"RGBP",
-      "fourcc":"BGR4",
-      "~ourcc":"YUYV",
       "width":1920,
       "height":1080,
       "end":true
@@ -202,7 +212,7 @@
       },{
         "name": "Repeat Sequence Header",
         "id": 10029538,
-        "value": false
+        "value": true
       },{
         "name": "Force Key Frame",
         "id": 10029541
@@ -229,6 +239,11 @@
         "value": 4
       }
     ],
+    "action": {
+      "periodic":  0,
+      "periodiccontrol": 10029541,
+      "end": true
+    },
     "id": 15,
     "media": "media2"
   },{
@@ -439,9 +454,7 @@
     "type": "v4l2",
     "device": "/dev/video14",
     "definition": {
-      "~ourcc": "RGBP",
       "fourcc": "XR24",
-      "~ourcc": "YUYV",
       "width": 1920,
       "height": 1080
     },
@@ -461,16 +474,27 @@
     "media": "media3"
   },
   {
+    "name": ["isp-meta"],
+    "type": "v4l2",
+    "device": "/dev/video16",
+    "media": "media1",
+    "definition":{
+      "fourcc": "BSTA",
+      "end": true
+    },
+    "end": true
+  },
+  {
     "name": ["unicam-image","cam-imx477","cam-imx296","cam-imx708","cam-ov5647"],
     "type": "v4l2",
     "device": "/dev/video0",
     "id": 6,
     "media": "media1",
     "definition":{
-          "fourcc": "GB10",
-          "width": 1920,
-          "height": 1080,
-          "end": true
+      "fourcc": "GB10",
+      "width": 1920,
+      "height": 1080,
+      "end": true
     },
     "subdevices": [
       {
@@ -567,7 +591,7 @@
       },
       {
         "name": ["cam-imx708","dw9807 10-000c"],
-	"disable": true,
+        "disable": true,
         "type": "subv4l",
         "device": "/dev/v4l-subdev1",
         "controls": [
@@ -640,7 +664,7 @@
         "media": "/dev/media1"
       },{
         "name": ["cam-imx477","imx477 10-001a"],
-	"disable": true,
+        "disable": true,
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
@@ -678,7 +702,7 @@
           {
             "name": "Vertical Blanking",
             "id": 10356993,
-            "value": 460
+            "value": 46
           },
           {
             "name": "Horizontal Blanking",
@@ -747,6 +771,7 @@
           "-width": 640,
           "height": 1080,
           "-height": 480,
+          "fps": 30,
           "end": true
         },
         "controls": [
@@ -759,17 +784,17 @@
             "disable": false,
             "name":"Gain, Automatic",
             "id": 9963794,
-            "value":true
+            "value": true
           },{
             "disable": true,
             "name":"Analogue Gain",
             "id": 10356995,
-            "value":1020
+            "value":100
           },{
             "disable": false,
             "name":"Auto Exposure",
             "id": 10094849,
-            "value":true
+            "value": 0
           },{
             "disable": true,
             "name":"Exposure",
@@ -788,15 +813,15 @@
             "comment": "true value fail the startup",
             "value": false
           },{
-            "disable": true,
+            "read-only": true,
             "name": "Camera Sensor Rotation",
             "id": 10094883,
-            "comment": "not supported",
             "value": 180
           },{
-            "disable": true,
+            "disable": false,
             "name":"Vertical Blanking",
             "id": 10356993,
+            "comment": "set this value for fps: value = (pixelrate / fps / (width+hblank)) - height; 24=>60fps 46=>30fps",
             "value": 24
           }
         ]
@@ -806,19 +831,57 @@
   {
     "name":[ "screen" ],
     "type":"screen",
-    "device":"/dev/dri/card0"
+    "device":"/dev/dri/card0",
+    "rotation": [ "reflect"],
+    "end":true
   },
   {
     "name":[ "gpu" ],
     "type":"gpu",
     "native":"drm",
+    "device":"/dev/dri/card0",
     "definition": {
+      "transfer": "XR24",
+      "end": true
     },
     "end":true
   },
   {
+    "name":[ "offscreen" ],
+    "type":"gpu",
+    "native":"offscreen",
+    "device":"/dev/dri/renderD128",
+    "definition": {
+      "width": 1920,
+      "height": 1080,
+      "transfer": "XR24",
+      "transfer_modifiers": 1,
+      "end": true
+    },
+    "end":true
+  },
+  {
+    "name": "dvb-i",
+    "type": "mpegts",
+    "port": 5024,
+    "host": "192.168.176.12",
+    "periodic": 60,
+    "end": true
+  },
+  {
     "name": "file",
     "type": "file",
+    "end": true
+  },
+  {
+    "name": "dryrun",
+    "type": "passthrough",
+    "control": [
+      {
+        "dryrun": true,
+        "end": true
+      }
+    ],
     "end": true
   }
 ]

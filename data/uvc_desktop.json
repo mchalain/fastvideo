@@ -25,7 +25,7 @@
 	"type":"file",
 	"end":true
 },{
-	"name":"gpu",
+	"name":"x11",
 	"type":"gpu",
 	"native":"x11",
 	"end":true
@@ -33,6 +33,7 @@
 	"name":"wayland",
 	"type":"gpu",
 	"native":"wayland",
+	"transfer" : "RGBA",
 	"end":true
 },{
 	"name":"drm",
