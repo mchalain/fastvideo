@@ -28,6 +28,7 @@
  */
 #define MAX_BUFFERS 4
 #define TEST_FORMATMODIFIERS 0
+#define V4L2_DEQUEUE_NONBLOCKED 0
 #ifndef V4L2_TRYRATIO
 #define V4L2_TRYRATIO 40
 #endif
@@ -1479,6 +1480,7 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused, int *flags)
 	ret = ioctl(dev->fd, VIDIOC_DQBUF, &buf);
 	if (ret)
 	{
+#if V4L2_DEQUEUE_NONBLOCKED
 		if (errno == EAGAIN && dev->config->fps != 0)
 		{
 			/**
@@ -1490,8 +1492,7 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused, int *flags)
 			usec /= V4L2_TRYRATIO; /// we don't want to be late.
 			usleep(usec);
 		}
-//		dbg("sv4l2: %s dequeueing error %m", dev->name);
-//		dbg_buffer((&buf));
+#endif
 		return -1;
 	}
 	if (!ret && bytesused)
