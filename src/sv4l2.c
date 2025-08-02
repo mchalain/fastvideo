@@ -452,7 +452,7 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 		fmt.fmt.pix.pixelformat = pixelformat;
 	if (ioctl(fd, VIDIOC_S_FMT, &fmt) != 0)
 	{
-		err("sv4l2: FMT setting error %m");
+		err("sv4l2: FMT setting error %m on device type %d", type);
 		return -1;
 	}
 #ifdef V4L2_HAS_META
@@ -900,7 +900,10 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 				*targets = calloc(dev->nbuffers * dev->nplanes, sizeof(void *));
 				for (int i = 0; i < dev->nbuffers; i++)
 					for (int j = 0; j < dev->nplanes; j++)
+					{
 						(*targets)[i + j] = dev->buffers[i].ops.getmem(&dev->buffers[i], j);
+						dbg("sv4l2: memory %p", (*targets)[i + j]);
+					}
 			}
 			if (size != NULL)
 				*size = dev->buffers[0].ops.getsize(&dev->buffers[0], 0);
@@ -1287,7 +1290,6 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config
 	}
 	if (_v4l2_setpixformat(fd, *type, fourcc, modifiers) == -1)
 	{
-		err("pixel format error %m");
 		if (errno != EBUSY)
 			return -1;
 	}
@@ -1330,6 +1332,7 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 
 	if (dtype != device_control && _sv4l2_prepare(fd, &type, mode, config))
 	{
+		err("sv4l2: create device %s failed", name);
 		return NULL;
 	}
 	else
@@ -1440,7 +1443,6 @@ int sv4l2_start(V4L2_t *dev)
 		dbg("sv4l2: %s start buffers enqueuing", dev->name);
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
-			dbg_buffer((&dev->buffers[i].v4l2));
 			if (sv4l2_queue(dev, i, NULL, 0, 0))
 				return -1;
 		}
@@ -1531,7 +1533,7 @@ int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused, int flags)
 	 */
 	// dev->buffers[index].v4l2.flags = flags;
 	ret = ioctl(dev->fd, VIDIOC_QBUF, &dev->buffers[index].v4l2);
-	if (ret)
+	if (ret && errno != EAGAIN)
 	{
 		dbg("sv4l2: %s(%s[%d]) queueing error %m", dev->name, (dev->mode & MODE_OUTPUT)?"output":"capture", index);
 		dbg_buffer((&dev->buffers[index].v4l2));
