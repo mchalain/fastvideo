@@ -29,6 +29,7 @@
 #define PES_PTSDTS_ENABLE 1
 #define PADDING_NULLPACKET 1
 #define PSI_SDTPACKET 1
+#define GLOBAL_PCR 1
 
 typedef struct MPEGHeader_s MPEGHeader_t;
 struct MPEGHeader_s
@@ -603,6 +604,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	}
 #endif
 	uint32_t pcr = 0;
+#if GLOBAL_PCR
 	struct timespec tp;
 	if (clock_gettime(CLOCK_TAI, &tp) == 0)
 	{
@@ -611,14 +613,14 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 		if (dev->start == 0)
 		{
 			dev->start = tp.tv_sec;
-			C90kHz = ((tp.tv_nsec / 1000) * 90) / 1000;
+			C90kHz = ((tp.tv_nsec / 1000000) * 90);
 		}
 		else
 		{
 			C90kHz =  tp.tv_sec - dev->start;
 			C90kHz *= 90000;
 			///compute pcr 33bits here
-			C90kHz += ((tp.tv_nsec / 1000) * 90) / 1000;
+			C90kHz += ((tp.tv_nsec / 1000000) * 90);
 		}
 #define __NB_TICKS_FOR_40ms (40 * 90)
 		//if (C90kHz > (dev->pcr + __NB_TICKS_FOR_40ms))
@@ -627,6 +629,11 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			dev->header.afi |= 0x2;
 		}
 	}
+#else
+	/// frame rate 30 fps clock 90kHz
+	pcr = dev->pcr + 90000 / 30;
+	dev->header.afi |= 0x2;
+#endif
 	ssize_t mtu = dev->proto->mtu(dev->protoctx);
 	while (length > 0 && ret >= 0)
 	{
@@ -657,6 +664,8 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 				/// bits field indicated the pcr
 				adaptfield[1] = 0x10;
 				adaptfield[1] |= randomaccess;
+				if (pcr < dev->pcr)
+					adaptfield[1] |= 0x80;
 				/// pcr over 33bits
 				adaptfield[2] = (pcr >> 25) & 0xff;
 				adaptfield[3] = (pcr >> 17) & 0xff;
@@ -933,7 +942,11 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 	if (buffer->dma_buf > 0)
 	{
 		if (buffer->mem)
+		{
 			warn("mpegts: memory already locked");
+			errno = ENOMEM;
+			return -1;
+		}
 		struct dma_buf_sync sync = { 0 };
 		sync.flags = DMA_BUF_SYNC_READ | DMA_BUF_SYNC_START;
 		ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, &sync);
