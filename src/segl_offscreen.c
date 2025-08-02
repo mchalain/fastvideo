@@ -17,6 +17,13 @@
 #define FALSE GL_FALSE
 #endif
 
+#define EXPORT_RENDER 1
+
+static struct
+{
+	EGLConfig_t *config;
+} native_data = {0};
+
 static EGLNativeDisplayType native_display(EGLConfig_t *config)
 {
 	if (!_egl_hasextension(EGL_NO_DISPLAY, "EGL_EXT_platform_base"))
@@ -24,6 +31,8 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	if (!_egl_hasextension(EGL_NO_DISPLAY, "EGL_MESA_platform_surfaceless"))
 		return (EGLNativeDisplayType)EGL_DEFAULT_DISPLAY;
 	PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT = (void *) eglGetProcAddress("eglGetPlatformDisplayEXT");
+
+	native_data.config = config;
 
 	return eglGetPlatformDisplayEXT(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
 }
