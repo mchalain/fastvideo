@@ -173,6 +173,14 @@ EXT_API int skeleton_fd(Dev_t *dev, int writer)
 
 EXT_API int skeleton_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 {
+	if (id < 0 || id > dev->nbuffers)
+		return -1;
+	if (dev->currentid != -1)
+	{
+		errno = EAGAIN;
+		return -1;
+	}
+	dev->currentid = id;
 	dev->buffers[id].state = queued;
 	/**
 	 * treat the buffer here:
@@ -185,21 +193,21 @@ EXT_API int skeleton_queue(Dev_t *dev, int id, void *mem, size_t size, int flags
 EXT_API int skeleton_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags)
 {
 	FrameBuffer_t *buffer = NULL;
-	for (FrameBuffer_t *buffer = dev->buffers; buffer != NULL; buffer = buffer->next)
+	int id = dev->currentid;
+	if (id == -1)
 	{
-		if (buffer->state == queued)
-		{
-			break;
-		}
-	}
-	if (buffer == NULL)
+		errno = EAGAIN;
 		return -1;
+	}
+	buffer = &dev->buffers[dev->currentid];
+	dev->currentid = -1;
+
 	if (*mem)
 		*mem = buffer->mem;
 	if (*bytesused)
 		*bytesused = buffer->size;
 	buffer->state = dequeued;
-	return buffer->id;
+	return id;
 }
 
 EXT_API int skeleton_start(Dev_t *dev)
