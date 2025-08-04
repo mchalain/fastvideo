@@ -89,7 +89,6 @@
  * But it may have some confusion during the buffer de/queueing.
  * The SDRM_FASTER_TRANSFER force to trig the out_fence event ASAP.
  */
-#define SDRM_FASTER_TRANSFER
 #define MAX_BUFFERS 4
 
 typedef enum {
