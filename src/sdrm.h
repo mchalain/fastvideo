@@ -14,6 +14,7 @@ struct DisplayConf_s
 {
 	DeviceConf_t parent;
 	const char *device;
+	uint32_t transfer_fourcc;
 	int mode;
 };
 

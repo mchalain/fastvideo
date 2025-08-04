@@ -23,8 +23,73 @@
  * > echo 0x19F > /sys/module/drm/parameters/debug
  */
 
+/**
+ * Writeback code for N=4 buffers:
+ * * main entity creation
+ *  - open device (/dev/dri/cardX) as NONBLOCK
+ *  - enable ATOMIC and WRITEBACK features
+ *  - search a free encoder (here 51, the encoder 31 is linked to HDMI-A conector)
+ *  - search a WRITEBACK connector as CONNECTED and store the best MODEINFO for our usecase
+ *  - search a crtc available on the encoder (51)
+ *  - create a PropertyBlob to store the connectore's modeinfo
+ *  - set the crtc's MODE_ID with the id of the PropertyBlob
+ *  - search a primary plane supporting the crtc
+ *  - create N buffers structure with only size, dimension, type values
+ * * secondary entity creation
+ *  - copy the main entity and change few settings
+ *  - create N buffers structure with only size, dimension, type values
+ * * buffers requesting of the main entity (default type buf_type_dmabuf)
+ *  - for each N buffers, create a bo_handle from the dma_buf fd pushed by the previous device
+ *  - for each N buffers, create a framebuffer blob on the device with the bo_handles
+ *  - store all properties ID nedded by the future commits
+ * * buffers requesting of the secondary entity (default type buf_type_dmabuf | buf_type_master)
+ *  - for each N buffers, create a Dumb Buffer and take the dma_buf of the DUMB bo_handle
+ *  - for each N buffers, create a framebuffer blob on the device with the bo_handles
+ * * start the main entity
+ *  - generate an atomic commit for modesetting
+ *    = set the connector's CRTC_ID
+ *    = set the crtc's MODE_ID (already made during the main entity creation |)
+ *    = set the crtc's ACTIVE to 1
+ *    = set the plane's FB_ID with the first buffer from the main entity
+ *    = set the plane's CRTC_ID with the selected crtc
+ *    = set the plane's SRC_(X,Y,W,H) with screen rectangle << 16 (I don't understand this value of 16)
+ *    = set the plane's CRTC_(X,Y,W,H) with screen rectangle
+ *    = set the plane's ROTATION
+ *    = generate an AtomicComit with DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK | ALLOW_MODESET flag
+ * * start the secondary entity
+ *  - for each N buffers, set it as available
+ * * select on the previous device returns a dma_buf
+ * * queue the dma_buf to the main entity
+ *  - find a buffer of the secondary entity to use
+ *  - generate an atomic commit
+ *    = set the plane's FB_ID with the first buffer from the main entity
+ *    = set the plane's CRTC_ID with the selected crtc
+ *    = set the plane's SRC_(X,Y,W,H) with screen rectangle << 16 (I don't understand this value of 16)
+ *    = set the plane's CRTC_(X,Y,W,H) with screen rectangle
+ *    = set the plane's ROTATION
+ *    = set the connector's WRITEBACK_OUT_FENCE_PTR with a pointer on an "int" variable
+ *    = set the connector's WRITEBACK_FB_ID with the FB_ID of the previously found buffer from secondary entity
+ *    = generate an AtomicComit with DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK flag
+ * * select on the DRM device fd
+ * * dequeue the buffer from the main entity
+ *  - HandleEvent
+ *    * copy the value of the variable used with WRITEBACK_OUT_FENCE_PTR to the secondary entity
+ * * select on the out_fence fd from the secondary entity
+ * * dequeue the buffer from the secondary entity
+ *  - close the out_fence fd
+ *  - return the dma_buf to the next device
+ * * select the next device
+ * * queue the buffer to the secondary entity
+ */
 #define sdrm_dbg(...)
 
+/**
+ * the out_fence fd is ready immediately after the commit.
+ * is not use to wait the Flip event to trig the out_fence event
+ * But it may have some confusion during the buffer de/queueing.
+ * The SDRM_FASTER_TRANSFER force to trig the out_fence event ASAP.
+ */
+#define SDRM_FASTER_TRANSFER
 #define MAX_BUFFERS 4
 
 typedef enum {
@@ -41,6 +106,8 @@ typedef enum {
 	SDRM_PROPID_CRTC_W,
 	SDRM_PROPID_CRTC_H,
 	SDRM_PROPID_ROTATION,
+	SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR,
+	SDRM_PROPID_WRITEBACK_FB_ID,
 	SDRM_PROPID_LAST
 } properties_id;
 
@@ -66,6 +133,8 @@ struct Display_s
 	int plane_type;
 	device_type_e type;
 	int fd;
+	int out_fd;
+	FrameBuffer_t *out_buffer;
 	drmModeModeInfo mode;
 	FrameBuffer_t buffers[MAX_BUFFERS];
 	int nbuffers;
@@ -73,6 +142,7 @@ struct Display_s
 	int queueid;
 	int flags;
 	uint32_t rotation;
+	Display_t *dup;
 };
 
 /// build the connector pipeline
@@ -557,6 +627,21 @@ static int sdrm_atomic_prepare(Display_t *disp, drmModeModeInfo *mode)
 	{
 		warn("sdrm: CRTC_ID for plane(%lu) and connector(%lu) differents", prop_plane_crtc_id, disp->properties[SDRM_PROPID_CRTC_ID]);
 	}
+	if (disp->dup && disp->dup->type == device_input)
+	{
+		disp->properties[SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR] = sdrm_propertyid(disp, DRM_MODE_OBJECT_CONNECTOR, disp->connector_id, "WRITEBACK_OUT_FENCE_PTR");
+		if (disp->properties[SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR] == (uint32_t)-1)
+		{
+			err("sdrm: writeback connector's property error %m");
+			return -1;
+		}
+		disp->properties[SDRM_PROPID_WRITEBACK_FB_ID] = sdrm_propertyid(disp, DRM_MODE_OBJECT_CONNECTOR, disp->connector_id, "WRITEBACK_FB_ID");
+		if (disp->properties[SDRM_PROPID_WRITEBACK_FB_ID] == (uint32_t)-1)
+		{
+			err("sdrm: writeback connector's property error %m");
+			return -1;
+		}
+	}
 	disp->properties[SDRM_PROPID_MODE_ID] = sdrm_propertyid(disp, DRM_MODE_OBJECT_CRTC, disp->crtc_id, "MODE_ID");
 	disp->properties[SDRM_PROPID_ACTIVE] = sdrm_propertyid(disp, DRM_MODE_OBJECT_CRTC, disp->crtc_id, "ACTIVE");
 	disp->properties[SDRM_PROPID_FB_ID] = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "FB_ID");
@@ -578,6 +663,23 @@ static int sdrm_atomic_prepare(Display_t *disp, drmModeModeInfo *mode)
 		}
 	}
 	return 0;
+}
+
+static FrameBuffer_t *sdrm_pulloutbuffer(Display_t *disp, int id)
+{
+	disp->queueid = id;
+	disp->buffers[id].state = queued;
+	return &disp->buffers[id];
+}
+
+static int sdrm_pushoutbuffer(Display_t *disp, FrameBuffer_t *buffer)
+{
+	if (buffer->state == queued)
+	{
+		disp->out_buffer = buffer;
+		return 0;
+	}
+	return -1;
 }
 
 static int sdrm_atomic_commit(Display_t *disp, FrameBuffer_t *buffer)
@@ -625,6 +727,12 @@ static int sdrm_atomic_commit(Display_t *disp, FrameBuffer_t *buffer)
 		goto commit_error;
 	if (disp->properties[SDRM_PROPID_ROTATION] != (uint32_t)-1)
 		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_ROTATION], disp->rotation);
+	if (disp->out_buffer && disp->dup != NULL && disp->dup->type == device_input)
+	{
+		drmModeAtomicAddProperty(req, disp->connector_id, disp->properties[SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR], (uint64_t)(long)&disp->out_fd);
+		FrameBuffer_t *out_buffer = disp->out_buffer;
+		drmModeAtomicAddProperty(req, disp->connector_id, disp->properties[SDRM_PROPID_WRITEBACK_FB_ID], out_buffer->id);
+	}
 
 	int flags = DRM_MODE_ATOMIC_TEST_ONLY;
 	if (!(disp->flags & SDRM_FLAGS_MODESET))
@@ -656,11 +764,6 @@ commit_error:
 
 Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayConf_t *config)
 {
-	if (type != device_output)
-	{
-		err("sdrm: %s bad device type", name);
-		return NULL;
-	}
 	if (drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1))
 	{
 		err("sdrm: Universal plane not supported %m");
@@ -681,6 +784,14 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 	/// enable atomic and writeback before setting the primary connector
 	if (drmSetClientCap(fd, DRM_CLIENT_CAP_ATOMIC, 1))
 		err("sdrm: atomic not supported %m");
+#ifndef SDRM_DISABLE_WRITEBACK
+	if (drmSetClientCap(fd, DRM_CLIENT_CAP_WRITEBACK_CONNECTORS, 1))
+		err("sdrm: writeback not supported %m");
+#endif
+	if (type == device_control)
+	{
+		drmDropMaster(fd);
+	}
 #endif
 #ifdef DEBUG
 	sdrm_listconnector(disp);
@@ -728,11 +839,6 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 
 EXT_API Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf_t *config)
 {
-	if (type != device_output)
-	{
-		err("sdrm: %s bad device type", config->parent.name);
-		return NULL;
-	}
 	int fd = 0;
 	if (!access(config->device, R_OK | W_OK))
 		fd = open(config->device, O_RDWR| O_NONBLOCK | O_CLOEXEC);
@@ -745,12 +851,39 @@ EXT_API Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf
 	}
 	Display_t *disp = sdrm_create2(fd, name, type, config);
 	if (disp == NULL)
+	{
 		close(fd);
-	else
-		warn("sdrm: device %s", config->device);
+		return NULL;
+	}
+	warn("sdrm: create %s device on  %s", name, config->device);
+
 	disp->config = config;
+//	config->parent.dev = disp;
+
 	return disp;
 }
+
+#ifndef SDRM_DISABLE_WRITEBACK
+EXT_API Display_t *sdrm_duplicate(Display_t *dev, DisplayConf_t **pconfig)
+{
+	Display_t *disp = NULL;
+	if (dev->type != device_transfer)
+		return NULL;
+	dev->type = device_output;
+	dup = malloc(sizeof(*dup));
+	if (!dup)
+		return NULL;
+	memcpy(dup, dev, sizeof(*dup));
+	dup->type = device_input;
+	if ((*pconfig)->transfer_fourcc)
+		dup->fourcc = (*pconfig)->transfer_fourcc;
+	else
+		dup->fourcc = (*pconfig)->parent.fourcc;
+	return dup;
+}
+#else
+#define sdrm_duplicate NULL
+#endif
 
 static int sdrm_requestbuffer_output(Display_t *disp, enum buf_type_e t, va_list ap)
 {
@@ -856,6 +989,58 @@ static int sdrm_requestbuffer_output(Display_t *disp, enum buf_type_e t, va_list
 	return 0;
 }
 
+static int sdrm_requestbuffer_input(Display_t *disp, enum buf_type_e t, va_list ap)
+{
+	uint32_t width = disp->config->parent.width;
+	uint32_t height = disp->config->parent.height;
+	switch (t)
+	{
+		case buf_type_dmabuf | buf_type_master:
+		{
+			int *ntargets = va_arg(ap, int *);
+			int **targets = va_arg(ap, int **);
+			size_t *psize = va_arg(ap, size_t *);
+			if (targets != NULL)
+			{
+				*targets = calloc(disp->nbuffers, sizeof(int));
+				for (int i = 0; i < disp->nbuffers; i++)
+				{
+
+					if (sdrm_buffer_dumb(disp, &disp->buffers[i]))
+					{
+						err("sdrm: input buffer master error %m");
+						break;
+					}
+					if (sdrm_buffer_setdma(disp, (long)disp->buffers[i].private, &disp->buffers[i]) == -1)
+					{
+						err("sdrm: input buffer %d allocation error", i);
+						break;
+					}
+
+					(*targets)[i] = disp->buffers[i].dma_buf;
+				}
+			}
+			if (ntargets != NULL)
+				*ntargets = disp->nbuffers;
+			if (psize != NULL)
+				*psize = disp->buffers[0].size;
+		}
+		break;
+		default:
+			return -1;
+	}
+	for (int i = 0; i < MAX_BUFFERS; i++)
+	{
+		if (sdrm_buffer_fb(disp, disp->fourcc, disp->modifier, &disp->buffers[i]))
+		{
+			err("sdrm: frame buffer error %m");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 {
 	int ret = -1;
@@ -863,6 +1048,8 @@ EXT_API int sdrm_requestbuffer(Display_t *disp, enum buf_type_e t, ...)
 	va_start(ap, t);
 	if (disp->type != device_input)
 		ret = sdrm_requestbuffer_output(disp, t, ap);
+	else
+		ret = sdrm_requestbuffer_input(disp, t, ap);
 	va_end(ap);
 	return ret;
 }
@@ -873,7 +1060,19 @@ static void page_flip_handler(int fd, unsigned int frame,
 	Display_t *disp = data;
 	int id = disp->queueid;
 	if (id != -1)
+	{
 		disp->buffers[(int)id].state = ready;
+#ifndef SDRM_FASTER_TRANSFER
+		/**
+		 * we could use directly the disp->out_fd variable
+		 * But in this case the dequeue function of the device_input
+		 * is called before this function, and the buffer is not ready
+		 */
+		disp->dup->out_fd = disp->out_fd;
+		disp->out_fd = 0;
+		disp->out_buffer->state = ready;
+#endif
+	}
 	/**
 	 * queueid = -1 will force the main application
 	 * to have the fd = 0 and wait the queueing
@@ -891,26 +1090,45 @@ EXT_API int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused, int
 		return -1;
 	}
 	FrameBuffer_t *buffer = &disp->buffers[id];
+	sdrm_dbg("sdrm:   queue %s buffer %d", (disp->type == device_input)?"input":"output", id);
 	if (bytesused == 0)
 		bytesused = buffer->size;
 	buffer->flags = flags;
-	if (buffer->mem)
-		munmap(buffer->mem, buffer->size);
-	if (bytesused > buffer->size)
+	if (disp->type != device_input)
 	{
-		warn("sfile: buffer too small %lu %lu", buffer->size, bytesused);
-	}
-	if (disp->flags & SDRM_FLAGS_ATOMIC_COMMIT)
-	{
-		if (sdrm_atomic_commit(disp, &disp->buffers[(int)id]))
+		if (buffer->mem)
+			munmap(buffer->mem, buffer->size);
+		if (bytesused > buffer->size)
 		{
-			err("sdrm: atomic flip commit error %m");
-			return -1;
+			warn("sfile: buffer too small %lu %lu", buffer->size, bytesused);
 		}
-	}
-	else
-	{
-		drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[(int)id].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
+		if (disp->flags & SDRM_FLAGS_ATOMIC_COMMIT)
+		{
+			if (disp->dup)
+			{
+				/// real buffer enqueueing for the output (device_input)
+				FrameBuffer_t *buffer = sdrm_pulloutbuffer(disp->dup, id);
+				if (sdrm_pushoutbuffer(disp, buffer))
+				{
+					errno = EAGAIN;
+					return -1;
+				}
+			}
+			if (sdrm_atomic_commit(disp, buffer))
+			{
+				errno = EAGAIN;
+				return -1;
+			}
+			/**
+			 * Note for SDRM_FASTER_TRANSFER:
+			 * at this point the out_fd is already set
+			 * but the DRM doesn't terminate the treatement.
+			 */
+		}
+		else
+		{
+			drmModePageFlip(disp->fd, disp->crtc_id, buffer->id, DRM_MODE_PAGE_FLIP_EVENT, disp);
+		}
 	}
 	buffer->state = queued;
 	disp->queueid = id;
@@ -923,20 +1141,40 @@ EXT_API int sdrm_dequeue(Display_t *disp, void **mem, size_t *bytesused, int *fl
 	FrameBuffer_t *buffer = NULL;
 	if (id >= 0)
 		buffer = &disp->buffers[id];
-	if (!buffer || buffer->state != queued)
+	sdrm_dbg("sdrm: dequeue %s buffer %d", (disp->type == device_input)?"input":"output", id);
+	if (!buffer)
 	{
 		errno = EAGAIN;
 		return -1;
 	}
-	drmEventContext evctx = {
-				.version = DRM_EVENT_CONTEXT_VERSION,
-				.page_flip_handler = page_flip_handler,
-	};
-	int ret ;
-	do {
-		ret = drmHandleEvent(disp->fd, &evctx);
-	} while (!ret);
-	errno = 0;
+	if (disp->type != device_input)
+	{
+		if (buffer->state != queued)
+		{
+			errno = EAGAIN;
+			return -1;
+		}
+		drmEventContext evctx = {
+			.version = DRM_EVENT_CONTEXT_VERSION,
+			.page_flip_handler = page_flip_handler,
+		};
+		int ret ;
+		do {
+			ret = drmHandleEvent(disp->fd, &evctx);
+		} while (!ret);
+	}
+	else
+	{
+#ifndef SDRM_FASTER_TRANSFER
+		close(disp->out_fd);
+		disp->out_fd = 0;
+#else
+		close(disp->dup->out_fd);
+		disp->dup->out_fd = 0;
+		buffer->state = ready;
+#endif
+	}
+
 	if (buffer->state != ready)
 	{
 		errno = EAGAIN;
@@ -960,7 +1198,11 @@ EXT_API int sdrm_fd(Display_t *disp, int writer)
 	if (disp->queueid == -1)
 		return 0;
 	if (disp->type == device_input)
+#ifndef SDRM_FASTER_TRANSFER
 		return disp->out_fd;
+#else
+		return disp->dup->out_fd;
+#endif
 	return disp->fd;
 }
 
@@ -1247,7 +1489,7 @@ FastVideoDevice_ops_t sdrm_ops = {
 	.name = "screen",
 	.createconfig = sdrm_createconfig,
 	.create = (FastVideoDevice_create_t)sdrm_create,
-	.duplicate = (FastVideoDevice_duplicate_t)NULL,
+	.duplicate = (FastVideoDevice_duplicate_t)sdrm_duplicate,
 	.loadsettings = (FastVideoDevice_loadsettings_t)sdrm_loadsettings,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)sdrm_requestbuffer,
 	.eventfd = (FastVideoDevice_eventfd_t)sdrm_fd,
