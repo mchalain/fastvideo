@@ -870,16 +870,44 @@ EXT_API Display_t *sdrm_duplicate(Display_t *dev, DisplayConf_t **pconfig)
 	if (dev->type != device_transfer)
 		return NULL;
 	dev->type = device_output;
-	dup = malloc(sizeof(*dup));
-	if (!dup)
+	*pconfig = calloc(1, sizeof(**pconfig));
+	memcpy(*pconfig, dev->config, sizeof(**pconfig));
+	memmove(&(*pconfig)->parent, &dev->config->transfer, sizeof((*pconfig)->parent));
+
+	disp = calloc(1, sizeof(*disp));
+	if (!disp)
 		return NULL;
-	memcpy(dup, dev, sizeof(*dup));
-	dup->type = device_input;
-	if ((*pconfig)->transfer_fourcc)
-		dup->fourcc = (*pconfig)->transfer_fourcc;
-	else
-		dup->fourcc = (*pconfig)->parent.fourcc;
-	return dup;
+	memcpy(disp, dev, sizeof(*disp));
+	disp->type = device_input;
+	dev->dup = disp;
+	disp->dup = dev;
+	disp->config = *pconfig;
+	disp->mode = dev->mode;
+#ifdef DEBUG
+	uint64_t blob_id = sdrm_properties(disp, DRM_MODE_OBJECT_CONNECTOR, disp->connector_id, "WRITEBACK_PIXEL_FORMATS", -1);
+	drmModePropertyBlobRes *blob = NULL;
+	blob = drmModeGetPropertyBlob(disp->fd, blob_id);
+	if (blob)
+	{
+		dbg("sdrm: writeback pixel formats");
+		uint32_t *fourccs = blob->data;
+		for (int i = 0; i < blob->length / sizeof(uint32_t); i++)
+			dbg("\t%.4s", &fourccs[i]);
+		drmModeFreePropertyBlob(blob);
+	}
+#endif
+	disp->nbuffers = 0;
+	for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
+	{
+		if (sdrm_buffer_generic(disp,  disp->mode.hdisplay, disp->mode.vdisplay,
+				disp->fourcc, &disp->buffers[i]))
+		{
+			err("sdrm: buffer allocation error %m");
+			free(disp);
+			return NULL;
+		}
+	}
+	return disp;
 }
 #else
 #define sdrm_duplicate NULL
@@ -1458,6 +1486,17 @@ int sdrm_loadjsonconfiguration(void *arg, void *entry)
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
 	scommon_loaddefinition(&config->parent, definition);
+	json_t *transfer = json_object_get(jconfig, "transfer");
+	scommon_loaddefinition(&config->transfer, transfer);
+	if (config->transfer.width == 0)
+		config->transfer.width = config->parent.width;
+	if (config->transfer.height == 0)
+		config->transfer.height = config->parent.height;
+	if (config->transfer.fourcc == 0)
+		config->transfer.fourcc = config->parent.fourcc;
+	if (config->transfer.modifiers == 0)
+		config->transfer.modifiers = config->parent.modifiers;
+
 	return 0;
 }
 #endif

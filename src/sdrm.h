@@ -13,8 +13,8 @@ typedef struct DisplayConf_s DisplayConf_t;
 struct DisplayConf_s
 {
 	DeviceConf_t parent;
+	DeviceConf_t transfer;
 	const char *device;
-	uint32_t transfer_fourcc;
 	int mode;
 };
 
