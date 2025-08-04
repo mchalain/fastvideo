@@ -13,6 +13,7 @@
 #define FOURCC_XB24		FOURCC('X','B','2','4')
 #define FOURCC_AR24		FOURCC('A','R','2','4')
 #define FOURCC_XR24		FOURCC('X','R','2','4')
+#define FOURCC_BGR4		FOURCC('B','G','R','4')
 #define FOURCC_BG24		FOURCC('B','G','2','4')
 #define FOURCC_RG24		FOURCC('R','G','2','4')
 #define FOURCC_RGBA		FOURCC('R','G','B','A')

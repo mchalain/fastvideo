@@ -1278,6 +1278,33 @@ int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_query_ext_ctrl *ctrl, int (*c
 	return _sv4l2_treecontrolmenu(sv4l2_fd(dev, 0), ctrl, cb, arg);
 }
 
+static uint32_t _sv4l2_getfourcc(int fd, enum v4l2_buf_type type, uint32_t fourcc)
+{
+	int ret = -1;
+	struct v4l2_fmtdesc fmtdesc = {0};
+	fmtdesc.type = type;
+	while (ioctl(fd, VIDIOC_ENUM_FMT, &fmtdesc) == 0)
+	{
+		if (fmtdesc.pixelformat == fourcc)
+		{
+			ret = 0;
+			break;
+		}
+		fmtdesc.index++;
+	}
+	if (!ret)
+		return fourcc;
+
+	switch (fourcc)
+	{
+		case FOURCC_XR24:
+		case FOURCC_AR24:
+			fourcc = _sv4l2_getfourcc(fd, type, FOURCC_BGR4);
+		break;
+	}
+	return fourcc;
+}
+
 static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config_t *config)
 {
 	*type = _v4l2_getbuftype(*type, mode);
@@ -1286,7 +1313,7 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config
 	uint64_t modifiers = 0;
 	if (config)
 	{
-		fourcc = config->parent.fourcc;
+		fourcc = _sv4l2_getfourcc(fd, *type, config->parent.fourcc);
 		modifiers = config->parent.modifiers;
 	}
 	if (_v4l2_setpixformat(fd, *type, fourcc, modifiers) == -1)
