@@ -28,10 +28,10 @@ typedef struct V4l2Config_s V4l2Config_t;
 struct V4l2Config_s
 {
 	DeviceConf_t parent;
+	DeviceConf_t transfer;
 	const char *device;
 	int mode;
 	int fps;
-	uint32_t transfer;
 	int periodic;
 	int periodiccontrol;
 	void *subdev_entries[4];

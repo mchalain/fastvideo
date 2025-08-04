@@ -1402,9 +1402,9 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	memcpy(dup, dev, sizeof(*dup));
 	dup->mode &= ~MODE_OUTPUT;
 	dup->type = -1;
-	dup->config = malloc(sizeof(*dev->config));
+	*pconfig = dup->config = malloc(sizeof(*dev->config));
 	memmove(dup->config, *pconfig, sizeof(*dev->config));
-	dup->config->parent.fourcc = dup->config->transfer;
+	memmove(&dup->config->parent, &dev->config->transfer, sizeof(dup->config->parent));
 	if ((dup->mode & MODE_CAPTURE) && dup->config->periodic)
 	{
 		dup->periodicfunc = _v4l2_periodiccontrol;
@@ -1920,7 +1920,6 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 
 	json_t *fps = NULL;
 	json_t *mode = NULL;
-	json_t *transfer = NULL;
 	if (definition && json_is_array(definition))
 	{
 		json_t *field = NULL;
@@ -1940,11 +1939,6 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 				{
 					mode = json_object_get(field, "value");
 				}
-				if (name && json_is_string(name) &&
-					!strcmp(json_string_value(name), "transfer"))
-				{
-					transfer = json_object_get(field, "value");
-				}
 			}
 		}
 	}
@@ -1952,7 +1946,6 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 	{
 		fps = json_object_get(definition, "fps");
 		mode = json_object_get(definition, "mode");
-		transfer = json_object_get(definition, "transfer");
 	}
 	if (fps && json_is_integer(fps))
 	{
@@ -1961,11 +1954,6 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 	}
 	else
 		config->fps = -1;
-	if (transfer && json_is_string(transfer))
-	{
-		const char *value = json_string_value(transfer);
-		config->transfer = FOURCC(value[0], value[1], value[2], value[3]);
-	}
 	if (mode && json_is_string(mode))
 	{
 		const char *value = json_string_value(mode);
@@ -2086,6 +2074,17 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
 	_v4l2_parsedefinition(definition, config);
+
+	json_t *transfer = json_object_get(jconfig, "transfer");
+	scommon_loaddefinition(&config->transfer, transfer);
+	if (config->transfer.width == 0)
+		config->transfer.width = config->parent.width;
+	if (config->transfer.height == 0)
+		config->transfer.height = config->parent.height;
+	if (config->transfer.fourcc == 0)
+		config->transfer.fourcc = config->parent.fourcc;
+	if (config->transfer.modifiers == 0)
+		config->transfer.modifiers = config->parent.modifiers;
 
 #if ADD_SUBDEVICES
 	json_t *subdevice = json_object_get(jconfig, "subdevices");
