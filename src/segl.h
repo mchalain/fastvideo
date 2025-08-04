@@ -65,10 +65,9 @@ typedef struct EGLConfig_s EGLConfig_t;
 struct EGLConfig_s
 {
 	DeviceConf_t parent;
+	DeviceConf_t transfer;
 	const char *native;
 	const char *device;
-	uint32_t transfer;
-	uint64_t transfer_modifiers;
 	EGLConfig_Program_t *programs;
 };
 

@@ -708,9 +708,8 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	memcpy(dup, dev, sizeof(*dup));
 	*pconfig = malloc(sizeof(*(dup->config)));
 	memcpy(*pconfig, dev->config, sizeof(*(dup->config)));
+	memmove(&(*pconfig)->parent, &dev->config->transfer, sizeof((*pconfig)->parent));
 	dup->config = *pconfig;
-	dup->config->parent.fourcc = dup->config->transfer;
-	dup->config->parent.modifiers = dup->config->transfer_modifiers;
 	dup->type = device_input;
 	dev->dup = dup;
 	dbg("segl: duplicate %.4s %lux%lu", &dup->config->parent.fourcc, width, height);
@@ -961,7 +960,6 @@ DeviceConf_t * segl_createconfig()
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = segl_loadjsonconfiguration;
 #endif
-	devconfig->transfer = FOURCC_XR24; /// XRGB8888
 	return (DeviceConf_t *)devconfig;
 }
 
@@ -994,22 +992,17 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
 	scommon_loaddefinition(&config->parent, definition);
-	if (definition && json_is_object(definition))
-	{
-		json_t *transfer = json_object_get(definition, "transfer");
-		if (transfer && json_is_string(transfer))
-		{
-			const char *value = json_string_value(transfer);
-			config->transfer = FOURCC(value[0], value[1], value[2], value[3]);
-		}
-		json_t *modifiers = json_object_get(definition, "transfer_modifiers");
-		if (modifiers && json_is_integer(modifiers))
-		{
-			uint64_t value = json_integer_value(modifiers);
-			config->transfer_modifiers = value;
-		}
-	}
-library_end:
+	json_t *transfer = json_object_get(jconfig, "transfer");
+	scommon_loaddefinition(&config->transfer, transfer);
+	if (config->transfer.width == 0)
+		config->transfer.width = config->parent.width;
+	if (config->transfer.height == 0)
+		config->transfer.height = config->parent.height;
+	if (config->transfer.fourcc == 0)
+		config->transfer.fourcc = config->parent.fourcc;
+	if (config->transfer.modifiers == 0)
+		config->transfer.modifiers = config->parent.modifiers;
+
 	return 0;
 }
 

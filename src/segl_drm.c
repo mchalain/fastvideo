@@ -479,7 +479,7 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	dbg("segl: open (%s) %s", device, gbm_device_get_backend_name(gbm));
 
 	uint32_t defaultfourcc = 0;
-	uint32_t requestfourcc = config->transfer;
+	uint32_t requestfourcc = config->transfer.fourcc;
 	if (requestfourcc == FOURCC_NV12)
 		requestfourcc = FOURCC_R8;
 	uint32_t fourcc = 0;
