@@ -1275,6 +1275,25 @@ int sdrm_stop(Display_t *disp)
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 
+static int sdrm_capabilities_controls(Display_t *disp, json_t *capabilities)
+{
+	if (json_is_array(capabilities))
+	{
+		json_t *rotation = NULL;
+		rotation = json_object();
+		json_object_set_new(rotation, "name", json_string("rotation"));
+		json_object_set_new(rotation, "type", json_string("menu"));
+		json_t *items = json_array();
+		json_array_append_new(items, json_string("reflect"));
+		json_array_append_new(items, json_string("90"));
+		json_array_append_new(items, json_string("180"));
+		json_array_append_new(items, json_string("270"));
+		json_object_set_new(rotation, "items", items);
+		json_array_append_new(capabilities, rotation);
+	}
+	return 0;
+}
+
 static int sdrm_capabilities_fourcc(Display_t *disp, json_t *capabilities)
 {
 	drmModePlaneResPtr planes;
@@ -1415,9 +1434,13 @@ int sdrm_capabilities(Display_t *disp, json_t *capabilities)
 		return -1;
 	if (sdrm_capabilities_fourcc(disp, definition))
 		return -1;
+	json_t *controls = json_array();
+	if (sdrm_capabilities_controls(disp, controls))
+		return -1;
 	if (json_is_object(capabilities))
 	{
 		json_object_set_new(capabilities, "definition", definition);
+		json_object_set_new(capabilities, "control", controls);
 	}
 	return 0;
 }
