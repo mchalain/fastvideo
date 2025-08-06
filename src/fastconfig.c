@@ -145,7 +145,7 @@ static json_t *_device_v4l2(json_t *devices, int devfd, const char *path, const 
 	device_type_e types[] = {device_input, device_transfer, device_output, device_control};
 	for (int i = 0; i < sizeof(types)/sizeof(device_type_e) && dev == NULL; i++)
 	{
-		dev = sv4l2_create2(devfd, name, types[i], NULL);
+		dev = sv4l2_ops.create2(devfd, name, types[i], NULL);
 	}
 	if (dev == NULL)
 	{
@@ -157,17 +157,17 @@ static json_t *_device_v4l2(json_t *devices, int devfd, const char *path, const 
 	json_t *names = json_array();
 	json_array_append_new(names, json_string(name));
 	json_object_set_new(device, "name", names);
-	json_object_set_new(device, "type", json_string("v4l2"));
+	json_object_set_new(device, "type", json_string(sv4l2_ops.name));
 	json_object_set_new(device, "device", json_string(path));
 
 	int ret;
-	ret = sv4l2_capabilities(dev, device, all_capabilities_format);
+	ret = sv4l2_ops.capabilities(dev, device, all_capabilities_format);
 	if (ret)
 	{
 		json_decref(device);
 		device = NULL;
 	}
-	sv4l2_destroy(dev);
+	sv4l2_ops.destroy(dev);
 	return device;
 }
 
@@ -189,14 +189,14 @@ static json_t * _device_subv4l2(json_t *devices, int devfd, const char *path, co
 	break;
 	}
 #else
-	json_object_set_new(device, "type", json_string("subv4l"));
+	json_object_set_new(device, "type", json_string(subdev_ops.name));
 #endif
 	json_object_set_new(device, "device", json_string(path));
-	V4L2_t *subdev = sv4l2_subdev_create2(devfd, NULL);
+	V4L2_t *subdev = subdev_ops.create2(devfd, name, device_control, NULL);
 	if (subdev)
 	{
-		sv4l2_subdev_capabilities(subdev, device, all_capabilities_format);
-		sv4l2_subdev_destroy(subdev);
+		subdev_ops.capabilities(subdev, device, all_capabilities_format);
+		subdev_ops.destroy(subdev);
 	}
 	else
 		close(devfd);
@@ -324,7 +324,7 @@ static int _drm_device(void *arg, int fd, const char *path, const char *name)
 	if (numdisplay > 9)
 		return -1;
 	json_t *devices = (json_t *)arg;
-	Display_t *disp = sdrm_create2(fd, name, device_output, NULL);
+	Display_t *disp = sdrm_ops.create2(fd, name, device_output, NULL);
 	if (disp)
 	{
 		json_t *device = json_object();
@@ -336,12 +336,13 @@ static int _drm_device(void *arg, int fd, const char *path, const char *name)
 		}
 		json_object_set_new(device, "name", json_string(name));
 		json_object_set_new(device, "device", json_string(path));
-		json_object_set_new(device, "type", json_string("screen"));
-		int ret = sdrm_capabilities(disp, device);
+		json_object_set_new(device, "type", json_string(sdrm_ops.name));
+		int ret = sdrm_ops.capabilities(disp, device, all_capabilities_format);
 		if (ret == 0)
 		{
 			_devices_append(devices, device);
 		}
+		sdrm_ops.destroy(disp);
 		return ret;
 	}
 	else
