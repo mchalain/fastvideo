@@ -1427,7 +1427,7 @@ static int sdrm_capabilities_size(Display_t *disp, json_t *capabilities)
 	return 0;
 }
 
-int sdrm_capabilities(Display_t *disp, json_t *capabilities)
+int sdrm_capabilities(Display_t *disp, json_t *capabilities, int all)
 {
 	json_t *definition = json_array();
 	if (sdrm_capabilities_size(disp, definition))
@@ -1573,6 +1573,7 @@ FastVideoDevice_ops_t sdrm_ops = {
 	.create2 = (FastVideoDevice_create2_t)sdrm_create2,
 	.duplicate = (FastVideoDevice_duplicate_t)sdrm_duplicate,
 	.loadsettings = (FastVideoDevice_loadsettings_t)sdrm_loadsettings,
+	.capabilities = (FastVideoDevice_capabilities_t)sdrm_capabilities,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)sdrm_requestbuffer,
 	.eventfd = (FastVideoDevice_eventfd_t)sdrm_fd,
 	.start = (FastVideoDevice_start_t)sdrm_start,
