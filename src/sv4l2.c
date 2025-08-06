@@ -347,7 +347,7 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 
 	if ((*mode & (MODE_CAPTURE | MODE_OUTPUT)) == 0)
 	{
-		err("sv4l2: %s bad device type", cap.card);
+		err("sv4l2: %s bad device type %#x", cap.card, cap.capabilities);
 		return -1;
 	}
 	if (!(caps & V4L2_CAP_STREAMING))
@@ -1354,7 +1354,6 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 	memcpy(devicename, name, sizeof(devicename));
 	if (_v4l2_devicecapabilities(fd, devicename, &mode, dtype))
 	{
-		close(fd);
 		return NULL;
 	}
 
@@ -2564,6 +2563,48 @@ static int _v4l2_capabilities_fps(V4L2_t *dev, json_t *definition, int all)
 	return 0;
 }
 
+static int _v4l2_capabilities_metaformat(V4L2_t *dev, json_t *definition, int all)
+{
+	json_t *metaformat = json_object();
+	json_object_set_new(metaformat, "name", json_string("fourcc"));
+
+	json_t *size = json_object();
+	json_object_set_new(size, "name", json_string("size"));
+
+	struct v4l2_format fmt = {0};
+	fmt.type = sv4l2_type(dev);
+	fmt.fmt.pix.field = V4L2_FIELD_ANY;
+	if (ioctl(sv4l2_fd(dev, 0), VIDIOC_G_FMT, &fmt) == 0)
+	{
+		json_object_set_new(metaformat, "value", json_stringn((char*)&fmt.fmt.meta.dataformat, 4));
+		json_object_set_new(size, "value", json_integer(fmt.fmt.meta.buffersize));
+	}
+
+	if (!all)
+	{
+		json_array_append_new(definition, metaformat);
+		json_array_append_new(definition, size);
+		return 0;
+	}
+
+	json_object_set_new(metaformat, "type", json_string(sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_STRING)));
+	json_object_set_new(size, "type", json_string(sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
+	json_t *items = json_array();
+	struct v4l2_fmtdesc fmtdesc = {0};
+	fmtdesc.type = sv4l2_type(dev);
+	while (ioctl(sv4l2_fd(dev, 0), VIDIOC_ENUM_FMT, &fmtdesc) == 0)
+	{
+		json_array_append_new(items, json_stringn((char*)&fmtdesc.pixelformat, 4));
+		fmtdesc.index++;
+	}
+	json_object_set_new(metaformat, "items", items);
+	json_object_set_new(size, "read-only", json_true());
+
+	json_array_append_new(definition, metaformat);
+	json_array_append_new(definition, size);
+	return 0;
+}
+
 static int _v4l2_capabilities_imageformat(V4L2_t *dev, json_t *definition, int all)
 {
 	json_t *pixelformat = json_object();
@@ -2644,7 +2685,10 @@ static int _v4l2_capabilities_imageformat(V4L2_t *dev, json_t *definition, int a
 int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 {
 	json_t *definition = json_array();
-	_v4l2_capabilities_imageformat(dev, definition, all);
+	if (dev->mode & MODE_META)
+		_v4l2_capabilities_metaformat(dev, definition, all);
+	else
+		_v4l2_capabilities_imageformat(dev, definition, all);
 	_v4l2_capabilities_fps(dev, definition, all);
 	json_object_set_new(capabilities, "definition", definition);
 	json_t *transformations = json_array();
