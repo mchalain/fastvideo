@@ -20,6 +20,7 @@ struct FastVideoDevice_s
 
 typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
 typedef void *(*FastVideoDevice_create_t)(const char *devicename, device_type_e type, DeviceConf_t *config);
+typedef void *(*FastVideoDevice_create2_t)(int fd, const char *name, device_type_e type, DeviceConf_t *config);
 typedef void *(*FastVideoDevice_duplicate_t)(void *dev, DeviceConf_t **pconfig);
 typedef int (*FastVideoDevice_loadsettings_t)(void *dev, void *configentry);
 typedef int (*FastVideoDevice_capabilities_t)(void *dev, void *capabilities, int all);
@@ -36,6 +37,7 @@ struct FastVideoDevice_ops_s
 	const char *name;
 	FastVideoDevice_createconfig_t createconfig;
 	FastVideoDevice_create_t create;
+	FastVideoDevice_create2_t create2;
 	FastVideoDevice_duplicate_t duplicate;
 	FastVideoDevice_loadsettings_t loadsettings;
 	FastVideoDevice_capabilities_t capabilities;

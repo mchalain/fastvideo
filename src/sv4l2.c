@@ -2715,6 +2715,7 @@ FastVideoDevice_ops_t sv4l2_ops = {
 	.name = "v4l2",
 	.createconfig = sv4l2_createconfig,
 	.create = (FastVideoDevice_create_t)sv4l2_create,
+	.create2 = (FastVideoDevice_create2_t)sv4l2_create2,
 	.duplicate = (FastVideoDevice_duplicate_t)sv4l2_duplicate,
 	.loadsettings = (FastVideoDevice_loadsettings_t)sv4l2_loadsettings,
 	.capabilities = (FastVideoDevice_capabilities_t)sv4l2_capabilities,

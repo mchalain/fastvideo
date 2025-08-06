@@ -16,7 +16,6 @@ DeviceConf_t * sv4l2_subdev_createconfig();
  * @return the new obejct or NULL
  */
 V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Config_t *config);
-V4L2_t *sv4l2_subdev_create2(int ctrlfd, V4l2Config_t *config);
 
 /**
  * @brief returns information about subdevice definition

@@ -236,7 +236,7 @@ int sv4l2_subdev_fps(V4L2_t *subdev, int fps)
 	return fps;
 }
 
-V4L2_t *sv4l2_subdev_create2(int ctrlfd, V4l2Config_t *config)
+V4L2_t *sv4l2_subdev_create2(int ctrlfd, const char *name, device_type_e dtype, V4l2Config_t *config)
 {
 	struct v4l2_capability cap = {0};
 	if (ioctl(ctrlfd, VIDIOC_QUERYCAP, &cap) != 0)
@@ -297,7 +297,7 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 		err("sv4l2: subdevice %s not exist", config->device);
 		return NULL;
 	}
-	V4L2_t *subdev = sv4l2_subdev_create2(ctrlfd, config);
+	V4L2_t *subdev = sv4l2_subdev_create2(ctrlfd, devicename, type, config);
 	if (subdev == NULL)
 		close(ctrlfd);
 	sv4l2_subdev_setpixformat(subdev, subdev->fourcc, subdev->width, subdev->height);
@@ -476,6 +476,7 @@ FastVideoDevice_ops_t subdev_ops = {
 	.name = "subv4l",
 	.createconfig = sv4l2_subdev_createconfig,
 	.create = (FastVideoDevice_create_t)sv4l2_subdev_create,
+	.create2 = (FastVideoDevice_create2_t)sv4l2_subdev_create2,
 	.duplicate = NULL,
 	.loadsettings = (FastVideoDevice_loadsettings_t)sv4l2_loadsettings,
 	.capabilities = (FastVideoDevice_capabilities_t)sv4l2_subdev_capabilities,

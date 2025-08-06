@@ -1570,6 +1570,7 @@ FastVideoDevice_ops_t sdrm_ops = {
 	.name = "screen",
 	.createconfig = sdrm_createconfig,
 	.create = (FastVideoDevice_create_t)sdrm_create,
+	.create2 = (FastVideoDevice_create2_t)sdrm_create2,
 	.duplicate = (FastVideoDevice_duplicate_t)sdrm_duplicate,
 	.loadsettings = (FastVideoDevice_loadsettings_t)sdrm_loadsettings,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)sdrm_requestbuffer,
