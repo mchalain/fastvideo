@@ -462,22 +462,23 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	{
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
 		int type = (int)sdrm_properties(disp, DRM_MODE_OBJECT_PLANE, plane->plane_id, "type", (uint64_t)-1);
-		dbg("  [%d] %u: %s", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
+		dbg("  [%d] %u: %si %#x %d", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
 		if (*plane_id == (uint32_t)-1 && plane->possible_crtcs & (1 << disp->crtcindex) && type == disp->plane_type)
 		{
 			for (int j = 0; j < plane->count_formats; ++j)
 			{
-#ifndef DEBUG
-				if (plane->possible_crtcs & (1 << disp->crtcindex))
-					break;
-#endif
 				uint32_t fourcc = plane->formats[j];
-				dbg("\tformat %.4s", (char *)&fourcc);
-				if (plane->formats[j] == disp->fourcc && plane->possible_crtcs & (1 << disp->crtcindex))
+				warn("\tformat %.4s", (char *)&fourcc);
+				if ((!disp->fourcc || plane->formats[j] == disp->fourcc) && plane->possible_crtcs & (1 << disp->crtcindex))
 				{
 					ret = 0;
+					disp->fourcc = plane->formats[j];
 					*plane_id = plane->plane_id;
 				}
+#ifndef DEBUG
+				if (ret == 0)
+					break;
+#endif
 			}
 		}
 		drmModeFreePlane(plane);
@@ -771,7 +772,6 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 
 	Display_t *disp = calloc(1, sizeof(*disp));
 	disp->fd = fd;
-	disp->fourcc = FOURCC('A','R','2','4');
 	disp->plane_type = DRM_PLANE_TYPE_PRIMARY;
 	disp->type = type;
 	disp->name = name;
@@ -1286,14 +1286,14 @@ static int sdrm_capabilities_fourcc(Display_t *disp, json_t *capabilities)
 	if (json_is_array(capabilities))
 	{
 		pixelformat = json_object();
-		json_object_set_new(pixelformat, "name", json_string("pixelformat"));
+		json_object_set_new(pixelformat, "name", json_string("fourcc"));
 		json_object_set_new(pixelformat, "type", json_string("menu"));
 	}
 
 	json_t *items = json_array();
 	uint32_t format = 0;
 	drmModePlanePtr plane;
-	for (int i = 0; i < 1 /*planes->count_planes*/; ++i)
+	for (int i = 0; i < planes->count_planes; ++i)
 	{
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
 		if (plane->plane_id == disp->plane_id)
@@ -1304,6 +1304,8 @@ static int sdrm_capabilities_fourcc(Display_t *disp, json_t *capabilities)
 				if (format == 0)
 					format = plane->formats[0];
 			}
+			drmModeFreePlane(plane);
+			break;
 		}
 		drmModeFreePlane(plane);
 	}
