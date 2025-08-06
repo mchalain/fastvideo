@@ -86,6 +86,7 @@ struct EGLNative_s
 	int (*sync)(EGLNativeWindowType native_win);
 	void (*destroy)(EGLNativeDisplayType native_display);
 };
+typedef void (*segl_native_append_t)(EGLNative_t *native);
 
 extern const GLchar *defaulttexturename;
 

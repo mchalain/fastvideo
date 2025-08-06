@@ -23,22 +23,21 @@ struct FourccFormat_s
 	int stride_factor[4];
 };
 
-extern EGLNative_t *eglnative_offscreen;
-#ifdef HAVE_GBM
-extern EGLNative_t *eglnative_drm;
-#endif
-#ifdef HAVE_X11
-extern EGLNative_t *eglnative_x11;
-#endif
-#ifdef HAVE_WAYLAND_EGL
-extern EGLNative_t *eglnative_wayland;
-#endif
+const EGLNative_t * _natives[5] = {0};
+
+void segl_native_append(EGLNative_t *native)
+{
+	int i = 0;
+	for (; _natives[i] && i < sizeof(_natives) / sizeof(*_natives); i++);
+	if (i < sizeof(_natives)/sizeof(*_natives))
+		_natives[i] = native;
+}
 
 typedef struct EGL_s EGL_t;
 struct EGL_s
 {
 	EGLConfig_t *config;
-	EGLNative_t *native;
+	const EGLNative_t *native;
 	device_type_e type;
 	EGLDisplay egldisplay;
 	EGLConfig eglconfig;
@@ -173,29 +172,16 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		return NULL;
 	}
 	EGLNativeDisplayType ndisplay = EGL_DEFAULT_DISPLAY;
-	EGLNative_t *natives[] =
-	{
-#ifdef HAVE_GBM
-		eglnative_drm,
-#endif
-#ifdef HAVE_X11
-		eglnative_x11,
-#endif
-#ifdef HAVE_WAYLAND_EGL
-		eglnative_wayland,
-#endif
-		eglnative_offscreen,
-		NULL,
-	};
-	EGLNative_t *native = natives[0];
+
+	const EGLNative_t * native = _natives[0];
 
 	if (config->native)
 	{
-		for (int i = 0; i < sizeof(natives) / sizeof(*natives) && natives[i]; i++)
+		for (int i = 0; i < sizeof(_natives) / sizeof(*_natives) && _natives[i]; i++)
 		{
-			if (!strcmp(natives[i]->name, config->native))
+			if (!strcmp(_natives[i]->name, config->native))
 			{
-				native = natives[i];
+				native = _natives[i];
 				warn("segl: native %s", native->name);
 				ndisplay = native->display(config);
 				if (EGL_CAST(EGLint,ndisplay) != EGL_UNKNOWN)

@@ -633,7 +633,7 @@ static void native_destroy(EGLNativeDisplayType native_display)
 {
 }
 
-EGLNative_t *eglnative_drm = &(EGLNative_t)
+EGLNative_t eglnative_drm = 
 {
 	.name = "drm",
 	.display = native_display,
@@ -644,3 +644,16 @@ EGLNative_t *eglnative_drm = &(EGLNative_t)
 	.sync = native_sync,
 	.destroy = native_destroy,
 };
+
+#include <dlfcn.h>
+
+static void __attribute__ ((constructor)) segl_init()
+{
+	segl_native_append_t _segl_native_append;
+	void *hdl = dlopen(NULL, RTLD_NOW);
+	_segl_native_append = dlsym(hdl, "segl_native_append");
+	if (_segl_native_append)
+	{
+		_segl_native_append(&eglnative_drm);
+	}
+}
