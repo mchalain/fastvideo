@@ -29,7 +29,7 @@ static int _dev_formatcdev_devfs(int major, int minor, char *path, int pathlen)
 	return (snprintf(path, pathlen,"/dev/char/%d:%d", major, minor) > 0);
 }
 
-static int _dev_formatcdev_sysfs(int major, int minor, char *path, int pathlen)
+static int _dev_formatcdev_sysfs(int major, int minor, char *path, int pathlen, const char *dirpath)
 {
 	snprintf(path, pathlen,"/sys/dev/char/%d:%d", major, minor);
 	char target[1024];
@@ -40,14 +40,14 @@ static int _dev_formatcdev_sysfs(int major, int minor, char *path, int pathlen)
 	char *name = strrchr(target, '/');
 	if (name == NULL)
 		return -1;
-	return (snprintf(path, pathlen, "/dev%s", name) > 0);
+	return (snprintf(path, pathlen, "%s%s", dirpath, name) > 0);
 }
 
-static int _dev_openchar(int major, int minor, char *path, int pathlen)
+static int _dev_openchar(int major, int minor, char *path, int pathlen, const char *dirpath)
 {
 	if (access("/dev/char/", 0) == -1 ||
 		_dev_formatcdev_devfs(major, minor, path, pathlen))
-		_dev_formatcdev_sysfs(major, minor, path, pathlen);
+		_dev_formatcdev_sysfs(major, minor, path, pathlen, dirpath);
 	dbg("try %s", path);
 	int devfd = open(path, O_RDWR);
 	if (devfd < 0)
@@ -57,7 +57,7 @@ static int _dev_openchar(int major, int minor, char *path, int pathlen)
 	return devfd;
 }
 
-static int sys_opendev(int dirfd, const char *path, char *devpath, size_t devpathlen)
+static int sys_opendev(int dirfd, const char *path, char *devpath, size_t devpathlen, const char *dirpath)
 {
 	dirfd = openat(dirfd, path, O_DIRECTORY, 0);
 	if (dirfd < 0)
@@ -78,14 +78,14 @@ static int sys_opendev(int dirfd, const char *path, char *devpath, size_t devpat
 		ret = sscanf(line, "%u:%u", &major, &minor);
 		if (ret == 2)
 		{
-			ret = _dev_openchar(major, minor, devpath, devpathlen);
+			ret = _dev_openchar(major, minor, devpath, devpathlen, dirpath);
 		}
 	}
 	close(fd);
 	return ret;
 }
 
-static int sys_device(const char *path, int (*sysdevice)(void *arg, int fd, const char *path, const char *name), void *cbarg)
+static int sys_device(const char *path, int (*sysdevice)(void *arg, int fd, const char *path, const char *name), void *cbarg, const char *dirpath)
 {
 	int ret = -1;
 	dbg("parse %s tree", path);
@@ -104,7 +104,7 @@ static int sys_device(const char *path, int (*sysdevice)(void *arg, int fd, cons
 				if ((entity->d_type == DT_DIR) || (entity->d_type == DT_LNK))
 				{
 					char path[256];
-					int devicefd = sys_opendev(sysfd, entity->d_name, path, sizeof(path));
+					int devicefd = sys_opendev(sysfd, entity->d_name, path, sizeof(path), dirpath);
 					if (devicefd > 0 && sysdevice)
 					{
 						ret = sysdevice(cbarg, devicefd, path, entity->d_name);
@@ -132,6 +132,8 @@ static json_t *_device_v4l2(json_t *devices, int devfd, const char *path, const 
 			return NULL;
 		}
 	}
+	if (index == json_array_size(devices))
+		device = NULL;
 	/**
 	 * TODO
 	 * check the devices to find the subdevices corresponding to this entity's id
@@ -139,7 +141,7 @@ static json_t *_device_v4l2(json_t *devices, int devfd, const char *path, const 
 	 * The subdeivces are injected into the device
 	 */
 	V4L2_t *dev = NULL;
-	device_type_e types[] = {device_input, device_transfer, device_output};
+	device_type_e types[] = {device_input, device_transfer, device_output, device_control};
 	for (int i = 0; i < sizeof(types)/sizeof(device_type_e) && dev == NULL; i++)
 	{
 		dev = sv4l2_create2(devfd, name, types[i], NULL);
@@ -256,13 +258,13 @@ static int _media_video(void *arg, Media_t *media, struct media_entity_desc *ent
 	if (entity->type == MEDIA_ENT_F_IO_V4L)
 	{
 		char path[32];
-		int devfd = _dev_openchar(entity->dev.major, entity->dev.minor, path, sizeof(path));
+		int devfd = _dev_openchar(entity->dev.major, entity->dev.minor, path, sizeof(path), "/dev");
 		device = _device_v4l2(devices, devfd, path, entity->name);
 	}
 	if ((entity->type & MEDIA_ENT_TYPE_MASK) == MEDIA_ENT_T_V4L2_SUBDEV)
 	{
 		char path[32];
-		int devfd = _dev_openchar(entity->dev.major, entity->dev.minor, path, sizeof(path));
+		int devfd = _dev_openchar(entity->dev.major, entity->dev.minor, path, sizeof(path), "/dev" );
 		device = _device_subv4l2(devices, devfd, path, entity->name, entity->type);
 		smedia_enumlinks(media, entity, _device_links, device);
 	}
@@ -281,7 +283,13 @@ static int _devices_append(json_t *devices, json_t *device)
 	/**
 	 * check if the device is already inside the array
 	 */
-	const char *name = json_string_value(json_object_get(device, "name"));
+	json_t *jname = json_object_get(device, "name");
+	if (jname && json_is_array(jname))
+	{
+		int last = json_array_size(jname) - 1;
+		jname = json_array_get(jname, last);
+	}
+	const char *name = json_string_value(jname);
 	int j;
 	json_t *olddevice = NULL;
 	json_array_foreach(devices, j, olddevice)
@@ -335,6 +343,8 @@ static int _drm_device(void *arg, int fd, const char *path, const char *name)
 		}
 		return ret;
 	}
+	else
+		err("drm card %s not supported", path);
 	return -1;
 }
 #endif
@@ -465,8 +475,8 @@ int main(int argc, char *const argv[])
 	}
 	else if (media == NULL)
 	{
-		if (sys_device(sysmedia, _media_device, devices))
-			sys_device(sysvideo, _video_device, devices);
+		if (sys_device(sysmedia, _media_device, devices, "/dev"))
+			sys_device(sysvideo, _video_device, devices, "/dev");
 	}
 	else
 	{
@@ -480,7 +490,7 @@ int main(int argc, char *const argv[])
 	}
 #ifdef HAVE_LIBDRM
 	if (drm == NULL)
-		sys_device(sysdrm, _drm_device, devices);
+		sys_device(sysdrm, _drm_device, devices, "/dev/dri");
 	else
 	{
 		int fd = open(drm, O_RDWR);
