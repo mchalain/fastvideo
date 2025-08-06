@@ -18,6 +18,7 @@
 #ifdef HAVE_LIBDRM
 #include "sdrm.h"
 #endif
+#include "spassthrough.h"
 #include "smedia.h"
 
 static int all_capabilities_format = 0;
@@ -418,6 +419,17 @@ static int _media_device(void *arg, int fd, const char *path, const char *name)
 	return 0;
 }
 
+int _passthrough_device(void *arg, int fd, const char *path, const char *name)
+{
+	json_t *devices = (json_t *)arg;
+	json_t *passthrough = json_object();
+	void *dev = spassthrough_ops.create(path, device_output, NULL);
+	spassthrough_ops.capabilities(dev, passthrough, all_capabilities_format);
+	spassthrough_ops.destroy(dev);
+	_devices_append(devices, passthrough);
+	return 0;
+}
+
 int main(int argc, char *const argv[])
 {
 	const char *media = NULL;
@@ -502,6 +514,7 @@ int main(int argc, char *const argv[])
 			_drm_device(devices, fd, drm, drm);
 	}
 #endif
+	_passthrough_device(devices, 0, "passthrough", "passthrough");
 	json_dump_file(devices, output, JSON_INDENT(2));
 	json_decref(devices);
 	return 0;

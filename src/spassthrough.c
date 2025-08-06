@@ -49,6 +49,7 @@ struct Passthrough_s
 	device_type_e type;
 	Passthrough_config_t *config;
 	Passthrough_t *dup;
+	const char *name;
 	int nbuffers;
 	void **mems;
 	int *dmabufs;
@@ -80,11 +81,12 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 {
 	if (type == device_input)
 	{
-		err("spassthrough: %s bad device type", config->parent.name);
+		err("spassthrough: %s bad device type", (config)?config->parent.name:"");
 		return NULL;
 	}
 	Passthrough_t *dev = calloc(1, sizeof(*dev));
 	dev->config = config;
+	dev->name = devicename;
 	dev->type = device_output;
 	return dev;
 }
@@ -334,7 +336,8 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 	{
 		dev->branch.ops->destroy(dev->branch.dev);
 	}
-	free(dev->config);
+	if (dev->config)
+		free(dev->config);
 	free(dev);
 }
 
@@ -379,7 +382,25 @@ EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry)
 		config->branch.type = json_string_value(type);
 	}
 
-library_end:
+	return 0;
+}
+
+int spassthrough_capabilities(Passthrough_t *dev, json_t *capabilities, int all)
+{
+	json_t *names = json_array();
+	json_array_append_new(names, json_string(dev->name));
+	json_object_set_new(capabilities, "name", names);
+	json_object_set_new(capabilities, "type", json_string(spassthrough_ops.name));
+	json_t *dryrun = json_object();
+	json_object_set_new(dryrun, "name", json_string("dryrun"));
+	json_object_set_new(dryrun, "value", json_false());
+	json_t *tee = json_object();
+	json_object_set_new(tee, "name", json_string("tee"));
+	json_object_set_new(tee, "value", json_false());
+	json_t *controls = json_array();
+	json_array_append_new(controls, dryrun);
+	json_array_append_new(controls, tee);
+	json_object_set_new(capabilities, "control", controls);
 	return 0;
 }
 
@@ -389,6 +410,7 @@ FastVideoDevice_ops_t spassthrough_ops = {
 	.create = (FastVideoDevice_create_t)spassthrough_create,
 	.duplicate = (FastVideoDevice_duplicate_t)spassthrough_duplicate,
 	.loadsettings = (FastVideoDevice_loadsettings_t)spassthrough_loadsettings,
+	.capabilities = (FastVideoDevice_capabilities_t)spassthrough_capabilities,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)spassthrough_requestbuffer,
 	.eventfd = (FastVideoDevice_eventfd_t)spassthrough_fd,
 	.start = (FastVideoDevice_start_t)spassthrough_start,
