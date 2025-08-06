@@ -965,6 +965,10 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	json_t *jprograms = json_object_get(jconfig, "programs");
 	glprog_loadjsonconfiguration(&config->programs, jprograms);
 	json_t *native = json_object_get(jconfig, "native");
+	if (native && json_is_array(native))
+	{
+		native = json_array_get(native, 0);
+	}
 	if (native && json_is_string(native))
 	{
 		const char *value = json_string_value(native);
@@ -1021,7 +1025,15 @@ static int _egl_setjsondefinition(void *arg, ImageDefinition_t *image)
 
 int segl_capabilities(EGL_t *dev, json_t *capabilities, int all)
 {
-	json_object_set_new(capabilities, "native", json_string(dev->native->name));
+	if (all)
+	{
+		json_t *native = json_array();
+		for (int i = 0; i < sizeof(_natives) / sizeof(*_natives) && _natives[i]; i++)
+			json_array_append_new(native, json_string(_natives[i]->name));
+		json_object_set_new(capabilities, "native", native);
+	}
+	else
+		json_object_set_new(capabilities, "native", json_string(dev->native->name));
 	_JSON_Cb_Arg_t definitions;
 	definitions.array = json_array();
 	definitions.all = all;
