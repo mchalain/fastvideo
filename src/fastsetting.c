@@ -221,7 +221,7 @@ int main(int argc, char * const argv[])
 	const char *owner = NULL;
 	const char *pidfile= NULL;
 	const char *configfile = NULL;
-	const char *serverpath = "/tmp/fastsetting_socket";
+	const char *serverpath = FASTSETTING_DEFAULT_SERVER;
 	unsigned int mode = 0;
 	const char *logfile = "-";
 	const char *cwd = NULL;
@@ -295,6 +295,9 @@ int main(int argc, char * const argv[])
 	if ((mode & MODE_INITIALIZE) == 0)
 	{
 		server_t *server = server_create(serverpath, 2);
+		if (server == NULL)
+			return -1;
+		warn("fastsetting server runs on %s", serverpath);
 		server_attach_receive(server, _server_control, devices);
 
 		daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);

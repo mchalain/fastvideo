@@ -2,6 +2,8 @@ EGL=y
 DRM=y
 DVB=n
 
+FASTSETTING_DEFAULT_SERVER="/tmp/fastsetting_socket"
+
 V4L2_HAS_META=y
 V4L2_TRYRATIO=40
 
