@@ -273,7 +273,8 @@ V4L2_t *sv4l2_subdev_create2(int ctrlfd, const char *name, device_type_e dtype, 
 	subdev->fd = ctrlfd;
 	if (config)
 	{
-		memcpy(subdev->name, config->parent.name, sizeof(subdev->name));
+		subdev->name = subdev->devicename;
+		memcpy(subdev->devicename, config->parent.name, sizeof(subdev->name));
 		subdev->width = config->parent.width;
 		subdev->height = config->parent.height;
 		subdev->stride = config->parent.stride;

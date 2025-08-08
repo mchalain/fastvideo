@@ -363,7 +363,7 @@ uint32_t sv4l2_getpixformat(V4L2_t *dev, int (*pixformat)(void *arg, struct v4l2
 {
 	uint32_t pixelformat = 0;
 
-	struct v4l2_format fmt;
+	struct v4l2_format fmt = {0};
 	fmt.type = dev->type;
 	if (ioctl(dev->fd, VIDIOC_G_FMT, &fmt) != 0)
 	{
@@ -1366,21 +1366,23 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 		type = _v4l2_getbuftype(type, mode);
 
 	V4L2_t *dev = calloc(1, sizeof(*dev));
-	strncpy(dev->name, devicename, sizeof(dev->name) - 1);
+	dev->name = name;
+	strncpy(dev->devicename, devicename, sizeof(dev->devicename) - 1);
 	dev->config = config;
 	dev->fd = fd;
 	dev->type = type;
 	dev->mode = mode;
-	if (mode & MODE_VERBOSE && config)
-		warn("sv4l2: create %s, %s", devicename, config->device);
 	dev->ops.createbuffers = createbuffers_splane;
 	if (mode & MODE_MPLANE)
 	{
 		dev->ops.createbuffers = createbuffers_mplane;
 	}
 	sv4l2_getpixformat(dev, NULL, NULL);
+	if (mode & MODE_VERBOSE && config)
+		warn("sv4l2: create %s(%s), %s %lux%lu %.4s", name, devicename, config->device,
+				dev->width, dev->height, (char*)&dev->fourcc);
 
-	dbg("sv4l2: %s %dx%d, %.4s", dev->name, dev->width, dev->height, (char*)&dev->fourcc);
+	dbg("sv4l2: %s %dx%d, %.4s", name, dev->width, dev->height, (char*)&dev->fourcc);
 	if (config)
 	{
 		config->parent.dev = dev;
