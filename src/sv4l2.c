@@ -2567,25 +2567,33 @@ static int _v4l2_capabilities_fps(V4L2_t *dev, json_t *definition, int all)
 
 static int _v4l2_capabilities_metaformat(V4L2_t *dev, json_t *definition, int all)
 {
-	json_t *metaformat = json_object();
-	json_object_set_new(metaformat, "name", json_string("fourcc"));
-
-	json_t *size = json_object();
-	json_object_set_new(size, "name", json_string("size"));
-
 	struct v4l2_format fmt = {0};
 	fmt.type = sv4l2_type(dev);
 	fmt.fmt.pix.field = V4L2_FIELD_ANY;
+	json_t *metaformat = NULL;
+	json_t *size = NULL;
 	if (ioctl(sv4l2_fd(dev, 0), VIDIOC_G_FMT, &fmt) == 0)
 	{
-		json_object_set_new(metaformat, "value", json_stringn((char*)&fmt.fmt.meta.dataformat, 4));
-		json_object_set_new(size, "value", json_integer(fmt.fmt.meta.buffersize));
+		if (all || fmt.fmt.meta.dataformat != 0)
+		{
+			metaformat = json_object();
+			json_object_set_new(metaformat, "name", json_string("fourcc"));
+			json_object_set_new(metaformat, "value", json_stringn((char*)&fmt.fmt.meta.dataformat, 4));
+		}
+		if (all || fmt.fmt.meta.buffersize > 0)
+		{
+			size = json_object();
+			json_object_set_new(size, "name", json_string("size"));
+			json_object_set_new(size, "value", json_integer(fmt.fmt.meta.buffersize));
+		}
 	}
 
 	if (!all)
 	{
-		json_array_append_new(definition, metaformat);
-		json_array_append_new(definition, size);
+		if (metaformat)
+			json_array_append_new(definition, metaformat);
+		if (size)
+			json_array_append_new(definition, size);
 		return 0;
 	}
 
@@ -2609,30 +2617,45 @@ static int _v4l2_capabilities_metaformat(V4L2_t *dev, json_t *definition, int al
 
 static int _v4l2_capabilities_imageformat(V4L2_t *dev, json_t *definition, int all)
 {
-	json_t *pixelformat = json_object();
-	json_object_set_new(pixelformat, "name", json_string("fourcc"));
-
-	json_t *width = json_object();
-	json_object_set_new(width, "name", json_string("width"));
-
-	json_t *height = json_object();
-	json_object_set_new(height, "name", json_string("height"));
+	json_t *pixelformat = NULL;
+	json_t *width = NULL;
+	json_t *height = NULL;
 
 	struct v4l2_format fmt = {0};
 	fmt.type = sv4l2_type(dev);
 	fmt.fmt.pix.field = V4L2_FIELD_ANY;
 	if (ioctl(sv4l2_fd(dev, 0), VIDIOC_G_FMT, &fmt) == 0)
 	{
-		json_object_set_new(pixelformat, "value", json_stringn((char*)&fmt.fmt.pix.pixelformat, 4));
-		json_object_set_new(width, "value", json_integer(fmt.fmt.pix.width));
-		json_object_set_new(height, "value", json_integer(fmt.fmt.pix.height));
+		if (fmt.fmt.pix.pixelformat)
+		{
+			pixelformat = json_object();
+			json_object_set_new(pixelformat, "name", json_string("fourcc"));
+			json_t *jvalue = json_stringn((char*)&fmt.fmt.pix.pixelformat, 4);
+			json_object_set_new(pixelformat, "value", jvalue);
+
+		}
+		if (fmt.fmt.pix.width)
+		{
+			json_t *width = json_object();
+			json_object_set_new(width, "name", json_string("width"));
+			json_object_set_new(width, "value", json_integer(fmt.fmt.pix.width));
+		}
+		if (fmt.fmt.pix.height)
+		{
+			json_t *height = json_object();
+			json_object_set_new(height, "name", json_string("height"));
+			json_object_set_new(height, "value", json_integer(fmt.fmt.pix.height));
+		}
 	}
 
 	if (!all)
 	{
-		json_array_append_new(definition, pixelformat);
-		json_array_append_new(definition, width);
-		json_array_append_new(definition, height);
+		if (pixelformat)
+			json_array_append_new(definition, pixelformat);
+		if (width)
+			json_array_append_new(definition, width);
+		if (height)
+			json_array_append_new(definition, height);
 		return 0;
 	}
 
@@ -2692,7 +2715,8 @@ int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 	else
 		_v4l2_capabilities_imageformat(dev, definition, all);
 	_v4l2_capabilities_fps(dev, definition, all);
-	json_object_set_new(capabilities, "definition", definition);
+	if (json_array_size(definition) > 0)
+		json_object_set_new(capabilities, "definition", definition);
 	json_t *transformations = json_array();
 	_v4l2_capabilities_transform(dev, transformations, all, V4L2_SEL_TGT_CROP);
 	_v4l2_capabilities_transform(dev, transformations, all, V4L2_SEL_TGT_COMPOSE);
