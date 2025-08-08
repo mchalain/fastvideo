@@ -261,8 +261,40 @@ static int sv4l2_meta_capabilities(MetaDev_t *dev, json_t *capabilities, int all
 	json_t *names = json_array();
 	json_array_append_new(names, json_string(dev->name));
 	json_object_set_new(capabilities, "name", names);
-	json_object_set_new(capabilities, "type", json_string(ssv4l2_meta_ops.name));
+	json_object_set_new(capabilities, "type", json_string(sv4l2_meta_ops.name));
 	json_object_set_new(capabilities, "server-path", json_string(FASTSETTING_DEFAULT_SERVER));
+	json_t *fourcc = NULL;
+	if (all || (dev->meta && dev->meta->fourcc != 0) || (_metas[0]->fourcc != 0))
+	{
+		fourcc = json_object();
+		json_object_set_new(fourcc, "name", json_string("fourcc"));
+		if (dev->meta && dev->meta->fourcc != 0)
+			json_object_set_new(fourcc, "value", json_stringn((char*)&dev->meta->fourcc, 4));
+		else if (_metas[0] && _metas[0]->fourcc != 0)
+			json_object_set_new(fourcc, "value", json_stringn((char*)&_metas[0]->fourcc, 4));
+		else
+			json_object_set_new(fourcc, "value", json_string(""));
+	}
+	json_t *definition = NULL;
+	if (!all)
+	{
+		if (fourcc)
+		{
+			definition = json_array();
+			json_array_append_new(definition, fourcc);
+			json_object_set_new(capabilities, "definition", definition);
+		}
+		return 0;
+	}
+	json_t *items = json_array();
+	for (int i = 0; _metas[i] && i < sizeof(_metas)/sizeof(*_metas); i++)
+	{
+		json_array_append_new(items, json_stringn((char *)&_metas[i]->fourcc, 4));
+	}
+	json_array_append_new(fourcc, items);
+	definition = json_array();
+	json_array_append_new(definition, fourcc);
+	json_object_set_new(capabilities, "definition", definition);
 
 	return 0;
 }
@@ -270,7 +302,7 @@ static int sv4l2_meta_capabilities(MetaDev_t *dev, json_t *capabilities, int all
 #define sv4l2_meta_loadjsonconfiguration NULL
 #endif
 
-FastVideoDevice_ops_t ssv4l2_meta_ops = {
+FastVideoDevice_ops_t sv4l2_meta_ops = {
 	.name = _metadev_name,
 	.createconfig = sv4l2_meta_createconfig,
 	.create = (FastVideoDevice_create_t)sv4l2_meta_create,
@@ -295,6 +327,6 @@ static void __attribute__ ((constructor)) ssv4l2_meta_init()
 	_fastvideodevice_ops_append = dlsym(hdl, "fastvideodevice_ops_append");
 	if (_fastvideodevice_ops_append)
 	{
-		_fastvideodevice_ops_append(&ssv4l2_meta_ops);
+		_fastvideodevice_ops_append(&sv4l2_meta_ops);
 	}
 }

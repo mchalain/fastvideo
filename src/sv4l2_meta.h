@@ -50,6 +50,6 @@ struct V4l2_Meta_s
 	} ops;
 };
 
-extern FastVideoDevice_ops_t ssv4l2_meta_ops;
+extern FastVideoDevice_ops_t sv4l2_meta_ops;
 
 #endif
