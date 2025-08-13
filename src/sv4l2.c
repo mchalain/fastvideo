@@ -1262,11 +1262,6 @@ int _sv4l2_treecontrolmenu(int ctrlfd, struct v4l2_query_ext_ctrl *ctrl, int (*c
 	{
 		if (ioctl(ctrlfd, VIDIOC_QUERYMENU, &querymenu) != 0)
 			return -1;
-		if (dev->mode & MODE_VERBOSE)
-		{
-			err("sv4l2: query menu error %m");
-			return -1;
-		}
 		if (cb)
 			cb(arg, &querymenu);
 	}
@@ -1378,8 +1373,7 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 		dev->ops.createbuffers = createbuffers_mplane;
 	}
 	sv4l2_getpixformat(dev, NULL, NULL);
-	if (mode & MODE_VERBOSE && config)
-		warn("sv4l2: create %s(%s), %s %lux%lu %.4s", name, devicename, config->device,
+	warn("sv4l2: create %s(%s), %s %lux%lu %.4s", name, devicename, config?config->device:"",
 				dev->width, dev->height, (char*)&dev->fourcc);
 
 	dbg("sv4l2: %s %dx%d, %.4s", name, dev->width, dev->height, (char*)&dev->fourcc);
