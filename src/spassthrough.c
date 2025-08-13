@@ -79,11 +79,13 @@ DeviceConf_t * spassthrough_createconfig(void)
 
 EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Passthrough_config_t *config)
 {
+#if 0
 	if (type == device_input)
 	{
 		err("spassthrough: %s bad device type", (config)?config->parent.name:"");
 		return NULL;
 	}
+#endif
 	Passthrough_t *dev = calloc(1, sizeof(*dev));
 	dev->config = config;
 	dev->name = devicename;
