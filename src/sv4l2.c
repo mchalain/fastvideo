@@ -552,7 +552,7 @@ int sv4l2_getframesize(V4L2_t *dev, int(*framesize)(void *arg, uint32_t width, u
 	return 0;
 }
 
-static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, uint32_t width, uint32_t height)
+static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, uint32_t *width, uint32_t *height)
 {
 	uint32_t framesize = 0;
 
@@ -564,20 +564,22 @@ static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, uint32_t wid
 		return -1;
 	}
 
-	if (height > 0 && width == 0)
+	if (*height > 0 && *width == 0)
 	{
-		width = height * 16 / 9;
+		*width = *height * 16 / 9;
 	}
-	if (width > 0 && height > 0
-		&& !_v4l2_checkframesize(fd, fmt.fmt.pix.pixelformat, &width, &height))
+	if (*width > 0 && *height > 0
+		&& !_v4l2_checkframesize(fd, fmt.fmt.pix.pixelformat, width, height))
 	{
-		fmt.fmt.pix.width = width;
-		fmt.fmt.pix.height = height;
+		fmt.fmt.pix.width = *width;
+		fmt.fmt.pix.height = *height;
 	}
 	if (ioctl(fd, VIDIOC_S_FMT, &fmt) != 0)
 	{
 		return -1;
 	}
+	*width = fmt.fmt.pix.width;
+	*height = fmt.fmt.pix.height;
 	framesize = fmt.fmt.pix.sizeimage;
 	return framesize;
 }
@@ -1325,7 +1327,7 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config
 		height = config->parent.height;
 	}
 	if (!(mode & MODE_META) &&
-		_v4l2_setframesize(fd, *type, width, height) == (uint32_t)-1)
+		_v4l2_setframesize(fd, *type, &width, &height) == (uint32_t)-1)
 	{
 		err("frame size error %m");
 		if (errno != EBUSY)
