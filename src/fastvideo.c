@@ -180,6 +180,7 @@ int main_loop(FastVideoList_t *pipes)
 	{
 		if (pipe->output->ops->start(pipe->output->dev) == -1)
 			return -1;
+		warn("stream %s started", pipe->output->config->name);
 		if (pipe->output->ops->eventfd)
 		{
 			int fd = pipe->output->ops->eventfd(pipe->output->dev, 0);
@@ -187,6 +188,7 @@ int main_loop(FastVideoList_t *pipes)
 		}
 		if (pipe->input->ops->start(pipe->input->dev) == -1)
 			return -1;
+		warn("stream %s started", pipe->input->config->name);
 		if (pipe->input->ops->eventfd)
 		{
 			int fd = pipe->input->ops->eventfd(pipe->input->dev, 0);
@@ -527,6 +529,7 @@ int main(int argc, char * const argv[])
 		}
 		if (ret)
 			return -1;
+		warn("pipe %s => %s ready", input->config->name, output->config->name);
 	}
 
 	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
