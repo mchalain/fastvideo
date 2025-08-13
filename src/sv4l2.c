@@ -578,7 +578,7 @@ static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, uint32_t wid
 	{
 		return -1;
 	}
-
+	framesize = fmt.fmt.pix.sizeimage;
 	return framesize;
 }
 
@@ -1330,7 +1330,7 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config
 		height = config->parent.height;
 	}
 	if (!(mode & MODE_META) &&
-		_v4l2_setframesize(fd, *type, width, height) == -1)
+		_v4l2_setframesize(fd, *type, width, height) == (uint32_t)-1)
 	{
 		err("frame size error %m");
 		if (errno != EBUSY)
