@@ -202,6 +202,16 @@ int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_query_ext_c
 int sv4l2_treecontrolmenu(V4L2_t *dev, struct v4l2_query_ext_ctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg);
 
 /**
+ * @brief get/set the frame per second.
+ *
+ * @param dev the V4L2_t object.
+ * @param fps the value must be -1 for getting otherwise fps is set,if fps<0, the value is set 1/fps.
+ *
+ * @return -1 on error, fps otherwise.
+ */
+int sv4l2_fps(V4L2_t *dev, int fps);
+
+/**
  * @brief send dynamic configuration to an interactive loop
  *
  * @param dev the V4L2_t object.

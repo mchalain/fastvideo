@@ -584,13 +584,69 @@ static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, uint32_t *wi
 	return framesize;
 }
 
-static int _v4l2_setfps(int fd, enum v4l2_buf_type type, int fps)
+static int _v4l2_setfps_vblank(int ctrlfd, uint32_t width, uint32_t height, int fps)
+{
+	struct v4l2_ext_control control = {0};
+	struct v4l2_ext_controls controls = {0};
+	controls.count = 1;
+	controls.controls = &control;
+
+	control.id = V4L2_CID_PIXEL_RATE;
+	control.value = 0;
+	ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls);
+	uint32_t pixelrate = control.value;
+
+	control.id = V4L2_CID_HBLANK;
+	control.value = 0;
+	ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls);
+	uint32_t hblank = control.value;
+
+	control.id = V4L2_CID_VBLANK;
+	control.value = 0;
+	ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls);
+	uint32_t vblank = control.value;
+
+	if (fps != -1)
+	{
+		if (fps > 0)
+			vblank = pixelrate / fps;
+		else
+			vblank = pixelrate * fps;
+		vblank /= width + hblank;
+		vblank -= height;
+
+		control.id = V4L2_CID_VBLANK;
+		control.value = vblank;
+		if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
+		{
+			err("sv4l2: unable to set vblank %m");
+			fps = -1;
+		}
+		else
+		{
+			vblank = control.value;
+			dbg("sv4l2: new vertical blank %lu", vblank);
+		}
+	}
+	else
+	{
+		fps = vblank + height;
+		fps *= width + hblank;
+		fps = pixelrate / fps;
+	}
+	if (fps != -1)
+		warn("sv4l2: Frame rate: %d/%d fps vertical blank %lu",
+			(fps > 0)?1:-fps, (fps > 0)?fps:1, vblank);
+	return fps;
+}
+
+static int _v4l2_setfps_param(int fd, enum v4l2_buf_type type, int fps)
 {
 	struct v4l2_streamparm streamparm = {0};
 	streamparm.type = type;
 	if (ioctl(fd, VIDIOC_G_PARM, &streamparm) == -1)
 	{
-		err("FPS info not available %m");
+		err("sv4l2: parameter not available %m");
 		return -1;
 	}
 
@@ -605,7 +661,7 @@ static int _v4l2_setfps(int fd, enum v4l2_buf_type type, int fps)
 		streamparm.parm.capture.timeperframe.numerator = 1;
 		if (ioctl(fd, VIDIOC_S_PARM, &streamparm) == -1)
 		{
-			err("FPS setting error %m");
+			err("sv4l2: parameter setting error %m");
 			return -1;
 		}
 	}
@@ -615,15 +671,23 @@ static int _v4l2_setfps(int fd, enum v4l2_buf_type type, int fps)
 		streamparm.parm.capture.timeperframe.numerator = -fps;
 		if (ioctl(fd, VIDIOC_S_PARM, &streamparm) == -1)
 		{
-			err("FPS setting error %m");
+			err("sv4l2: parameter setting error %m");
 			return -1;
 		}
 	}
-	dbg("Frame rate: %d/%d fps (request %d/%d",
-			streamparm.parm.capture.timeperframe.denominator,
+	dbg("sv4l2: Frame rate: %d/%d fps (request %d/%d)",
 			streamparm.parm.capture.timeperframe.numerator,
+			streamparm.parm.capture.timeperframe.denominator,
 			(fps > 0)?1:-fps, (fps > 0)?fps:1);
 	return fps;
+}
+
+int sv4l2_fps(V4L2_t *dev, int fps)
+{
+	int ret = _v4l2_setfps_param(dev->fd, dev->type, fps);
+	if (ret == -1)
+		ret = _v4l2_setfps_vblank(dev->fd, dev->width, dev->height, fps);
+	return ret;
 }
 
 static int _v4l2_getbufferfd(V4L2_t *dev, int i, int plane)
@@ -1337,7 +1401,8 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config
 	int fps = -1;
 	if (config)
 		fps = config->fps;
-	_v4l2_setfps(fd, *type, fps);
+	if (_v4l2_setfps_param(fd, *type, fps) == -1)
+		_v4l2_setfps_vblank(fd, width, height, fps);
 	return 0;
 }
 
