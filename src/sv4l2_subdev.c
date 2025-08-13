@@ -213,13 +213,6 @@ int sv4l2_subdev_fps(V4L2_t *subdev, int pad, int fps)
 			streamparm.parm.capture.timeperframe.numerator,
 			(fps > 0)?1:-fps, (fps > 0)?fps:1);
 #else
-	struct v4l2_subdev_format ffs = {0};
-	ffs.pad = pad;
-	ffs.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	if (ioctl(subdev->fd, VIDIOC_SUBDEV_G_FMT, &ffs) != 0)
-	{
-		return -1;
-	}
 	uint32_t pixelrate = 0;
 	pixelrate = (uint32_t)(long)sv4l2_control(subdev, V4L2_CID_PIXEL_RATE, (void*)-1);
 	uint32_t hblank = 0;
@@ -232,15 +225,15 @@ int sv4l2_subdev_fps(V4L2_t *subdev, int pad, int fps)
 			vblank = pixelrate / fps;
 		else
 			vblank = pixelrate * fps;
-		vblank /= ffs.format.width + hblank;
-		vblank -= ffs.format.height;
+		vblank /= subdev->width + hblank;
+		vblank -= subdev->height;
 		vblank = (uint32_t)(long)sv4l2_control(subdev, V4L2_CID_VBLANK, (void*)(long)vblank);
 		dbg("sv4l2: subdev new vertical blank %lu", vblank);
 	}
 	else
 	{
-		fps = vblank + ffs.format.height;
-		fps *= ffs.format.width + hblank;
+		fps = vblank + subdev->height;
+		fps *= subdev->width + hblank;
 		fps = pixelrate / fps;
 	}
 	warn("Frame rate: %d/%d fps vertical blank %lu",
