@@ -12,7 +12,73 @@
 #include "log.h"
 #include "sv4l2_subdev.h"
 
+typedef struct _V4L2_subdev_format_s _V4L2_subdev_format_t;
+struct _V4L2_subdev_format_s
+{
+	uint32_t fourcc;
+	uint32_t fourcc_packed;
+	int buscode;
+};
+
+#ifndef V4L2_PIX_FMT_SGBRG16P
+# define V4L2_PIX_FMT_SGBRG16P 0
+# define V4L2_PIX_FMT_SBGGR16P 0
+# define V4L2_PIX_FMT_SGRBG16P 0
+# define V4L2_PIX_FMT_SRGGB16P 0
+#endif
+
+static _V4L2_subdev_format_t _buscode2fourcc[] =
+{
+	{.fourcc=V4L2_PIX_FMT_SGBRG10, .fourcc_packed=V4L2_PIX_FMT_SGBRG10P, .buscode=MEDIA_BUS_FMT_SGBRG10_1X10},
+	{.fourcc=V4L2_PIX_FMT_SBGGR10, .fourcc_packed=V4L2_PIX_FMT_SBGGR10P, .buscode=MEDIA_BUS_FMT_SBGGR10_1X10},
+	{.fourcc=V4L2_PIX_FMT_SGRBG10, .fourcc_packed=V4L2_PIX_FMT_SGRBG10P, .buscode=MEDIA_BUS_FMT_SGRBG10_1X10},
+	{.fourcc=V4L2_PIX_FMT_SRGGB10, .fourcc_packed=V4L2_PIX_FMT_SRGGB10P, .buscode=MEDIA_BUS_FMT_SRGGB10_1X10},
+	{.fourcc=V4L2_PIX_FMT_SGBRG12, .fourcc_packed=V4L2_PIX_FMT_SGBRG12P, .buscode=MEDIA_BUS_FMT_SGBRG12_1X12},
+	{.fourcc=V4L2_PIX_FMT_SBGGR12, .fourcc_packed=V4L2_PIX_FMT_SBGGR12P, .buscode=MEDIA_BUS_FMT_SBGGR12_1X12},
+	{.fourcc=V4L2_PIX_FMT_SGRBG12, .fourcc_packed=V4L2_PIX_FMT_SGRBG12P, .buscode=MEDIA_BUS_FMT_SGRBG12_1X12},
+	{.fourcc=V4L2_PIX_FMT_SRGGB12, .fourcc_packed=V4L2_PIX_FMT_SRGGB12P, .buscode=MEDIA_BUS_FMT_SRGGB12_1X12},
+	{.fourcc=V4L2_PIX_FMT_SGBRG16, .fourcc_packed=V4L2_PIX_FMT_SGBRG16P, .buscode=MEDIA_BUS_FMT_SGBRG16_1X16},
+	{.fourcc=V4L2_PIX_FMT_SBGGR16, .fourcc_packed=V4L2_PIX_FMT_SBGGR16P, .buscode=MEDIA_BUS_FMT_SBGGR16_1X16},
+	{.fourcc=V4L2_PIX_FMT_SGRBG16, .fourcc_packed=V4L2_PIX_FMT_SGRBG16P, .buscode=MEDIA_BUS_FMT_SGRBG16_1X16},
+	{.fourcc=V4L2_PIX_FMT_SRGGB16, .fourcc_packed=V4L2_PIX_FMT_SRGGB16P, .buscode=MEDIA_BUS_FMT_SRGGB16_1X16},
+};
+
 const char sv4l2_subdev_defaultdevice[20] = "/dev/v4l_subdev0";
+
+uint32_t _v4l2_subdev_buscode2fourcc(int buscode, int packed)
+{
+	uint32_t fourcc = 0;
+	for (int i = 0; i < sizeof(_buscode2fourcc)/sizeof(*_buscode2fourcc); i++)
+	{
+		if (_buscode2fourcc[i].buscode == buscode)
+		{
+			fourcc = _buscode2fourcc[i].fourcc;
+			if (packed && _buscode2fourcc[i].fourcc_packed)
+				fourcc = _buscode2fourcc[i].fourcc_packed;
+			break;
+		}
+	}
+	return fourcc;
+}
+
+int _v4l2_subdev_fourcc2buscode(int fourcc)
+{
+	int buscode = 0;
+	for (int i = 0; i < sizeof(_buscode2fourcc)/sizeof(*_buscode2fourcc); i++)
+	{
+		if (_buscode2fourcc[i].fourcc == fourcc)
+		{
+			buscode = _buscode2fourcc[i].buscode;
+			break;
+		}
+		if (_buscode2fourcc[i].fourcc_packed == fourcc)
+		{
+			buscode = _buscode2fourcc[i].buscode;
+			break;
+		}
+	}
+	return buscode;
+}
 
 static int _v4l2_subdev_fmtbus(void *arg, struct v4l2_subdev_mbus_code_enum *mbus_code)
 {
@@ -55,38 +121,8 @@ uint32_t sv4l2_subdev_getfmtbus(V4L2_t *subdev, int(*fmtbus)(void *arg, struct v
 static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 {
 	uint32_t ret = -1;
-	uint32_t code = -1;
-	switch (fourcc)
-	{
-	case V4L2_PIX_FMT_SGBRG10:
-	case V4L2_PIX_FMT_SGBRG10P:
-		code = V4L2_MBUS_FMT_SGBRG10_1X10;
-	break;
-	case V4L2_PIX_FMT_SBGGR10:
-	case V4L2_PIX_FMT_SBGGR10P:
-		code = V4L2_MBUS_FMT_SBGGR10_1X10;
-	break;
-	case V4L2_PIX_FMT_SGRBG10:
-#ifdef V4L2_PIX_FMT_SGRBG10P
-	case V4L2_PIX_FMT_SGRBG10P:
-#endif
-		code = MEDIA_BUS_FMT_SGRBG10_1X10;
-	break;
-	case V4L2_PIX_FMT_SRGGB12:
-#ifdef V4L2_PIX_FMT_SRGGB12P
-	case V4L2_PIX_FMT_SRGGB12P:
-#endif
-		code = V4L2_MBUS_FMT_SRGGB12_1X12;
-	break;
-	case V4L2_PIX_FMT_SRGGB10:
-	case V4L2_PIX_FMT_SRGGB10P:
-		code = MEDIA_BUS_FMT_SRGGB10_1X10;
-	break;
-	case V4L2_PIX_FMT_SBGGR16:
-		code = MEDIA_BUS_FMT_SBGGR16_1X16;
-	break;
-	};
-	ret = _v4l2_subdev_getfmtbus(ctrlfd, _v4l2_subdev_fmtbus, &code);
+	uint32_t code = _v4l2_subdev_fourcc2buscode(fourcc);
+	ret = _v4l2_subdev_getfmtbus(ctrlfd, 0, _v4l2_subdev_fmtbus, &code);
 	return ret;
 }
 
@@ -107,6 +143,15 @@ int sv4l2_subdev_setpixformat(V4L2_t *subdev, uint32_t fourcc, uint32_t width, u
 	return 0;
 }
 
+static int _v4l2_subdev_loadformat(void *arg, struct v4l2_subdev_format *ffs)
+{
+	V4L2_t *subdev = (V4L2_t *)arg;
+	subdev->width = ffs->format.width;
+	subdev->height = ffs->format.height;
+	subdev->fourcc = _v4l2_subdev_buscode2fourcc(ffs->format.code, 0);
+	return 0;
+}
+
 uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, int (*busformat)(void *arg, struct v4l2_subdev_format *ffs), void *cbarg)
 {
 	struct v4l2_subdev_format ffs = {0};
@@ -120,42 +165,6 @@ uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, int (*busformat)(void *arg, s
 	dbg("sv4l2: current subdev %lu x %lu %#X", ffs.format.width, ffs.format.height, ffs.format.code);
 	if (busformat)
 		return busformat(cbarg, &ffs);
-	return 0;
-}
-
-int sv4l2_subdev_set_config(void *arg, struct v4l2_subdev_format *ffs)
-{
-	DeviceConf_t *config = arg;
-	uint32_t fourcc = 0xFFFFFFFF;
-	switch (ffs->format.code)
-	{
-	case MEDIA_BUS_FMT_SGBRG10_1X10:
-		fourcc = V4L2_PIX_FMT_SGBRG10; // GB10
-	break;
-	case MEDIA_BUS_FMT_SBGGR10_1X10:
-		fourcc = V4L2_PIX_FMT_SBGGR10; // BG10
-	break;
-	case MEDIA_BUS_FMT_SGRBG10_1X10:
-		fourcc = V4L2_PIX_FMT_SGRBG10; // BA10
-	break;
-	case MEDIA_BUS_FMT_SRGGB10_1X10:
-		fourcc = V4L2_PIX_FMT_SRGGB10; // RG10
-	break;
-	case MEDIA_BUS_FMT_SRGGB12_1X12:
-		fourcc = V4L2_PIX_FMT_SRGGB12; // RG12
-	break;
-	case MEDIA_BUS_FMT_SBGGR16_1X16:
-		fourcc = V4L2_PIX_FMT_SRGGB16; // RG16
-	break;
-	default:
-		warn("sv4l2: subdev format %#x not supported", ffs->format.code);
-		fourcc = 0;
-	break;
-	};
-	config->fourcc = fourcc;
-	config->width = ffs->format.width;
-	config->height = ffs->format.height;
-	dbg("sv4l2: subdev format %dx%d %.4s", config->width, config->height, &config->fourcc);
 	return 0;
 }
 
@@ -271,16 +280,12 @@ V4L2_t *sv4l2_subdev_create2(int ctrlfd, const char *name, device_type_e dtype, 
 #endif
 	V4L2_t *subdev = calloc(1, sizeof(*subdev));
 	subdev->fd = ctrlfd;
-	if (config)
-	{
-		subdev->name = subdev->devicename;
-		memcpy(subdev->devicename, config->parent.name, sizeof(subdev->name));
-		subdev->width = config->parent.width;
-		subdev->height = config->parent.height;
-		subdev->stride = config->parent.stride;
-		subdev->fourcc = config->parent.fourcc;
-		dbg("sv4l2: subdev %s created", subdev->name);
-	}
+	subdev->config = config;
+	subdev->type = dtype;
+	subdev->name = subdev->devicename;
+	strncpy(subdev->devicename, name, sizeof(subdev->devicename) - 1);
+	sv4l2_subdev_getpixformat(subdev, _v4l2_subdev_loadformat, subdev);
+	dbg("sv4l2: subdev %s created", subdev->name);
 	return subdev;
 }
 
@@ -300,7 +305,14 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 	}
 	V4L2_t *subdev = sv4l2_subdev_create2(ctrlfd, devicename, type, config);
 	if (subdev == NULL)
+	{
 		close(ctrlfd);
+		return NULL;
+	}
+	if (config->parent.width) subdev->width = config->parent.width;
+	if (config->parent.height) subdev->height = config->parent.height;
+	if (config->parent.fourcc) subdev->fourcc = config->parent.fourcc;
+
 	sv4l2_subdev_setpixformat(subdev, subdev->fourcc, subdev->width, subdev->height);
 	sv4l2_subdev_fps(subdev, config->fps);
 	sv4l2_subdev_fps(subdev, -1);
