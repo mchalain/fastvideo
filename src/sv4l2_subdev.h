@@ -22,37 +22,40 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
  * The function calls the callback with the subdevice format
  *
  * @param subdev the subdevice
+ * @param pad the media pad to request or set
  * @param buformat the callback
  * @param cbarg the first argument of the callback
  *
  * @return the pixmap code (not the fourcc)
  */
 struct v4l2_subdev_format;
-uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, int (*pixformat)(void *arg, struct v4l2_subdev_format *ffs), void *cbarg);
-int sv4l2_subdev_setpixformat(V4L2_t *subdev, uint32_t fourcc, uint32_t width, uint32_t height);
+uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, int pad, int (*pixformat)(void *arg, struct v4l2_subdev_format *ffs), void *cbarg);
+int sv4l2_subdev_setpixformat(V4L2_t *subdev, int pad, uint32_t fourcc, uint32_t width, uint32_t height);
 
 /**
  * @brief returns information about fmtbus values available
  * The function calls the callback with the subdevice format
  *
  * @param subdev the subdevice
+ * @param pad the pad number inside the media
  * @param fmtbus the callback, returns 0 to select a fmtbus otherwise -1
  * @param cbarg the first argument of the callback
  *
  * @return the selected pixmap code (not the fourcc)
  */
 struct v4l2_subdev_mbus_code_enum;
-uint32_t sv4l2_subdev_getfmtbus(V4L2_t *subdev, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg);
+uint32_t sv4l2_subdev_getfmtbus(V4L2_t *subdev, int pad, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg);
 
 /**
  * @brief get/set frame rate
  *
  * @param subdev the subdevice
+ * @param pad the pad number inside the media
  * @param fps the frame rate (>0 is frames / seconde, <0 if secondes / frame, -1 to read only)
  *
  * @return the fps
  */
-int sv4l2_subdev_fps(V4L2_t *subdev, int fps);
+int sv4l2_subdev_fps(V4L2_t *subdev, int pad, int fps);
 
 /**
  * @brief release memory of the instance
