@@ -1,5 +1,8 @@
+#define _GNU_SOURCE
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -14,6 +17,62 @@
 
 static int _dma_heap = 0;
 static int _cref = 0;
+
+static char *_cpuext = NULL;
+static char _nullstring[] = "";
+static uint32_t _cacheextension = 0;
+const char *scpu_queryextensions()
+{
+	if (_cpuext)
+		return _cpuext;
+	_cpuext = _nullstring;
+	int fd = 0;
+	char buffer[1024] = {0};
+	fd = open ("/proc/cpuinfo", O_RDONLY);
+	if (fd)
+	{
+		char *features = NULL;
+		while (features == NULL)
+		{
+			ssize_t bytes = read(fd, buffer, sizeof(buffer) - 1);
+			features = strstr(buffer, "Features");
+			if (bytes == -1)
+				break;
+		}
+		if (features)
+		{
+			size_t length = (features - buffer);
+			char *endline = NULL;
+			memmove(buffer, features, sizeof(buffer) - length);
+			features = buffer;
+			endline = strchr(buffer, '\n');
+			if (endline == NULL)
+				length += read(fd, features + length, sizeof(buffer) - length - 1);
+			if (endline == NULL)
+				return _cpuext;
+			endline[0] = '\0';
+			features = strchr(features, ':') + 1;
+			length = endline - features;
+			_cpuext = malloc(length);
+			strncpy(_cpuext, features, length);
+		}
+	}
+	_cacheextension |= (scpu_checkextension("neon") << SCPU_NEON);
+	_cacheextension |= (scpu_checkextension("vfpv4") << SCPU_VFPV4);
+	return _cpuext;
+}
+
+int scpu_checkextension(const char *ext)
+{
+	const char *extensions = scpu_queryextensions();
+	return !(strcasestr(extensions, ext) == NULL);
+}
+
+int scpu_check(int ext)
+{
+	scpu_queryextensions();
+	return (_cacheextension >> ext) & 0x01;
+}
 
 static int _dmabuf_open()
 {
