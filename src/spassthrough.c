@@ -80,6 +80,22 @@ DeviceConf_t * spassthrough_createconfig(void)
 	return &config->parent;
 }
 
+#ifdef __ARM_NEON
+static size_t _neon_copy(Passthrough_t *dev, const char *const src, char *dst, size_t size)
+{
+	asm volatile (
+		"1:                                               \n"
+		"subs     %[size], %[size], #32                   \n"
+		"vld1.u8  {d0, d1, d2, d3}, [%[src],:128]!        \n"
+		"vst1.u8  {d0, d1, d2, d3}, [%[dst],:128]!        \n"
+		"bgt      1b                                      \n"
+		: [dst]"+r"(dst)
+		: [src]"r"(src), [size]"r"(size)
+		: "d0", "d1", "d2", "d3", "cc", "memory"
+	);
+}
+#endif
+
 static size_t _default_copy(Passthrough_t *dev, const char *const src, char *dst, size_t size)
 {
 	memcpy(dst, src, size);
@@ -125,6 +141,13 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 	dev->name = devicename;
 	dev->type = device_output;
 	dev->copy = _default_copy;
+#ifdef __ARM_NEON
+	if (scpu_check(SCPU_NEON))
+	{
+		dev->copy = _neon_copy;
+	}
+#endif
+
 	return dev;
 }
 
