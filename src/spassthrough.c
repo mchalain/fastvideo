@@ -345,21 +345,34 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 
 static int _passthrough_loadstate(Passthrough_t *dev, json_t *jconfig)
 {
-	json_t *jdryrun = json_object_get(jconfig, "dryrun");
-	if (jdryrun && json_is_true(jdryrun))
-		dev->state |= MODE_DRYRUN;
-	else if (jdryrun)
-		dev->state &= ~MODE_DRYRUN;
-	json_t *jshoot = json_object_get(jconfig, "shoot");
-	if (jshoot && json_is_true(jshoot))
-		dev->state |= MODE_SHOOT;
-	else if (jshoot)
-		dev->state &= ~MODE_SHOOT;
-	json_t *jtee = json_object_get(jconfig, "tee");
-	if (jtee && json_is_true(jtee))
-		dev->state |= MODE_TEE;
-	else if (jtee)
-		dev->state &= ~MODE_TEE;
+	if (json_is_object(jconfig))
+	{
+		json_t *jdryrun = json_object_get(jconfig, "dryrun");
+		if (jdryrun && json_is_true(jdryrun))
+			dev->state |= MODE_DRYRUN;
+		else if (jdryrun)
+			dev->state &= ~MODE_DRYRUN;
+		json_t *jshoot = json_object_get(jconfig, "shoot");
+		if (jshoot && json_is_true(jshoot))
+			dev->state |= MODE_SHOOT;
+		else if (jshoot)
+			dev->state &= ~MODE_SHOOT;
+		json_t *jtee = json_object_get(jconfig, "tee");
+		if (jtee && json_is_true(jtee))
+			dev->state |= MODE_TEE;
+		else if (jtee)
+			dev->state &= ~MODE_TEE;
+	}
+	if (json_is_string(jconfig))
+	{
+		const char *value = json_string_value(jconfig);
+		if (!strcmp(value, "dryrun"))
+			dev->state |= MODE_DRYRUN;
+		else if (!strcmp(value, "shoot"))
+			dev->state |= MODE_SHOOT;
+		else if (!strcmp(value, "tee"))
+			dev->state |= MODE_TEE;
+	}
 }
 
 static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry)
