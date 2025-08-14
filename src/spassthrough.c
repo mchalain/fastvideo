@@ -343,14 +343,8 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 	free(dev);
 }
 
-static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry)
+static int _passthrough_loadstate(Passthrough_t *dev, json_t *jconfig)
 {
-	json_t *jconfig = entry;
-	json_t *jcontrols = json_object_get(jconfig,"controls");
-	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
-	{
-		jconfig = jcontrols;
-	}
 	json_t *jdryrun = json_object_get(jconfig, "dryrun");
 	if (jdryrun && json_is_true(jdryrun))
 		dev->state |= MODE_DRYRUN;
@@ -359,13 +353,34 @@ static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry)
 	json_t *jshoot = json_object_get(jconfig, "shoot");
 	if (jshoot && json_is_true(jshoot))
 		dev->state |= MODE_SHOOT;
-	else if (jdryrun)
+	else if (jshoot)
 		dev->state &= ~MODE_SHOOT;
 	json_t *jtee = json_object_get(jconfig, "tee");
 	if (jtee && json_is_true(jtee))
 		dev->state |= MODE_TEE;
-	else if (jdryrun)
+	else if (jtee)
 		dev->state &= ~MODE_TEE;
+}
+
+static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry)
+{
+	json_t *jconfig = entry;
+	json_t *jcontrols = json_object_get(jconfig,"controls");
+	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
+	{
+		jconfig = jcontrols;
+	}
+	if (json_is_array(jconfig))
+	{
+		int index;
+		json_t *jentry;
+		json_array_foreach(jconfig, index, jentry)
+		{
+			_passthrough_loadstate(dev, jentry);
+		}
+	}
+	else
+		_passthrough_loadstate(dev, jconfig);
 	return 0;
 }
 
