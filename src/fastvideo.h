@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "config.h"
+#include "sformats.h"
 
 #define EXT_API static
 
