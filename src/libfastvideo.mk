@@ -1,5 +1,5 @@
 lib-y+=fastvideo
-fastvideo_SOURCES+=fastvideo_device.c
+fastvideo_SOURCES+=sfastvideo.c
 fastvideo_SOURCES+=sdmabuf.c
 fastvideo_SOURCES+=spassthrough.c
 fastvideo_SOURCES+=sv4l2.c
