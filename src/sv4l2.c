@@ -23,6 +23,8 @@
 #include "sv4l2.h"
 #include "sv4l2_subdev.h"
 
+#define sv4l2_dbg(...)
+
 /**
  * TODO split this file
  */
@@ -297,31 +299,31 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 #endif
 
 #ifdef DEBUG
-	dbg("device %s capabilities %#X", interface, cap.device_caps);
+	dbg("sv4l2 :device %s capabilities %#X", interface, cap.device_caps);
 	if(caps & V4L2_CAP_VIDEO_CAPTURE)
-		dbg("device %s capture (camera)", cap.card);
+		dbg("sv4l2 :device %s capture (camera)", cap.card);
 	if(caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE)
-		dbg("device %s capture mplane", cap.card);
+		dbg("sv4l2 :device %s capture mplane", cap.card);
 	if(caps & V4L2_CAP_VIDEO_OUTPUT)
-		dbg("device %s output", cap.card);
+		dbg("sv4l2 :device %s output", cap.card);
 	if(caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE)
-		dbg("device %s output mplane", cap.card);
+		dbg("sv4l2 :device %s output mplane", cap.card);
 	if(caps & V4L2_CAP_VIDEO_OVERLAY)
-		dbg("device %s overlay", cap.card);
+		dbg("sv4l2 :device %s overlay", cap.card);
 	if(caps & V4L2_CAP_VIDEO_M2M)
-		dbg("device %s memory to memory", cap.card);
+		dbg("sv4l2 :device %s memory to memory", cap.card);
 	if(caps & V4L2_CAP_VIDEO_M2M_MPLANE)
-		dbg("device %s memory to memory mplane", cap.card);
+		dbg("sv4l2 :device %s memory to memory mplane", cap.card);
 	if(caps & V4L2_CAP_AUDIO)
-		dbg("device %s audio", cap.card);
+		dbg("sv4l2 :device %s audio", cap.card);
 	if(caps & V4L2_CAP_VBI_CAPTURE)
-		dbg("device %s vbi", cap.card);
+		dbg("sv4l2 :device %s vbi", cap.card);
 	if(caps & V4L2_CAP_RADIO)
-		dbg("device %s radio", cap.card);
+		dbg("sv4l2 :device %s radio", cap.card);
 	if(caps & V4L2_CAP_EXT_PIX_FORMAT)
-		dbg("device %s Pixformat extension available", cap.card);
+		dbg("sv4l2 :device %s Pixformat extension available", cap.card);
 	if(caps & V4L2_CAP_IO_MC)
-		dbg("device %s media control available", cap.card);
+		dbg("sv4l2 :device %s media control available", cap.card);
 #endif
 	if ((caps & V4L2_CAP_VIDEO_CAPTURE ||
 		caps & V4L2_CAP_META_CAPTURE ||
@@ -367,7 +369,7 @@ uint32_t sv4l2_getpixformat(V4L2_t *dev, int (*pixformat)(void *arg, struct v4l2
 	fmt.type = dev->type;
 	if (ioctl(dev->fd, VIDIOC_G_FMT, &fmt) != 0)
 	{
-		err("FMT not found %m");
+		err("sv4l2: FMT not found %m");
 		return -1;
 	}
 #ifdef V4L2_HAS_META
@@ -395,10 +397,10 @@ uint32_t sv4l2_getpixformat(V4L2_t *dev, int (*pixformat)(void *arg, struct v4l2
 
 	struct v4l2_fmtdesc fmtdesc = {0};
 	fmtdesc.type = dev->type;
-	dbg("Formats:");
+	sv4l2_dbg("sv4l2: Formats:");
 	while (pixformat && ioctl(dev->fd, VIDIOC_ENUM_FMT, &fmtdesc) == 0)
 	{
-		dbg("\t%.4s => %s %#x", (char*)&fmtdesc.pixelformat, fmtdesc.description,
+		sv4l2_dbg("\t%.4s => %s %#x", (char*)&fmtdesc.pixelformat, fmtdesc.description,
 				fmtdesc.flags);
 		fmtdesc.index++;
 		pixformat(cbarg, &fmtdesc, (fmtdesc.pixelformat == pixelformat));
@@ -414,7 +416,7 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 	fmt.type = type;
 	if (ioctl(fd, VIDIOC_G_FMT, &fmt) != 0)
 	{
-		err("FMT not found %m");
+		err("sv4l2: FMT not found %m");
 		return -1;
 	}
 #ifdef V4L2_HAS_META
@@ -425,10 +427,10 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 
 	struct v4l2_fmtdesc fmtdesc = {0};
 	fmtdesc.type = type;
-	dbg("Formats:");
+	sv4l2_dbg("sv4l2: Formats:");
 	while (ioctl(fd, VIDIOC_ENUM_FMT, &fmtdesc) == 0)
 	{
-		dbg("\t%.4s => %s", (char*)&fmtdesc.pixelformat,
+		sv4l2_dbg("\t%.4s => %s", (char*)&fmtdesc.pixelformat,
 				fmtdesc.description);
 		fmtdesc.index++;
 		if (fourcc != 0)
@@ -457,10 +459,11 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 		return -1;
 	}
 #ifdef V4L2_HAS_META
-	dbg("V4l2 settings: %.4s", (char*)(ismeta?&fmt.fmt.meta.dataformat:&fmt.fmt.pix.pixelformat));
-#else
-	dbg("V4l2 settings: %.4s", (char*)(fmt.fmt.pix.pixelformat?&fmt.fmt.pix.pixelformat:&pixelformat));
+	if (ismeta)
+		dbg("sv4l2: settings: %.4s %lu", (char*)&fmt.fmt.meta.dataformat, fmt.fmt.meta.buffersize);
+	else
 #endif
+	dbg("sv4l2: settings: %.4s stride: %lu/%lu field:%#lx", (char*)(fmt.fmt.pix.pixelformat?&fmt.fmt.pix.pixelformat:&pixelformat), fmt.fmt.pix.bytesperline, fmt.fmt.pix.width, fmt.fmt.pix.field);
 	return fmt.fmt.pix.pixelformat;
 }
 
@@ -471,15 +474,15 @@ static uint32_t _v4l2_checkframesize(int fd, uint32_t fourcc, uint32_t *width, u
 	video_cap.index = 0;
 	if (ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &video_cap) != 0)
 	{
-		err("framsesize enumeration error %m");
+		err("sv4l2: framsesize enumeration error %m");
 		return -1;
 	}
 
-	dbg("Frame size:");
+	sv4l2_dbg("sv4l2: Frame size:");
 	if (video_cap.type == V4L2_FRMSIZE_TYPE_STEPWISE)
 	{
-		dbg("\t%d < width  < %d, step %d", video_cap.stepwise.min_width, video_cap.stepwise.max_width, video_cap.stepwise.step_width);
-		dbg("\t%d < height < %d, step %d", video_cap.stepwise.min_height, video_cap.stepwise.max_height, video_cap.stepwise.step_height);
+		sv4l2_dbg("\t%d < width  < %d, step %d", video_cap.stepwise.min_width, video_cap.stepwise.max_width, video_cap.stepwise.step_width);
+		sv4l2_dbg("\t%d < height < %d, step %d", video_cap.stepwise.min_height, video_cap.stepwise.max_height, video_cap.stepwise.step_height);
 		if (*width > video_cap.stepwise.max_width)
 			*width = video_cap.stepwise.max_width;
 		if (*width < video_cap.stepwise.min_width)
@@ -495,7 +498,7 @@ static uint32_t _v4l2_checkframesize(int fd, uint32_t fourcc, uint32_t *width, u
 		uint32_t nbpixels = *height * *width;
 		for (video_cap.index = 0; ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &video_cap) != -1; video_cap.index++)
 		{
-			dbg("\twidth %d, height %d", video_cap.discrete.width, video_cap.discrete.height);
+			sv4l2_dbg("\twidth %d, height %d", video_cap.discrete.width, video_cap.discrete.height);
 			if (*height <= video_cap.discrete.height)
 			{
 				*height = video_cap.discrete.height;
@@ -522,12 +525,13 @@ int sv4l2_getframesize(V4L2_t *dev, int(*framesize)(void *arg, uint32_t width, u
 	video_cap.index = 0;
 	if (ioctl(dev->fd, VIDIOC_ENUM_FRAMESIZES, &video_cap) != 0)
 	{
-		err("framsesize enumeration error %m");
+		err("sv4l2: framsesize enumeration error %m");
 		return -1;
 	}
+	sv4l2_dbg("sv4l2: Frame size:");
 	if (video_cap.type == V4L2_FRMSIZE_TYPE_STEPWISE)
 	{
-		dbg("\t%d < width  < %d, step %d", video_cap.stepwise.min_width, video_cap.stepwise.max_width, video_cap.stepwise.step_width);
+		sv4l2_dbg("\t%d < width  < %d, step %d", video_cap.stepwise.min_width, video_cap.stepwise.max_width, video_cap.stepwise.step_width);
 		dbg("\t%d < height < %d, step %d", video_cap.stepwise.min_height, video_cap.stepwise.max_height, video_cap.stepwise.step_height);
 		if (framesize)
 		{
@@ -540,7 +544,7 @@ int sv4l2_getframesize(V4L2_t *dev, int(*framesize)(void *arg, uint32_t width, u
 	{
 		for (video_cap.index = 0; ioctl(dev->fd, VIDIOC_ENUM_FRAMESIZES, &video_cap) != -1; video_cap.index++)
 		{
-			dbg("\twidth %d, height %d", video_cap.discrete.width, video_cap.discrete.height);
+			sv4l2_dbg("\twidth %d, height %d", video_cap.discrete.width, video_cap.discrete.height);
 			if (framesize)
 			{
 				int isset = (video_cap.discrete.width == fmt.fmt.pix.width);
@@ -733,13 +737,13 @@ int sv4l2_requestbuffer_mmap(V4L2_t *dev, int count)
 #ifdef V4L2_BUF_CAP_SUPPORTS_DMABUF
 	if (req.capabilities & V4L2_BUF_CAP_SUPPORTS_DMABUF)
 	{
-		dbg("buffer supports DMABUF too");
+		dbg("sv4l2: buffer supports DMABUF too");
 	}
 #endif
 	dev->nbuffers = req.count;
 	dev->buffers = dev->ops.createbuffers(dev, dev->nbuffers, V4L2_MEMORY_MMAP);
 
-	dbg("request %d buffers", req.count);
+	dbg("sv4l2: request %d buffers", req.count);
 	for (int i = 0; i < dev->nbuffers; i++)
 	{
 		if (ioctl(dev->fd, VIDIOC_QUERYBUF, &dev->buffers[i].v4l2) != 0)
@@ -771,7 +775,7 @@ int sv4l2_requestbuffer_dmabuf(V4L2_t *dev, int count)
 		/// master request MMAP first to export the DMA in a second time
 		if (sv4l2_requestbuffer_mmap(dev, count) < 0)
 		{
-			err("mmap error");
+			err("sv4l2: mmap error");
 			return -1;
 		}
 		oldbuffers = dev->buffers;
@@ -800,7 +804,7 @@ int sv4l2_requestbuffer_dmabuf(V4L2_t *dev, int count)
 		req.count = 0;
 		if (ioctl(dev->fd, VIDIOC_REQBUFS, &req) == -1)
 		{
-			err("Free buffer for dma error %m");
+			err("sv4l2: Free buffer for dma error %m");
 			return -1;
 		}
 	}
@@ -811,14 +815,14 @@ int sv4l2_requestbuffer_dmabuf(V4L2_t *dev, int count)
 	req.memory = V4L2_MEMORY_DMABUF;
 	if (ioctl(dev->fd, VIDIOC_REQBUFS, &req) != 0)
 	{
-		err("device doesn't allow DMABUF %m");
+		err("sv4l2: device doesn't allow DMABUF %m");
 		return -1;
 	}
 	dev->nbuffers = req.count;
 	dev->buffers = calloc(dev->nbuffers, sizeof(*dev->buffers));
 	dev->buffers = dev->ops.createbuffers(dev, dev->nbuffers, V4L2_MEMORY_DMABUF);
 
-	dbg("request %d buffers", req.count);
+	dbg("sv4l2: request %d buffers", req.count);
 	for (int i = 0; i < dev->nbuffers; i++)
 	{
 		if (oldbuffers)
@@ -867,15 +871,15 @@ int sv4l2_requestbuffer_userptr(V4L2_t *dev, int nmems, void *mems[], size_t siz
 		if (errno == EINVAL)
 			err("sv4l2: UserPtr memory not supported by device");
 		else
-			err("Request buffer for mmap error %m");
+			err("sv4l2: Request buffer for mmap error %m");
 		return -1;
 	}
 	dev->nbuffers = req.count;
 	dev->buffers = dev->ops.createbuffers(dev, dev->nbuffers, V4L2_MEMORY_USERPTR);
 	if (dev->nbuffers > nmems)
-		err("Not enougth memory buffers");
+		err("sv4l2: Not enougth memory buffers");
 
-	dbg("request %d buffers", req.count);
+	dbg("sv4l2: request %d buffers", req.count);
 	count = (dev->nbuffers > nmems)? nmems:dev->nbuffers;
 	for (int i = 0; i < count; i++)
 	{
@@ -980,7 +984,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 		{
 			if (dev->config->parent.modifiers)
 			{
-				err("V4l2 format currently doesn't support modifiers");
+				err("sv4l2: format currently doesn't support modifiers");
 #if TEST_FORMATMODIFIERS
 				return -1;
 #endif
