@@ -8,6 +8,8 @@
 #include "segl.h"
 #include "log.h"
 
+#define segl_dbg(...)
+
 typedef enum{
 	Uniform_UNKNOWN_e = 0,
 	Uniform_INT_e,
@@ -206,7 +208,7 @@ static GLuint loadShader(GLenum shadertype, const char *shaderfile, const char *
 		if (shaderSourceDyn == NULL)
 			return 0;
 		shaderSource = shaderSourceDyn;
-		warn("load dynamic shader:\n%s<=", shaderSource);
+		segl_dbg("load dynamic shader:\n%s<=", shaderSource);
 	}
 	else
 	{
@@ -214,7 +216,7 @@ static GLuint loadShader(GLenum shadertype, const char *shaderfile, const char *
 		shaderSize = strlen(shaderSource);
 		if (shaderSource == NULL)
 			return 0;
-		warn("load default shader:\n%s", shaderSource);
+		segl_dbg("load default shader:\n%s", shaderSource);
 	}
 	glShaderSource(shaderID, 1, (const GLchar**)(&shaderSource), &shaderSize);
 	glCompileShader(shaderID);
@@ -250,7 +252,7 @@ static GLuint loadShaders(GLenum shadertype, const char *shaderfiles[MAX_SHADERS
 			err("shader %s not loaded", shaderfiles[i]);
 			break;
 		}
-		warn("load dynamic shader:\n%s<=", shaderSources[i]);
+		segl_dbg("load dynamic shader:\n%s<=", shaderSources[i]);
 		nbShaderSources++;
 	}
 	glShaderSource(shaderID, nbShaderSources, (const char *const*)shaderSources, shaderSizes);
