@@ -500,9 +500,9 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 	uint32_t stride;
 	uint64_t size;
 	int bpp = 32;
-	dbg("sdrm: buffer for width %u height %u ", width, height);
 	switch (fourcc)
 	{
+		case FOURCC_RG16:
 		case FOURCC_RGBP:
 		case FOURCC_YUYV:
 			bpp = 16;
@@ -534,6 +534,7 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 			buffer->nplanes = 2;
 		break;
 	}
+	dbg("sdrm: buffer for width %lu height %lu size %lu", width, height, buffer->size);
 
 	return 0;
 }
@@ -547,7 +548,7 @@ static int sdrm_buffer_dumb(Display_t *disp, FrameBuffer_t *buffer)
 	buffer->private = (void *)(long)bo_handle;
 	if (size != buffer->size)
 	{
-		warn("sdrm: buffer size changed!!!");
+		warn("sdrm: buffer size changed (%lu v %lu!!!", size, buffer->size);
 	}
 	buffer->size = size;
 	return 0;
@@ -599,7 +600,7 @@ static int sdrm_buffer_setdma2(Display_t *disp, uint32_t size, int fd, FrameBuff
 {
 	if (size != buffer->size)
 	{
-		warn("sdrm: buffer size changed!!!");
+		warn("sdrm: buffer size changed (%lu v %lu!!!", size, buffer->size);
 	}
 	buffer->size = size;
 
