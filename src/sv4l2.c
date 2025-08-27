@@ -973,7 +973,6 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 					for (int j = 0; j < dev->nplanes; j++)
 					{
 						(*targets)[i + j] = dev->buffers[i].ops.getmem(&dev->buffers[i], j);
-						dbg("sv4l2: memory %p", (*targets)[i + j]);
 					}
 			}
 			if (size != NULL)
@@ -1030,11 +1029,11 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 	{
 		dbg_buffer((&dev->buffers[i].v4l2));
 	}
+#endif
 	int length = 0;
 	if (dev->buffers)
 		length = dev->buffers[0].length;
 	dbg("sv4l2: %s %dx%d, %.4s %lu", dev->name, dev->width, dev->height, (char*)&dev->fourcc, length);
-#endif
 	return ret;
 }
 
