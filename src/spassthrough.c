@@ -94,11 +94,12 @@ DeviceConf_t * spassthrough_createconfig(void)
 #ifdef __ARM_NEON
 static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t size)
 {
+	/// [%[src]:256] for alignment on 256bits
 	asm volatile (
 		"1:                                               \n"
 		"subs     %[size], %[size], #32                   \n"
-		"vld1.u8  {d0, d1, d2, d3}, [%[src],:128]!        \n"
-		"vst1.u8  {d0, d1, d2, d3}, [%[dst],:128]!        \n"
+		"vld1.u8  {d0, d1, d2, d3}, [%[src]:256]!         \n"
+		"vst1.u8  {d0, d1, d2, d3}, [%[dst]:256]!         \n"
 		"bgt      1b                                      \n"
 		: [dst]"+r"(dst)
 		: [src]"r"(src), [size]"r"(size)
