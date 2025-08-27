@@ -59,6 +59,7 @@ typedef struct FastVideoList_s FastVideoList_t;
 
 FastVideoList_t *fastvideolist_append(FastVideoList_t *list, void *device);
 FastVideoList_t *fastvideolist_insert(FastVideoList_t *list, void *device);
+void fastvideolist_reset(FastVideoList_t *list);
 FastVideoList_t *fastvideolist_first(FastVideoList_t *list);
 FastVideoList_t *fastvideolist_last(FastVideoList_t *list);
 void *fastvideolist_next(FastVideoList_t *list);

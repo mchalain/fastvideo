@@ -16,6 +16,10 @@
 #define FOURCC_RGBP  FOURCC('R','G','B','P')
 #define FOURCC_RG16  FOURCC('R','G','1','6')
 #define FOURCC_R8    FOURCC('R','8',' ',' ')
+#define FOURCC_R10   FOURCC('R','1','0',' ')
+#define FOURCC_R12   FOURCC('R','1','2',' ')
+#define FOURCC_R16   FOURCC('R','1','6',' ')
+#define FOURCC_GR88  FOURCC('G','R','8','8')
 
 #define FOURCC_GREY  FOURCC('G','R','E','Y')
 #define FOURCC_YUYV  FOURCC('Y','U','Y','V')
@@ -39,6 +43,8 @@
 #define FOURCC_JPEG  FOURCC('J','P','E','G')
 #define FOURCC_MJPG  FOURCC('M','J','P','G')
 #define FOURCC_H264  FOURCC('H','2','6','4')
+
+#define FOURCC_RG565  FOURCC_RG16
 
 #define BPP_TO_BYTE(_bpp)	(((_bpp) + 7) / 8)
 

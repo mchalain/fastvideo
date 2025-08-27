@@ -46,6 +46,11 @@ FastVideoList_t *fastvideolist_insert(FastVideoList_t *list, void *device)
 	return list;
 }
 
+void fastvideolist_reset(FastVideoList_t *list)
+{
+	list->iterator = NULL;
+}
+
 FastVideoList_t *fastvideolist_last(FastVideoList_t *list)
 {
 	return list->last;
