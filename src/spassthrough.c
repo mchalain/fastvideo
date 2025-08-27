@@ -4,9 +4,11 @@
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
+#include <dlfcn.h>
 
 #include "log.h"
 #include "config.h"
+#include "fastvideo.h"
 #include "spassthrough.h"
 #include "sfile.h"
 #include "sdmabuf.h"
@@ -38,13 +40,6 @@ struct PassBuffer_s
 #define MODE_DRYRUN 0x04
 #define MODE_COPY 0x08
 
-struct Passthrough_config_s
-{
-	DeviceConf_t parent;
-	int mode;
-	DeviceConf_t branch;
-};
-
 typedef struct Passthrough_s Passthrough_t;
 struct Passthrough_s
 {
@@ -65,8 +60,23 @@ struct Passthrough_s
 		void *dev;
 		FastVideoDevice_ops_t *ops;
 	} branch;
-	size_t (*copy)(Passthrough_t *, const char *const , char *, size_t);
+	size_t (*copy)(void *, const char *const , char *, size_t);
+	void *convert_ctx;
 };
+
+static FastVideoList_t *g_Converts = NULL;
+void spassthrough_convert_append(Convert_t *convert)
+{
+	g_Converts = fastvideolist_append(g_Converts, convert);
+}
+
+Convert_t *spassthrough_convert_next(Convert_t *convert)
+{
+	if (convert == NULL && g_Converts)
+		fastvideolist_reset(g_Converts);
+	convert = fastvideolist_next(g_Converts);
+	return convert;
+}
 
 EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry);
 
@@ -74,6 +84,7 @@ DeviceConf_t * spassthrough_createconfig(void)
 {
 	Passthrough_config_t *config = calloc(1, sizeof(*config));
 	config->parent.name = spassthrough;
+	config->transfer.name = spassthrough;
 #ifdef HAVE_JANSSON
 	config->parent.ops.loadconfiguration = spassthrough_loadjsonconfiguration;
 #endif
@@ -81,7 +92,7 @@ DeviceConf_t * spassthrough_createconfig(void)
 }
 
 #ifdef __ARM_NEON
-static size_t _neon_copy(Passthrough_t *dev, const char *const src, char *dst, size_t size)
+static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t size)
 {
 	asm volatile (
 		"1:                                               \n"
@@ -96,7 +107,7 @@ static size_t _neon_copy(Passthrough_t *dev, const char *const src, char *dst, s
 }
 #endif
 
-static size_t _default_copy(Passthrough_t *dev, const char *const src, char *dst, size_t size)
+static size_t _default_copy(void *dev, const char *const src, char *dst, size_t size)
 {
 	memcpy(dst, src, size);
 	return size;
@@ -110,19 +121,15 @@ static size_t _passthrough_copy(Passthrough_t *dev, PassBuffer_t *src, PassBuffe
 	if (src->mem)
 		srcmem = src->mem;
 	if (src->dmabuf)
-	{
 		sdmabuf_sync(src->dmabuf, 1);
-		srcmem = sdmabuf_map(src->dmabuf, bytesused, 0);
-	}
-	sdmabuf_sync(dst->dmabuf, 1);
-	if (dst->mem == NULL)
-		dst->mem = sdmabuf_map(dst->dmabuf, dst->size, 1);
-	bytesused = dev->copy(dev, srcmem, dst->mem, bytesused);
-	sdmabuf_sync(dst->dmabuf, 0);
+	if (dst->dmabuf)
+		sdmabuf_sync(dst->dmabuf, 1);
+	bytesused = dev->copy(dev->convert_ctx, srcmem, dst->mem, bytesused);
+	if (dst->dmabuf)
+		sdmabuf_sync(dst->dmabuf, 0);
 	if (src->dmabuf)
 	{
 		sdmabuf_sync(src->dmabuf, 0);
-		sdmabuf_unmap(srcmem, bytesused);
 	}
 	return bytesused;
 }
@@ -140,26 +147,50 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 	dev->config = config;
 	dev->name = devicename;
 	dev->type = device_output;
-	dev->copy = _default_copy;
-#ifdef __ARM_NEON
-	if (scpu_check(SCPU_NEON))
+	if (config->mode & MODE_COPY)
 	{
-		dev->copy = _neon_copy;
-	}
+		dev->copy = _default_copy;
+		dev->convert_ctx = dev;
+#ifdef __ARM_NEON
+		if (scpu_check(SCPU_NEON))
+		{
+			dev->copy = _neon_copy;
+		}
 #endif
+	}
+	if (config->convert &&
+		(config->convert->fourcc_in == 0 || config->convert->fourcc_in == config->parent.fourcc))
+	{
+		if (config->parent.width && config->parent.height)
+		{
+			dev->convert_ctx = config->convert->ops.create(config);
+			if (dev->convert_ctx)
+				dev->copy = config->convert->ops.convert;
+		}
+		else
+			err("spassthrough: definition must be set to convert");
+	}
 
 	return dev;
 }
 
 EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **pconfig)
 {
+	Passthrough_config_t *config = *pconfig;
 	Passthrough_t *dup = calloc(1, sizeof(*dup));
 	dup->type = device_input;
 	dup->dup = dev;
 	dev->dup = dup;
-	dev->config = *pconfig;
+	*pconfig = dup->config = malloc(sizeof(*dev->config));
+	memmove(dup->config, config, sizeof(*dev->config));
+	if (config->transfer.fourcc)
+		dup->config->parent.fourcc = config->transfer.fourcc;
+	if (config->transfer.width)
+		dup->config->parent.width = config->transfer.width;
+	if (config->transfer.height)
+		dup->config->parent.height = config->transfer.height;
 	/// only the main dev must manage the copy buffers, but dup dev contains the buffers
-	dup->state &= ~MODE_COPY;
+	dup->config->mode &= ~MODE_COPY;
 	if (dev->config->branch.type != 0)
 	{
 		FastVideoDevice_ops_t *opss[] = {
@@ -202,8 +233,7 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 	int *tdmabufs = NULL;
 	if (copy)
 	{
-		if (mems)
-			tmems = calloc(nmems, sizeof(*mems));
+		tmems = calloc(nmems, sizeof(*mems));
 		tdmabufs = calloc(nmems, sizeof(*dmabufs));
 	}
 	for (int i = 0; i < nmems; i++)
@@ -214,9 +244,8 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 			dmabufs_tmp = sdmabuf_create(spassthrough, size);
 			if (dmabufs_tmp > 0)
 			{
-				if (tmems)
-					tmems[i] = sdmabuf_map(dmabufs_tmp, size, 0);
 				tdmabufs[i] = dmabufs_tmp;
+				tmems[i] = sdmabuf_map(dmabufs[i], size, 1);
 				mems = tmems;
 				dmabufs = tdmabufs;
 			}
@@ -225,12 +254,16 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 				err("spassthrough: the buffer copy is disallowed");
 				ret = -1;
 				copy = 0;
+				free(tdmabufs);
+				tdmabufs = NULL;
+				free(tmems);
+				tmems = NULL;
 			}
 		}
-		if (mems)
-			dev->buffers[i].mem = mems[i];
 		if (dmabufs)
 			dev->buffers[i].dmabuf = dmabufs[i];
+		if (mems)
+			dev->buffers[i].mem = mems[i];
 		dev->buffers[i].index = i;
 		dev->buffers[i].size = size;
 	}
@@ -243,10 +276,11 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
 {
 	int ret = -1;
-	if (dev->state & MODE_COPY && !dev->dup)
+	Passthrough_config_t *config = dev->config;
+	if (config->mode & MODE_COPY && !dev->dup)
 	{
-		err("spassthrough: copy state is allowed in transfer mode");
-		dev->state &= ~MODE_COPY;
+		err("spassthrough: copy mode is allowed in transfer mode");
+		config->mode &= ~MODE_COPY;
 	}
 	va_list ap;
 	va_start(ap, t);
@@ -273,11 +307,17 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 			/**
 			 * create buffers for the output dev
 			 */
+			if (config->convert && config->convert->resize.denominator > 0)
+			{
+				size *= config->convert->resize.numerator;
+				size /= config->convert->resize.denominator;
+			}
 			if (dev->dup &&
 				_passthrough_createbuffers(dev->dup, ntargets, targets, NULL, size,
-					(dev->state & MODE_COPY)) < 0)
+					(dev->config->mode & MODE_COPY)) < 0)
 			{
-				dev->state &= ~MODE_COPY;
+				/// disable copy mode on buffer allocation error
+				dev->config->mode &= ~MODE_COPY;
 			}
 			ret = 0;
 			if (dev->type == device_input && dev->branch.dev)
@@ -320,11 +360,16 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
 			_passthrough_createbuffers(dev, ntargets, NULL, targets, size, 0);
+			for (int i = 0; i < ntargets; i++)
+			{
+				dev->buffers[i].mem = sdmabuf_map(dev->buffers[i].dmabuf, size, 0); /// the write argument should be 0
+			}
 			if (dev->dup &&
 				_passthrough_createbuffers(dev->dup, ntargets, NULL, targets, size,
-					(dev->state & MODE_COPY)) < 0)
+					(dev->config->mode & MODE_COPY)) < 0)
 			{
-				dev->state &= ~MODE_COPY;
+				/// disable copy mode on buffer allocation error
+				dev->config->mode &= ~MODE_COPY;
 			}
 			ret = 0;
 			if (dev->type == device_input && dev->branch.dev)
@@ -423,11 +468,11 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 
 EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
-	if (dev->state & MODE_COPY)
+	if (dev->copy)
 	{
-		if (mem)
+		if (mem && !dev->buffers[index].mem)
 			dev->buffers[index].mem = mem;
-		_passthrough_copy(dev, &dev->buffers[index], &dev->dup->buffers[index], bytesused);
+		bytesused = _passthrough_copy(dev, &dev->buffers[index], &dev->dup->buffers[index], bytesused);
 	}
 	if (!(dev->state & MODE_DRYRUN) && dev->dup != NULL)
 	{
@@ -460,7 +505,7 @@ static void _passthrough_freedmabuf(Passthrough_t *dev)
 {
 	if (dev->dup && dev->dup->buffers)
 	{
-		for (int i = 0; i < dev->nbuffers; i++)
+		for (int i = 0; i < dev->dup->nbuffers; i++)
 		{
 			sdmabuf_destroy(dev->dup->buffers[i].dmabuf);
 		}
@@ -473,10 +518,27 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 	{
 		dev->branch.ops->destroy(dev->branch.dev);
 	}
-	if (dev->state & MODE_COPY)
+	for (int i = 0; i < dev->nbuffers; i++)
+	{
+		if (dev->buffers[i].mem)
+			sdmabuf_unmap(dev->buffers[i].mem, dev->buffers[i].size);
+	}
+	if (dev->config->mode & MODE_COPY)
 	{
 		_passthrough_freedmabuf(dev);
 	}
+	if (dev->config->convert && dev->convert_ctx)
+		dev->config->convert->ops.destroy(dev->convert_ctx);
+#if 0
+	/**
+	 * currently this member may contain local buffers info or the pipe client
+	 * buffers information
+	 */
+	if (dev->mems)
+		free(dev->mems);
+	if (dev->dmabufs)
+		free(dev->dmabufs);
+#endif
 	if (dev->config)
 		free(dev->config);
 	free(dev);
@@ -501,11 +563,6 @@ static int _passthrough_loadstate(Passthrough_t *dev, json_t *jconfig)
 			dev->state |= MODE_TEE;
 		else if (jtee)
 			dev->state &= ~MODE_TEE;
-		json_t *jcopy = json_object_get(jconfig, "copy");
-		if (jcopy && json_is_true(jcopy))
-			dev->state |= MODE_COPY;
-		else if (jcopy)
-			dev->state &= ~MODE_COPY;
 	}
 	if (json_is_string(jconfig))
 	{
@@ -516,8 +573,6 @@ static int _passthrough_loadstate(Passthrough_t *dev, json_t *jconfig)
 			dev->state |= MODE_SHOOT;
 		else if (!strcmp(value, "tee"))
 			dev->state |= MODE_TEE;
-		else if (!strcmp(value, "copy"))
-			dev->state |= MODE_COPY;
 	}
 }
 
@@ -553,6 +608,20 @@ EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry)
 	json_t *jconfig = entry;
 
 	Passthrough_config_t *config = (Passthrough_config_t *)arg;
+	json_t *definition = json_object_get(jconfig, "definition");
+	scommon_loaddefinition(&config->parent, definition);
+
+	json_t *transfer = json_object_get(jconfig, "transfer");
+	scommon_loaddefinition(&config->transfer, transfer);
+	if (config->transfer.width == 0)
+		config->transfer.width = config->parent.width;
+	if (config->transfer.height == 0)
+		config->transfer.height = config->parent.height;
+	if (config->transfer.fourcc == 0)
+		config->transfer.fourcc = config->parent.fourcc;
+	if (config->transfer.modifiers == 0)
+		config->transfer.modifiers = config->parent.modifiers;
+
 	json_t *branch = json_object_get(jconfig, "branch");
 	config->branch.entry = branch;
 	if (branch && json_is_object(branch))
@@ -561,6 +630,40 @@ EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry)
 		config->branch.name = json_string_value(name);
 		json_t *type = json_object_get(branch, "type");
 		config->branch.type = json_string_value(type);
+	}
+
+	json_t *jcopy = json_object_get(jconfig, "copy");
+	if (jcopy && json_is_true(jcopy))
+		config->mode |= MODE_COPY;
+
+	json_t *convert = json_object_get(jconfig, "convert");
+	if (convert && json_is_object(convert))
+	{
+		json_t *library = json_object_get(convert, "library");
+		if (library && json_is_string(library))
+		{
+			void *hdl = dlopen(json_string_value(library), RTLD_NOW);
+			json_decref(library);
+		}
+		convert = json_object_get(convert, "name");
+	}
+	if (convert && json_is_string(convert))
+	{
+		const char *value = json_string_value(convert);
+
+		for (Convert_t *convert = spassthrough_convert_next(NULL);
+			convert != NULL; convert = spassthrough_convert_next(convert))
+		{
+			if (! strcmp(value, convert->name))
+			{
+				config->convert = convert;
+				if (!config->transfer.fourcc)
+					config->transfer.fourcc = convert->fourcc_out;
+				if (convert->copy)
+					config->mode |= MODE_COPY;
+				break;
+			}
+		}
 	}
 
 	return 0;
@@ -581,7 +684,12 @@ int spassthrough_capabilities(Passthrough_t *dev, json_t *capabilities, int all)
 	json_t *controls = json_array();
 	json_array_append_new(controls, dryrun);
 	json_array_append_new(controls, tee);
-	json_object_set_new(capabilities, "control", controls);
+	json_object_set_new(capabilities, "controls", controls);
+	json_object_set_new(capabilities, "copy", json_false());
+	json_t *convert = json_object();
+	json_object_set_new(convert, "name", json_string("rgba"));
+	json_object_set_new(convert, "library", json_string("/usr/lib/libsconvert_rgba.so"));
+	json_object_set_new(capabilities, "convert", convert);
 	return 0;
 }
 
@@ -600,8 +708,6 @@ FastVideoDevice_ops_t spassthrough_ops = {
 	.queue = (FastVideoDevice_queue_t)spassthrough_queue,
 	.destroy = (FastVideoDevice_destroy_t)spassthrough_destroy,
 };
-
-#include <dlfcn.h>
 
 static void __attribute__ ((constructor)) spassthrough_init()
 {
