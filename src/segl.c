@@ -12,6 +12,8 @@
 #include "segl.h"
 #include "log.h"
 
+#define TEST_TEXTURE_FORMAT 0
+
 typedef struct FourccFormat_s FourccFormat_t;
 struct FourccFormat_s
 {
@@ -407,6 +409,50 @@ static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t si
 		EGL_NONE
 	};
 	dbg("segl: create image for dma %d : %dx%d %u %.4s", dma_fd, dev->config->parent.width, dev->config->parent.height, stride, (char*)&fourcc);
+#if TEST_TEXTURE_FORMAT
+const uint32_t formats[] =
+{
+	FOURCC_AB24,
+	FOURCC_XB24,
+	FOURCC_AR24,
+	FOURCC_XR24,
+	FOURCC_BGR4,
+	FOURCC_BG24,
+	FOURCC_RG24,
+	FOURCC_RGBA,
+	FOURCC_RGBP,
+	FOURCC_RG16,
+	FOURCC_R8  ,
+	FOURCC_R10 ,
+	FOURCC_R12 ,
+	FOURCC_R16 ,
+	FOURCC_GR88,
+	FOURCC_GREY,
+	FOURCC_YUYV,
+	FOURCC_YUY2,
+	FOURCC_NV12,
+	FOURCC_U008,
+	FOURCC_BA81,
+	FOURCC_RGGB,
+	FOURCC_GRBG,
+	FOURCC_GBRG,
+	FOURCC_BG10,
+	FOURCC_GB10,
+	FOURCC_BA10,
+	FOURCC_RG10,
+	FOURCC_BG12,
+	FOURCC_GB12,
+	FOURCC_BA12,
+	FOURCC_RG12,
+	0
+};
+for (int i = 0; i < sizeof(formats) / sizeof(*formats); i++)
+{
+	if (formats[i] == 0)
+		attrib_list[7] = fourcc;
+	else
+		attrib_list[7] = formats[i];
+#endif
 	dma_image = eglCreateImageKHR(
 					dev->egldisplay,
 					EGL_NO_CONTEXT,
@@ -414,6 +460,11 @@ static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t si
 					NULL,
 					attrib_list);
 
+#if TEST_TEXTURE_FORMAT
+	if(dma_image != EGL_NO_IMAGE_KHR)
+		warn("seg: %.4s supported", &attrib_list[7]);
+}
+#endif
 	if(dma_image == EGL_NO_IMAGE_KHR)
 	{
 		err("segl: Image creation error %#x", eglGetError());
