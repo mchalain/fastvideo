@@ -1446,18 +1446,6 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 	warn("sv4l2: create %s(%s), %s %lux%lu %.4s", name, devicename, config?config->device:"",
 				dev->width, dev->height, (char*)&dev->fourcc);
 
-	dbg("sv4l2: %s %dx%d, %.4s", name, dev->width, dev->height, (char*)&dev->fourcc);
-	if (config)
-	{
-		config->parent.dev = dev;
-		config->parent.width = dev->width;
-		config->parent.height = dev->height;
-		config->parent.fourcc = dev->fourcc;
-		if (!(dev->mode & MODE_OUTPUT) && dev->config->periodic)
-		{
-			dev->periodicfunc = _v4l2_periodiccontrol;
-		}
-	}
 	return dev;
 }
 
@@ -1476,7 +1464,18 @@ V4L2_t *sv4l2_create(const char *devicename, device_type_e type, V4l2Config_t *c
 	dbg("sv4l2: try device %s", device);
 	V4L2_t *dev = sv4l2_create2(fd, devicename, type, config);
 	if (dev == NULL)
+	{
 		close(fd);
+		return NULL;
+	}
+	config->parent.dev = dev;
+	config->parent.width = dev->width;
+	config->parent.height = dev->height;
+	config->parent.fourcc = dev->fourcc;
+	if (!(dev->mode & MODE_OUTPUT) && dev->config->periodic)
+	{
+		dev->periodicfunc = _v4l2_periodiccontrol;
+	}
 	return dev;
 }
 
