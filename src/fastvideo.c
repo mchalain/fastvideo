@@ -137,6 +137,8 @@ int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 		inconfig->fourcc = outconfig->fourcc;
 	else if (!inconfig->fourcc && !outconfig->fourcc)
 		inconfig->fourcc = outconfig->fourcc = FOURCC('A','B','2','4');
+	dbg("input %s size %lu %lu", inconfig->name, inconfig->width, inconfig->height);
+	dbg("output %s size %lu %lu", outconfig->name, outconfig->width, outconfig->height);
 	return 0;
 }
 
