@@ -267,6 +267,8 @@ static uint8_t nullpacket[MPEG_TS_LENGTH] =
 	 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 };
 
+static uint8_t *padding = nullpacket + 5;
+
 typedef struct Dev_s Dev_t;
 struct Dev_s
 {
@@ -579,7 +581,7 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 
 static int _client_pushdata(Dev_t *dev, int bufferid)
 {
-	int ret = 0;
+	int ret = 1;
 	dev->header.pusi = 1;
 	dev->header.afi = 1;
 	uint8_t randomaccess = 0;
@@ -635,10 +637,10 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	dev->header.afi |= 0x2;
 #endif
 	ssize_t mtu = dev->proto->mtu(dev->protoctx);
-	while (length > 0 && ret >= 0)
+	while (length > 0 && ret > 0)
 	{
 		int paddinglength = 0;
-		int flags = MSG_MORE;
+		int flags = MSG_MORE | MSG_NOSIGNAL;
 		size_t buflength; /// the length of buffer to send with this ts packet
 		/// the packet must contain 188 bytes even when the payload is smaller
 		buflength = dev->packetlen;
@@ -689,16 +691,19 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			/// Adaptation field length - length's byte
 			adaptfield[0] = adaptfieldlength - 1;
 			ret = dev->proto->send(dev->protoctx, adaptfield, adaptfieldlength - paddinglength, flags);
-			for (int i = 0; ret > 0 && i < paddinglength; i++)
+			if (ret > 0 && paddinglength > 0)
 			{
 				buflength -= ret;
 				mtu -= ret;
-				if (mtu < 0)
-					break;
-				uint8_t padding = 0xff;
-				ret = dev->proto->send(dev->protoctx, &padding, 1, flags);
+				if (mtu < 2 * dev->packetlen)
+					flags = 0;
+				if (paddinglength > dev->packetlen - sizeof(dev->header) - 1) /// see the declaration of "padding"
+				{
+					err("smpegts: padding length overflow the pecket");
+					paddinglength = dev->packetlen - sizeof(dev->header) - 1;
+				}
+				ret = dev->proto->send(dev->protoctx, padding, paddinglength, flags);
 			}
-			paddinglength = 0;
 		}
 		/// the first part of an es block (buffer) must start with
 		/// a PES header
@@ -760,19 +765,22 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			pcr = 0;
 		}
 		else if (errno == EAGAIN)
+		{
 			ret = 0;
+			length = 0;
+		}
 	}
 	if (ret > 0)
 	{
 		ret = _client_filldata(dev, mtu);
 		mtu -= ret;
 	}
-	if (ret < 0)
+	if (ret < 0 && errno != EAGAIN)
 	{
 		dev->proto->close(dev->protoctx);
 		err("mpegts: send error %m");
 	}
-	else if (ret > 0 && length == 0)
+	else
 	{
 		dev->buffers[bufferid].state = ready;
 		ret = 0;
