@@ -51,7 +51,7 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 					fourcc = field;
 				}
 				if (name && json_is_string(name) &&
-					!strcmp(json_string_value(name), "modifiers"))
+					!strcmp(json_string_value(name), "modifier"))
 				{
 					modifiers = field;
 				}
@@ -64,7 +64,7 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 		height = json_object_get(definition, "height");
 		fourcc = json_object_get(definition, "fourcc");
 		stride = json_object_get(definition, "stride");
-		modifiers = json_object_get(definition, "modifiers");
+		modifiers = json_object_get(definition, "modifier");
 	}
 	else
 		return 0;
