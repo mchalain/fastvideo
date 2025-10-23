@@ -32,6 +32,7 @@ struct V4l2Config_s
 	const char *device;
 	int mode;
 	int fps;
+	int fmtbus;
 	int periodic;
 	int periodiccontrol;
 	void *subdev_entries[4];
@@ -247,6 +248,7 @@ int sv4l2_loadjsonconfiguration(void *config, void *jconfig);
 #define sv4l2_loadconfiguration sv4l2_loadjsonconfiguration
 
 int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all);
+int sv4l2_capabilities_definition(V4L2_t *dev, json_t *definition, int all);
 int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl);
 
 #else

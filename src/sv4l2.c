@@ -2770,6 +2770,11 @@ static int _v4l2_capabilities_imageformat(V4L2_t *dev, json_t *definition, int a
 	return 0;
 }
 
+int sv4l2_capabilities_definition(V4L2_t *dev, json_t *definition, int all)
+{
+	return _v4l2_capabilities_imageformat(dev, definition, all);
+}
+
 int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 {
 	json_t *definition = json_array();

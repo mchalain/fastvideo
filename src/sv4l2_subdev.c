@@ -282,7 +282,7 @@ V4L2_t *sv4l2_subdev_create2(int ctrlfd, const char *name, device_type_e dtype, 
 	subdev->name = subdev->devicename;
 	strncpy(subdev->devicename, name, sizeof(subdev->devicename) - 1);
 	sv4l2_subdev_getpixformat(subdev, 0, _v4l2_subdev_loadformat, subdev);
-	dbg("sv4l2: subdev %s created", subdev->name);
+	warn("sv4l2: subdev %s created", subdev->name);
 	return subdev;
 }
 
@@ -348,6 +348,37 @@ int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
 		if (!disable)
 		{
 			sv4l2_loadjsonconfiguration(config, subdevice);
+			json_t *definition = json_object_get(subdevice, "definition");
+			json_t *fmtbus = NULL;
+			if (definition && json_is_array(definition))
+			{
+				int index;
+				json_t *item;
+				json_array_foreach(definition, index, item)
+				{
+					if (json_is_object(item))
+					{
+						json_t *name = json_object_get(item, "name");
+						if (name && !strcmp(json_string_value(name), "fmtbus"))
+						{
+							fmtbus = json_object_get(item, "value");
+							break;
+						}
+					}
+				}
+			}
+			if (definition && json_is_object(definition))
+			{
+					fmtbus = json_object_get(definition, "fmtbus");
+			}
+			if (fmtbus && json_is_string(fmtbus))
+			{
+				config->fmtbus = strtol(json_string_value(fmtbus), NULL, 16);
+			}
+			if (fmtbus && json_is_integer(fmtbus))
+			{
+				config->fmtbus = json_integer_value(fmtbus);
+			}
 		}
 	}
 	if (subdevice && json_is_string(subdevice))
@@ -367,78 +398,42 @@ struct _JSONControl_Arg_s
 	int all;
 };
 
-static int _sv4l2_subdev_capabilities_pixformat(void *arg, struct v4l2_subdev_format *ffs)
+static int _sv4l2_subdev_capabilities_fmtbus_items(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode)
 {
 	_JSONControl_Arg_t *jsoncontrol_arg = arg;
-	json_t *definition = jsoncontrol_arg->controls;
-	DeviceConf_t config = {0};
+	json_t *items = jsoncontrol_arg->controls;
+	json_array_append_new(items, json_sprintf("%#x", mbuscode->code));
+}
 
-	json_t *pixelformat = json_object();
-	json_object_set_new(pixelformat, "name", json_string("fourcc"));
+static int _v4l2_subdev_capabilities_fmtbus(V4L2_t *subdev, json_t *definition, int all)
+{
+	int pad = 0;
+	json_t *fmtbus = json_object();
+	json_object_set_new(fmtbus, "name", json_string("fmtbus"));
 
-	json_t *width = json_object();
-	json_object_set_new(width, "name", json_string("width"));
-
-	json_t *height = json_object();
-	json_object_set_new(height, "name", json_string("height"));
-
-	json_object_set_new(pixelformat, "value", json_sprintf("%.4s",&config.fourcc));
-	json_object_set_new(width, "value", json_integer(config.width));
-	json_object_set_new(height, "value", json_integer(config.height));
-
-	if (jsoncontrol_arg->all)
+	int ret = 0;
+	struct v4l2_subdev_format mbus = {0};
+	mbus.pad = pad;
+	mbus.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	ret = ioctl(subdev->fd, VIDIOC_SUBDEV_G_FMT, &mbus);
+	if (!ret)
 	{
-		json_object_set_new(pixelformat, "type", json_string(sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_STRING)));
-		json_t *items = json_array();
-		struct v4l2_subdev_mbus_code_enum mbusEnum = {0};
-		mbusEnum.pad = ffs->pad;
-		mbusEnum.which = ffs->which;
-		for (mbusEnum.index = 0; ioctl(jsoncontrol_arg->ctrlfd, VIDIOC_SUBDEV_ENUM_MBUS_CODE, &mbusEnum) == 0; mbusEnum.index++)
-		{
-			json_array_append_new(items, json_sprintf("%.4s",&config.fourcc));
-		}
-		if (mbusEnum.index > 0)
-		{
-			json_object_set(pixelformat, "items", items);
-		}
-		json_decref(items);
-
-		json_object_set_new(width, "type", json_string(sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
-		json_object_set_new(height, "type", json_string(sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
-		json_t *items1 = json_array();
-		json_t *items2 = json_array();
-		struct v4l2_subdev_frame_size_enum framesizes = {0};
-		framesizes.pad = ffs->pad;
-		framesizes.code = ffs->format.code;
-		framesizes.which = ffs->which;
-		for (framesizes.index = 0; ioctl(jsoncontrol_arg->ctrlfd, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, &framesizes) == 0; framesizes.index++)
-		{
-			if (framesizes.min_width == framesizes.max_width)
-				json_array_append_new(items1, json_integer(framesizes.min_width));
-			else
-			{
-				json_object_set_new(width, "minimum", json_integer(framesizes.min_width));
-				json_object_set_new(width, "maximum", json_integer(framesizes.max_width));
-			}
-			if (framesizes.min_height == framesizes.max_height)
-				json_array_append_new(items2, json_integer(framesizes.min_height));
-			else
-			{
-				json_object_set_new(width, "minimum", json_integer(framesizes.min_height));
-				json_object_set_new(width, "maximum", json_integer(framesizes.max_height));
-			}
-		}
-		if (framesizes.index > 0)
-		{
-			json_object_set(width, "items", items1);
-			json_object_set(height, "items", items2);
-		}
-		json_decref(items1);
-		json_decref(items2);
+		json_object_set_new(fmtbus, "value", json_sprintf("%#x", mbus.format.code));
 	}
-	json_array_append_new(definition, pixelformat);
-	json_array_append_new(definition, width);
-	json_array_append_new(definition, height);
+	if (all)
+	{
+		json_object_set_new(fmtbus, "type", json_string(sv4l2_CTRLTYPE(V4L2_CTRL_TYPE_INTEGER)));
+
+		json_t *items = json_array();
+		_JSONControl_Arg_t arg = {0};
+		arg.controls = items;
+		arg.all = all;
+		arg.ctrlfd = subdev->fd;
+		sv4l2_subdev_getfmtbus(subdev, pad, _sv4l2_subdev_capabilities_fmtbus_items, &arg);
+		if (json_array_size > 0)
+			json_object_set_new(fmtbus, "items", items);
+	}
+	json_array_append_new(definition, fmtbus);
 	return 0;
 }
 
@@ -464,20 +459,23 @@ int sv4l2_subdev_capabilities(V4L2_t *subdev, json_t *capabilities, int all)
 		return -1;
 	}
 #endif
+	int ret = 0;
+	json_t *definition = json_array();
+	ret = sv4l2_capabilities_definition(subdev, definition, all);
+	ret = _v4l2_subdev_capabilities_fmtbus(subdev, definition, all);
+	if (!ret)
+	{
+		json_object_set_new(capabilities, "definition", definition);
+	}
+
 	_JSONControl_Arg_t arg = {0};
 	arg.controls = json_array();
 	arg.all = all;
-	arg.ctrlfd = subdev->fd;
-	if (!sv4l2_subdev_getpixformat(subdev, 0, _sv4l2_subdev_capabilities_pixformat, &arg))
-		json_object_set(capabilities, "definition", arg.controls);
-	json_decref(arg.controls);
-
-	arg.controls = json_array();
-	int ret;
+	arg.ctrlfd = sv4l2_fd(subdev, 0);
 	ret = sv4l2_treecontrols(subdev, sv4l2_jsoncontrol_cb, &arg);
 	if (ret > 0)
-		json_object_set(capabilities, "controls", arg.controls);
-	json_decref(arg.controls);
+		json_object_set_new(capabilities, "controls", arg.controls);
+
 	return 0;
 }
 
