@@ -23,10 +23,12 @@ client_t *client_create(const char *path)
 	addr.sun_family = AF_UNIX;
 	snprintf(addr.sun_path, sizeof(addr.sun_path) - 1, "%s", path);
 
+	dbg("unix client: try to connect to %s", addr.sun_path);
 	int ret;
 	ret = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
 	if (ret == 0)
 	{
+		dbg("unix client: connected", addr.sun_path);
 		client = calloc(1, sizeof(*client));
 		client->sock = sock;
 	}
