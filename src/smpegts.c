@@ -345,6 +345,8 @@ DeviceConf_t *mpegts_createconfig(void)
 	config->host = default_addr;
 	config->port = 5014;
 	config->pid = 0x41;
+	config->maxclients = 5;
+	config->proto = &proto_udp;
 #ifdef HAVE_JANSSON
 	config->parent.ops.loadconfiguration = mpegts_loadjsonconfiguration;
 #endif
@@ -801,6 +803,8 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 		return NULL;
 
 	Proto_t *proto = &proto_udp;
+	if (config)
+		proto = config->proto;
 	void *protoctx = proto->create(config);
 	if (protoctx == NULL)
 		return NULL;
@@ -1068,6 +1072,13 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 	{
 		int value = json_integer_value(periodic);
 		config->periodic = value;
+	}
+	json_t *proto = json_object_get(jconfig, "proto");
+	if (proto && json_is_string(proto))
+	{
+		const char *value = json_string_value(proto);
+		if (!strncasecmp(value, "unix", 4))
+			config->proto = &proto_unix;
 	}
 library_end:
 	return 0;

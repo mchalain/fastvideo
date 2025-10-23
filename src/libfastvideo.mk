@@ -11,6 +11,7 @@ fastvideo_SOURCES+=sfile_passthrough.c
 fastvideo_SOURCES+=smedia.c
 fastvideo_SOURCES+=smpegts.c
 fastvideo_SOURCES+=smpegts_udp.c
+fastvideo_SOURCES+=smpegts_unix.c
 fastvideo_SOURCES-$(HAVE_LIBDRM)+=sdrm.c
 fastvideo_SOURCES-$(HAVE_EGL)+=segl.c
 fastvideo_SOURCES-$(HAVE_EGL)+=segl_offscreen.c

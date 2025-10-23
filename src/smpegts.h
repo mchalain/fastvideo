@@ -5,6 +5,8 @@
 #define MSG_MORE 0x8000
 #endif
 
+typedef struct Proto_s Proto_t;
+
 typedef struct MPEG_TSConf_s MPEG_TSConf_t;
 struct MPEG_TSConf_s
 {
@@ -13,9 +15,10 @@ struct MPEG_TSConf_s
 	int port;
 	int pid;
 	int periodic;
+	int maxclients;
+	Proto_t *proto;
 };
 
-typedef struct Proto_s Proto_t;
 struct Proto_s
 {
 	void *(*create)(MPEG_TSConf_t *config);
@@ -29,4 +32,5 @@ struct Proto_s
 };
 
 extern Proto_t proto_udp;
+extern Proto_t proto_unix;
 #endif
