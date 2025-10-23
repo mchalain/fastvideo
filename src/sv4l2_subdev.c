@@ -174,71 +174,40 @@ uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, int pad, int (*busformat)(voi
 
 int sv4l2_subdev_fps(V4L2_t *subdev, int pad, int fps)
 {
-#if USE_S_PARM
-	struct v4l2_streamparm streamparm = {0};
-	streamparm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	if (ioctl(fd, VIDIOC_G_PARM, &streamparm) == -1)
+	int ret = 0;
+	struct v4l2_subdev_frame_interval interval = {0};
+	interval.pad = pad;
+	ret = ioctl(subdev->fd, VIDIOC_SUBDEV_G_FRAME_INTERVAL, &interval);
+	if (ret)
 	{
-		err("FPS info not available %m");
-		return -1;
+		err("sv4l2: subdev getting frame interval error %m");
+		fps = -1;
 	}
-
-	if (fps == -1)
-	{
-		fps = streamparm.parm.capture.timeperframe.denominator /
-				streamparm.parm.capture.timeperframe.numerator;
-	}
-	else if (fps >= 0 && fps != streamparm.parm.capture.timeperframe.denominator)
-	{
-		streamparm.parm.capture.timeperframe.denominator = fps;
-		streamparm.parm.capture.timeperframe.numerator = 1;
-		if (ioctl(fd, VIDIOC_S_PARM, &streamparm) == -1)
-		{
-			err("FPS setting error %m");
-			return -1;
-		}
-	}
-	else if (fps < 0 && -fps != streamparm.parm.capture.timeperframe.numerator)
-	{
-		streamparm.parm.capture.timeperframe.denominator = 1;
-		streamparm.parm.capture.timeperframe.numerator = -fps;
-		if (ioctl(fd, VIDIOC_S_PARM, &streamparm) == -1)
-		{
-			err("FPS setting error %m");
-			return -1;
-		}
-	}
-	warn("Frame rate: %d/%d fps (request %d/%d",
-			streamparm.parm.capture.timeperframe.denominator,
-			streamparm.parm.capture.timeperframe.numerator,
-			(fps > 0)?1:-fps, (fps > 0)?fps:1);
-#else
-	uint32_t pixelrate = 0;
-	pixelrate = (uint32_t)(long)sv4l2_control(subdev, V4L2_CID_PIXEL_RATE, (void*)-1);
-	uint32_t hblank = 0;
-	hblank = (uint32_t)(long)sv4l2_control(subdev, V4L2_CID_HBLANK, (void*)-1);
-	uint32_t vblank = 0;
-	vblank = (uint32_t)(long)sv4l2_control(subdev, V4L2_CID_VBLANK, (void*)-1);
-	if (fps != -1)
+	else if (fps != -1)
 	{
 		if (fps > 0)
-			vblank = pixelrate / fps;
+		{
+			interval.interval.numerator = 1;
+			interval.interval.denominator = fps;
+		}
 		else
-			vblank = pixelrate * fps;
-		vblank /= subdev->width + hblank;
-		vblank -= subdev->height;
-		vblank = (uint32_t)(long)sv4l2_control(subdev, V4L2_CID_VBLANK, (void*)(long)vblank);
-		dbg("sv4l2: subdev new vertical blank %lu", vblank);
+		{
+			interval.interval.numerator = fps;
+			interval.interval.denominator = 1;
+		}
+		if (ioctl(subdev->fd, VIDIOC_SUBDEV_S_FRAME_INTERVAL, &interval))
+			err("sv4l2: subdev setting frame interval error %m");
+		else if (interval.interval.numerator < interval.interval.denominator)
+		{
+			fps = interval.interval.denominator / interval.interval.numerator;
+		}
+		else if (interval.interval.numerator > interval.interval.denominator)
+		{
+			fps = - interval.interval.numerator / interval.interval.denominator;
+		}
+		warn("sv4l2: subdev Frame rate: %d/%d fps",
+			(fps > 0)?fps:1, (fps > 0)?1:-fps);
 	}
-	else
-	{
-		fps = vblank + subdev->height;
-		fps *= subdev->width + hblank;
-		fps = pixelrate / fps;
-	}
-	warn("Frame rate: %d/%d fps vertical blank %lu",
-		(fps > 0)?1:-fps, (fps > 0)?fps:1, vblank);
-#endif
 	return fps;
 }
 
@@ -312,7 +281,8 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 	if (config->parent.fourcc) subdev->fourcc = config->parent.fourcc;
 
 	sv4l2_subdev_setpixformat(subdev, pad, subdev->fourcc, subdev->width, subdev->height);
-	sv4l2_subdev_fps(subdev, pad, config->fps);
+	if (sv4l2_subdev_fps(subdev, pad, config->fps) == -1)
+		sv4l2_fps(subdev, config->fps);
 	sv4l2_subdev_fps(subdev, pad, -1);
 	return subdev;
 }
