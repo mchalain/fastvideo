@@ -212,6 +212,8 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 	Proto_UDP_t *proto = (Proto_UDP_t *)arg;
 	ssize_t ret = -1;
 	errno = EAGAIN;
+	if (len == 0)
+		warn("send empty packet");
 	while (ret == -1 && errno == EAGAIN)
 		ret = sendto(proto->serverfd, buf, len, flags,
 					(struct sockaddr *)&proto->dest_addr, proto->dest_size);
@@ -235,7 +237,10 @@ static void proto_flush(void *arg)
 	int value = 0;
 	setsockopt(proto->serverfd, IPPROTO_UDP, UDP_CORK, &value, sizeof(value));
 #endif
+#if 0
+	/// wireshark shows null udp packet in the stream, but it does't come from here ???
 	proto_send(proto, NULL, 0, 0);
+#endif
 #ifdef UDP_CORK
 	int value = 1;
 	setsockopt(dev->serverfd, IPPROTO_UDP, UDP_CORK, &value, sizeof(value));
