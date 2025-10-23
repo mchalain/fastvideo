@@ -14,6 +14,8 @@
 
 #define TEST_TEXTURE_FORMAT 0
 
+#define segl_dbg(...)
+
 typedef struct FourccFormat_s FourccFormat_t;
 struct FourccFormat_s
 {
@@ -139,29 +141,29 @@ static int _egl_configinfo(EGLDisplay eglDisplay, EGLConfig eglConfig)
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_COLOR_BUFFER_TYPE, &buffertype);
 	EGLint surfacetype;
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_SURFACE_TYPE, &surfacetype);
-	dbg("segl: config[%.2d]\t%s %d/%d/%d/%d %s", id, (surfacetype & EGL_PBUFFER_BIT)?"pbuffer":"window", redsize, greensize, bluesize, alphasize, (buffertype == EGL_LUMINANCE_BUFFER)?"LUMINANCE":(texturetype)?"RGB":"RGBA");
-	dbg("\t EGL_SURFACE_TYPE %#x", surfacetype);
+	segl_dbg("segl: config[%.2d]\t%s %d/%d/%d/%d %s", id, (surfacetype & EGL_PBUFFER_BIT)?"pbuffer":"window", redsize, greensize, bluesize, alphasize, (buffertype == EGL_LUMINANCE_BUFFER)?"LUMINANCE":(texturetype)?"RGB":"RGBA");
+	segl_dbg("\t EGL_SURFACE_TYPE %#x", surfacetype);
 	EGLint value;
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_DEPTH_SIZE, &value);
-	dbg("\t EGL_DEPTH_SIZE %#x", value);
+	segl_dbg("\t EGL_DEPTH_SIZE %#x", value);
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_CONFIG_CAVEAT, &value);
-	dbg("\t EGL_CONFIG_CAVEAT %#x", value);
+	segl_dbg("\t EGL_CONFIG_CAVEAT %#x", value);
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_NATIVE_RENDERABLE, &value);
-	dbg("\t EGL_NATIVE_RENDERABLE %#x", value);
+	segl_dbg("\t EGL_NATIVE_RENDERABLE %#x", value);
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_NATIVE_VISUAL_ID, &value);
-	dbg("\t EGL_NATIVE_VISUAL_ID %.4s", (value)?(char*)&value:"none");
+	segl_dbg("\t EGL_NATIVE_VISUAL_ID %.4s", (value)?(char*)&value:"none");
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_NATIVE_VISUAL_TYPE, &value);
-	dbg("\t EGL_NATIVE_VISUAL_TYPE %#x", value);
+	segl_dbg("\t EGL_NATIVE_VISUAL_TYPE %#x", value);
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_SAMPLE_BUFFERS, &value);
-	dbg("\t EGL_SAMPLE_BUFFERS %#x", value);
+	segl_dbg("\t EGL_SAMPLE_BUFFERS %#x", value);
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_SAMPLES, &value);
-	dbg("\t EGL_SAMPLES %#x", value);
+	segl_dbg("\t EGL_SAMPLES %#x", value);
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_CONFORMANT, &value);
-	dbg("\t EGL_CONFORMANT %#x", value);
+	segl_dbg("\t EGL_CONFORMANT %#x", value);
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_LEVEL, &value);
-	dbg("\t EGL_LEVEL %#x", value);
+	segl_dbg("\t EGL_LEVEL %#x", value);
 	eglGetConfigAttrib(eglDisplay, eglConfig, EGL_MATCH_NATIVE_PIXMAP, &value);
-	dbg("\t EGL_MATCH_NATIVE_PIXMAP %#x", value);
+	segl_dbg("\t EGL_MATCH_NATIVE_PIXMAP %#x", value);
 	return 0;
 }
 #endif
@@ -383,6 +385,7 @@ static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t si
 		/**
 		 * change multi-planar format to mono-planar grey format
 		 */
+#if 0
 		case FOURCC('I','4','2','0'):
 		case FOURCC('N','V','2','1'):
 		case FOURCC('N','V','1','2'):
@@ -393,11 +396,13 @@ static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t si
 			stride = dev->config->parent.width;
 			size = dev->config->parent.width * dev->config->parent.height;
 		break;
+#endif
 		default:
 			fourcc = dev->config->parent.fourcc;
 	}
 	EGLImageKHR dma_image;
 	GLint attrib_list[] = {
+		EGL_IMAGE_PRESERVED_KHR, EGL_TRUE,
 		EGL_WIDTH, dev->config->parent.width,
 		EGL_HEIGHT, dev->config->parent.height,
 		EGL_LINUX_DRM_FOURCC_EXT, fourcc,
@@ -557,6 +562,10 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 		}
 		break;
 	}
+	if (ret == 0)
+		warn("segl: input image %lux%lu  %.4s %llu",
+			dev->config->parent.width, dev->config->parent.height,
+			&dev->config->parent.fourcc, dev->config->parent.modifiers);
 	return ret;
 }
 
