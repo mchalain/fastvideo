@@ -129,9 +129,7 @@ static size_t _passthrough_copy(Passthrough_t *dev, PassBuffer_t *src, PassBuffe
 	if (dst->dmabuf)
 		sdmabuf_sync(dst->dmabuf, 0);
 	if (src->dmabuf)
-	{
 		sdmabuf_sync(src->dmabuf, 0);
-	}
 	return bytesused;
 }
 
@@ -246,7 +244,12 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 			if (dmabufs_tmp > 0)
 			{
 				tdmabufs[i] = dmabufs_tmp;
-				tmems[i] = sdmabuf_map(dmabufs[i], size, 1);
+				tmems[i] = sdmabuf_map(tdmabufs[i], size, 1);
+				if (tmems[i] == (void *)(long)-1)
+				{
+					err("spassthrough: buffer creation error");
+					ret = -1;
+				}
 				mems = tmems;
 				dmabufs = tdmabufs;
 			}
@@ -360,10 +363,17 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
+			ret = 0;
 			_passthrough_createbuffers(dev, ntargets, NULL, targets, size, 0);
 			for (int i = 0; i < ntargets; i++)
 			{
 				dev->buffers[i].mem = sdmabuf_map(dev->buffers[i].dmabuf, size, 0); /// the write argument should be 0
+				if (dev->buffers[i].mem == (void *)(long)-1)
+				{
+					err("spassthrough: impossible to map the inpur buffer");
+					ret = -1;
+					break;
+				}
 			}
 			if (dev->dup &&
 				_passthrough_createbuffers(dev->dup, ntargets, NULL, targets, size,
@@ -372,7 +382,6 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 				/// disable copy mode on buffer allocation error
 				dev->config->mode &= ~MODE_COPY;
 			}
-			ret = 0;
 			if (dev->type == device_input && dev->branch.dev)
 			{
 				dev->branch.ops->destroy(dev->branch.dev);
@@ -545,6 +554,7 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 	free(dev);
 }
 
+#ifdef HAVE_JANSSON
 static int _passthrough_loadstate(Passthrough_t *dev, json_t *jconfig)
 {
 	if (json_is_object(jconfig))
@@ -724,3 +734,4 @@ static void __attribute__ ((constructor)) spassthrough_init()
 		_fastvideodevice_ops_append(&spassthrough_ops);
 	}
 }
+#endif
