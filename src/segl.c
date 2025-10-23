@@ -11,6 +11,7 @@
 
 #include "segl.h"
 #include "log.h"
+#include "sdmabuf.h"
 
 #define TEST_TEXTURE_FORMAT 0
 
@@ -37,6 +38,16 @@ void segl_native_append(EGLNative_t *native)
 		_natives[i] = native;
 }
 
+typedef struct EGL_out_s EGL_out_t;
+struct EGL_out_s
+{
+	GLuint fbo;
+	GLuint rbo;
+	GLenum textype;
+	EGLint egltarget;
+	GLuint texture;
+};
+
 typedef struct EGL_s EGL_t;
 struct EGL_s
 {
@@ -49,6 +60,7 @@ struct EGL_s
 	EGLSurface eglsurface;
 	GLuint fbo;
 	EGL_t *dup;
+	EGL_out_t output;
 	EGLNativeDisplayType native_display;
 	EGLNativeWindowType native_window;
 	GLProgram_t *programs;
@@ -81,6 +93,8 @@ PFNEGLEXPORTDMABUFIMAGEMESAPROC eglExportDMABUFImageMESA = NULL;
 PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
 PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
 #endif
+
+static const char segl[] = "segl";
 
 static FourccFormat_t _FourccFormats[] =
 {
@@ -376,8 +390,12 @@ static GLuint texture_create(EGL_t *dev, GLenum textype)
 	return dma_texture;
 }
 
-static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t size)
+static int texture_fromdma(EGL_t *dev, GLBuffer_t *buffer, int dma_fd, size_t size)
 {
+	GLuint texture = -1;
+	GLuint textype = GL_TEXTURE_EXTERNAL_OES;
+	texture = texture_create(dev, textype);
+
 	uint32_t stride = size / dev->config->parent.height;
 	uint32_t fourcc;
 	switch (dev->config->parent.fourcc)
@@ -400,7 +418,7 @@ static int texturedma_link(EGL_t *dev, GLuint dma_texture, int dma_fd, size_t si
 		default:
 			fourcc = dev->config->parent.fourcc;
 	}
-	EGLImageKHR dma_image;
+	EGLImageKHR image;
 	GLint attrib_list[] = {
 		EGL_IMAGE_PRESERVED_KHR, EGL_TRUE,
 		EGL_WIDTH, dev->config->parent.width,
@@ -458,7 +476,7 @@ for (int i = 0; i < sizeof(formats) / sizeof(*formats); i++)
 	else
 		attrib_list[7] = formats[i];
 #endif
-	dma_image = eglCreateImageKHR(
+	image = eglCreateImageKHR(
 					dev->egldisplay,
 					EGL_NO_CONTEXT,
 					EGL_LINUX_DMA_BUF_EXT,
@@ -466,30 +484,36 @@ for (int i = 0; i < sizeof(formats) / sizeof(*formats); i++)
 					attrib_list);
 
 #if TEST_TEXTURE_FORMAT
-	if(dma_image != EGL_NO_IMAGE_KHR)
+	if(image != EGL_NO_IMAGE_KHR)
 		warn("seg: %.4s supported", &attrib_list[7]);
 }
 #endif
-	if(dma_image == EGL_NO_IMAGE_KHR)
+	if(image == EGL_NO_IMAGE_KHR)
 	{
 		err("segl: Image creation error %#x", eglGetError());
 		return -1;
 	}
 
-	dev->buffers[dev->nbuffers].size = size;
-	dev->buffers[dev->nbuffers].pitch = stride;
-	dev->buffers[dev->nbuffers].dma_fd = dma_fd;
-	dev->buffers[dev->nbuffers].dma_texture = dma_texture;
-	dev->buffers[dev->nbuffers].dma_image = dma_image;
-	dev->buffers[dev->nbuffers].textype = GL_TEXTURE_EXTERNAL_OES;
-	dev->buffers[dev->nbuffers].egltarget = EGL_GL_TEXTURE_2D;
-	dev->nbuffers++;
+	buffer->size = size;
+	buffer->pitch = stride;
+	buffer->dma_fd = dma_fd;
+
+	GL_Buffer_t *glbuffer = &buffer->gl;
+	glbuffer->texture = texture;
+	glbuffer->textype = textype;
+	glEGLImageTargetTexture2DOES(textype, image);
+	eglDestroyImageKHR(dev->egldisplay, image);
 
 	return 0;
 }
 
-static int texturemem_link(EGL_t *dev, GLuint texture, void *mem, size_t size)
+static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t size)
 {
+	GLuint texture = -1;
+	//GLuint textype = GL_TEXTURE_EXTERNAL_OES;
+	GLuint textype = GL_TEXTURE_2D;
+	texture = texture_create(dev, textype);
+
 	uint32_t stride = size / dev->config->parent.height;
 	EGLImageKHR image;
 	dbg("segl: create image for mmap %p : %dx%d %u %.4s", mem, dev->config->parent.width, dev->config->parent.height, stride, (char*)&dev->config->parent.fourcc);
@@ -506,14 +530,15 @@ static int texturemem_link(EGL_t *dev, GLuint texture, void *mem, size_t size)
 		return -1;
 	}
 
-	dev->buffers[dev->nbuffers].size = size;
-	dev->buffers[dev->nbuffers].pitch = stride;
-	dev->buffers[dev->nbuffers].memory = mem;
-	dev->buffers[dev->nbuffers].dma_texture = texture;
-	dev->buffers[dev->nbuffers].dma_image = image;
-	dev->buffers[dev->nbuffers].textype = GL_TEXTURE_EXTERNAL_OES;
-	dev->buffers[dev->nbuffers].egltarget = EGL_GL_TEXTURE_2D;
-	dev->nbuffers++;
+	buffer->size = size;
+	buffer->pitch = stride;
+	buffer->memory = mem;
+
+	GL_Buffer_t *glbuffer = &buffer->gl;
+	glbuffer->texture = texture;
+	glbuffer->textype = textype;
+	glEGLImageTargetTexture2DOES(textype, image);
+	eglDestroyImageKHR(dev->egldisplay, image);
 
 	return 0;
 }
@@ -530,14 +555,10 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 			size_t size = va_arg(ap, size_t);
 			for (int i = 0; i < ntargets; i++)
 			{
-				GLuint dma_texture = -1;
-				dma_texture = texture_create(dev, GL_TEXTURE_EXTERNAL_OES);
-				ret = texturedma_link(dev, dma_texture, targets[i], size);
-				glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, dev->buffers[i].dma_image);
-				eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
-				dev->buffers[i].dma_image = 0;
+				ret = texture_fromdma(dev, &dev->buffers[i], targets[i], size);
 				if (ret)
 					break;
+				dev->nbuffers++;
 			}
 		}
 		break;
@@ -548,16 +569,10 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 			size_t size = va_arg(ap, size_t);
 			for (int i = 0; i < ntargets; i++)
 			{
-				GLuint texture = -1;
-				//GLuint textype = GL_TEXTURE_EXTERNAL_OES;
-				GLuint textype = GL_TEXTURE_2D;
-				texture = texture_create(dev, textype);
-				ret = texturemem_link(dev, texture, targets[i], size);
-//				glEGLImageTargetTexture2DOES(textype, dev->buffers[i].dma_image);
-//				eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
-				dev->buffers[i].dma_image = 0;
+				ret = texture_frommem(dev, &dev->buffers[i], targets[i], size);
 				if (ret)
 					break;
+				dev->nbuffers++;
 			}
 		}
 		break;
@@ -569,7 +584,7 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 	return ret;
 }
 
-static int _egl_export_getdma(EGL_t *dev, int id)
+static int _egl_export_withMESA(EGL_t *dev, GLuint texture)
 {
 	const EGLint tattributes[] = {
 		EGL_IMAGE_PRESERVED, EGL_TRUE,
@@ -578,8 +593,8 @@ static int _egl_export_getdma(EGL_t *dev, int id)
 	const EGLint *attributes = tattributes;
 
 	/// eglCreateImage and eglCreateImageKHR have the same result
-	EGLImage image = eglCreateImageKHR(dev->egldisplay, dev->eglcontext, dev->buffers[id].egltarget,
-		(void *)(long)dev->buffers[id].dma_texture, attributes);
+	EGLImage image = eglCreateImageKHR(dev->egldisplay, dev->eglcontext,
+		dev->output.egltarget, (void *)(long)texture, attributes);
 	if (image == EGL_NO_IMAGE)
 		return -1;
 
@@ -602,26 +617,41 @@ static int _egl_export_getdma(EGL_t *dev, int id)
 	{
 		eglExportDMABUFImageMESA(dev->egldisplay, image, &dma_buf[0], &stride[0], &offset[0]);
 	}
-	if (stride[0] != dev->buffers[id].size / dev->config->parent.height)
-		err("segl: exported format not aligned");
+//	if (stride[0] != dev->buffers[id].size / dev->config->parent.height)
+//		err("segl: exported format not aligned");
 	if (dev->config->parent.fourcc && dev->config->parent.fourcc != fourcc)
 		err("segl: requests %.4s, obtains %.4s", &dev->config->parent.fourcc, &fourcc);
 	dev->config->parent.fourcc = fourcc;
 
-	dev->buffers[id].dma_image = image;
-	dev->buffers[id].size = stride[0] * dev->config->parent.height;
-	dev->buffers[id].pitch = stride[0];
-	dev->buffers[id].modifiers = modifiers;
 	if (modifiers != dev->config->parent.modifiers)
 		err("segl: format modifier present but not set (%lld/%lld)", modifiers, dev->config->parent.modifiers);
+	dev->config->parent.modifiers = modifiers;
+	eglDestroyImageKHR(dev->egldisplay, image);
 
 	return dma_buf[0];
 }
 
-static void *_egl_export_getmem(EGL_t *dev, int id)
+static void *_egl_export_withUSERDMA(EGL_t *dev, size_t size, int *dma_fd)
 {
-	void *mem = calloc(1, dev->buffers[id].size);
-	dev->buffers[id].memory = mem;
+	void *mem = NULL;
+#if 0
+	mem = calloc(1, size);
+#else
+	int dmabufs_tmp = 0;
+	dmabufs_tmp = sdmabuf_create(segl, size);
+	if (dmabufs_tmp > 0)
+	{
+		mem = sdmabuf_map(dmabufs_tmp, size, 1);
+		if (mem == (void *)(long)-1)
+		{
+			err("spassthrough: buffer creation error");
+			sdmabuf_destroy(dmabufs_tmp);
+			mem = NULL;
+		}
+		else if (dma_fd)
+			*dma_fd = dmabufs_tmp;
+	}
+#endif
 	return mem;
 }
 
@@ -630,18 +660,11 @@ static void _egl_releasebuffer(EGL_t *dev, int id)
 	if (dev->buffers[id].memory != NULL)
 		free(dev->buffers[id].memory);
 	dev->buffers[id].memory = NULL;
-	if (dev->buffers[id].dma_image)
-		eglDestroyImageKHR(dev->egldisplay, dev->buffers[id].dma_image);
-	dev->buffers[id].dma_image = 0;
 }
 
 static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 {
 	int ret = -1;
-	for (int i = 0; i < dev->nbuffers; i++)
-	{
-		_egl_releasebuffer(dev,i);
-	}
 	switch (t)
 	{
 		case buf_type_dmabuf | buf_type_master:
@@ -654,23 +677,9 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 				*targets = calloc(dev->nbuffers, sizeof(int));
 				for (int i = 0; i < dev->nbuffers; i++)
 				{
-					int dma_fd = dev->buffers[i].dma_fd;
-					if (dma_fd == 0)
-					{
-						dma_fd = _egl_export_getdma(dev, i);
-						if (dma_fd <= 0)
-						{
-							err("segl: export dma_buf error %d", dma_fd);
-							dev->nbuffers = i;
-							break;
-						}
-						dev->buffers[i].dma_fd = dma_fd;
-						eglDestroyImageKHR(dev->egldisplay, dev->buffers[i].dma_image);
-						dev->buffers[i].dma_image = 0;
-						dev->buffers[i].modifiers = dev->config->parent.modifiers;
-					}
-					(*targets)[i] = dma_fd;
-					dbg("segl: export dmabuffer[%d]: %d %lu", i, dma_fd, dev->buffers[i].size);
+					GLBuffer_t *buffer = &dev->buffers[i];
+					(*targets)[i] = buffer->dma_fd;
+					dbg("segl: export dmabuffer[%d]: %d %lu", i, buffer->dma_fd, buffer->size);
 				}
 			}
 			if (ntargets != NULL)
@@ -709,7 +718,7 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 				*targets = calloc(dev->nbuffers, sizeof(int));
 				for (int i = 0; i < dev->nbuffers; i++)
 				{
-					(*targets)[i] = _egl_export_getmem(dev, i);
+					(*targets)[i] = dev->buffers[i].memory;
 					dbg("segl: export memory[%d]: %p %lu", i, dev->buffers[i].memory, dev->buffers[i].size);
 				}
 			}
@@ -770,63 +779,79 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	const FourccFormat_t *fformat = fourcc_getformat(dup->config->parent.fourcc);
 
 	/*  Framebuffer */
-	glGenFramebuffers(1, &dup->fbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, dup->fbo);
+	glGenFramebuffers(1, &dup->output.fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, dup->output.fbo);
 	dup->nbuffers = 0;
+#if EXPORT_RENDER
+	glGenRenderbuffers(1, &dup->output.rbo);
+	glBindRenderbuffer(GL_RENDERBUFFER, dup->output.rbo);
+	GLuint format = fformat->internal;
+	/* Storage must be one of: */
+	/* GL_RGBA4, GL_RGB565, GL_RGB5_A1, GL_DEPTH_COMPONENT16, GL_STENCIL_INDEX8. */
+	glRenderbufferStorage(GL_RENDERBUFFER, format, width, height);
+	dbg("segl: renderbuffer %lux%lu %#x/%#x", width, height, format, fformat->internal);
+	GLuint glerror = glGetError();
+	if (glerror)
+	{
+		err ("segl: Renderbuffer error %#x", glerror);
+		return NULL;
+	}
+
+	//glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_SAMPLES, &samples);
+	glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_INTERNAL_FORMAT, &format);
+	glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &width);
+	glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &height);
+
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, dup->output.rbo);
+	dup->output.texture = dup->output.rbo;
+	dup->output.textype = GL_RENDERBUFFER;
+	dup->output.egltarget = EGL_GL_RENDERBUFFER;
+#else
+	GLuint dma_texture = 0;
+	/// glFramebufferTexture2D support only GL_TEXTURE_2D
+	dup->output.egltarget = EGL_GL_TEXTURE_2D;
+	dup->output.textype = GL_TEXTURE_2D;
+	texture = texture_create(dup, output.textype);
+	if (texture == 0)
+	{
+		err("segl: output texture creation error");
+		free(dup);
+		return NULL;
+	}
+	dup->output.texture = texture;
+	glTexImage2D(dup->output.textype, 0, fformat->internal,
+			width, height, 0, fformat->full, fformat->data, NULL);
+	GLuint glerror = glGetError();
+	if (glerror)
+	{
+		err ("segl: Texturebuffer error %#x", glerror);
+		free(dup);
+		return NULL;
+	}
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+		dup->output.textype, dup->output.dma_texture, 0);
+#endif
+#if EXPORT_WITHMESA
+	int dma_fd = 0;
+	dma_fd = _egl_export_withMESA(dev, texture);
+	if (dma_fd <= 0)
+	{
+		err("segl: export dma_buf error %d", dma_fd);
+		return NULL;
+	}
+#endif
 	for (int i = 0; i < MAX_BUFFERS; i++, dup->nbuffers++)
 	{
-#if EXPORT_RENDER
-		GLuint format = fformat->internal;
-		glGenRenderbuffers(1, &dup->buffers[i].rbo);
-		glBindRenderbuffer(GL_RENDERBUFFER, dup->buffers[i].rbo);
-		/* Storage must be one of: */
-		/* GL_RGBA4, GL_RGB565, GL_RGB5_A1, GL_DEPTH_COMPONENT16, GL_STENCIL_INDEX8. */
-		glRenderbufferStorage(GL_RENDERBUFFER, format, width, height);
-		dbg("segl: renderbuffer %lux%lu %#x/%#x", width, height, format, fformat->internal);
-		GLuint glerror = glGetError();
-		if (glerror)
-		{
-			err ("segl: Renderbuffer error %#x", glerror);
-			break;
-		}
-
-		//glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_SAMPLES, &samples);
-		glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_INTERNAL_FORMAT, &format);
-		glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &width);
-		glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &height);
-
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, dup->buffers[i].rbo);
-		dup->buffers[i].dma_texture = dup->buffers[i].rbo;
-		dup->buffers[i].textype = GL_RENDERBUFFER;
-		dup->buffers[i].egltarget = EGL_GL_RENDERBUFFER;
+		size_t size = width;
+		size *= height;
+		size *= fformat->stride_factor[0];
+		dup->buffers[i].size = size;
+		dup->buffers[i].pitch = fformat->stride_factor[0];
+#if EXPORT_WITHMESA
+		dup->buffers[i].dma_fd = dma_fd;
 #else
-		GLuint dma_texture = 0;
-		/// glFramebufferTexture2D support only GL_TEXTURE_2D
-		dup->buffers[i].egltarget = EGL_GL_TEXTURE_2D;
-		dup->buffers[i].textype = GL_TEXTURE_2D;
-		dma_texture = texture_create(dup, dup->buffers[i].textype);
-		if (dma_texture == 0)
-			break;
-		dup->buffers[i].dma_texture = dma_texture;
-		dup->buffers[i].size = width;
-		dup->buffers[i].size *= height;
-		dup->buffers[i].size *= fformat->stride_factor[0];
-
-		glTexImage2D(dup->buffers[i].textype, 0, fformat->internal,
-				width, height, 0, fformat->full, fformat->data, NULL);
-		GLuint glerror = glGetError();
-		if (glerror)
-		{
-			err ("segl: Texturebuffer error %#x", glerror);
-			break;
-		}
-
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-			dup->buffers[i].textype, dup->buffers[i].dma_texture, 0);
+		dup->buffers[i].memory = _egl_export_withUSERDMA(dev, size, &dup->buffers[i].dma_fd);
 #endif
-		dup->nbuffers++;
-		/// only one buffer
-		break;
 	}
 	/* Sanity check. */
 	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -836,13 +861,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		return NULL;
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	for (int i = dup->nbuffers; i < MAX_BUFFERS; i++, dup->nbuffers++)
-	{
-		dup->buffers[i].egltarget = dup->buffers[0].egltarget;
-		dup->buffers[i].textype = dup->buffers[0].textype;
-		dup->buffers[i].dma_texture = dup->buffers[0].dma_texture;
-		dup->buffers[i].size = dup->buffers[0].size;
-	}
+
 	return dup;
 }
 
@@ -853,7 +872,7 @@ EXT_API int segl_start(EGL_t *dev)
 	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
 
 	// initialize the first program with the input stream
-	glprog_setintexture(dev->programs, dev->buffers[0].textype, dev->nbuffers, dev->buffers);
+	glprog_setintexture(dev->programs, dev->buffers[0].gl.textype, dev->nbuffers, dev->buffers);
 
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
 	dev->curbufferid = -1;
@@ -872,7 +891,9 @@ static void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo, 
 {
 	dev->curbufferid = id;
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-	glBindRenderbuffer(GL_RENDERBUFFER, dev->buffers[id].rbo);
+#if EXPORT_RENDER
+	glBindRenderbuffer(GL_RENDERBUFFER, dev->output.rbo);
+#endif
 
 #ifdef GLESV300
 	uint32_t width = dev->config->parent.width;
@@ -944,30 +965,29 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 			errno = EAGAIN;
 			return id;
 		}
-		if (flags && dev->buffers[id].modifiers)
-			*flags |= FB_FLAGS_MODIFIER;
-		if (bytesused)
-			*bytesused = dev->buffers[id].size;
-// not tested
-#if 0
-		if (dev->buffers[id].memory != NULL)
+		GLBuffer_t *buffer = &dev->buffers[id];
+		if (buffer->memory != NULL)
 		{
 			uint32_t width = dev->config->parent.width;
 			uint32_t height = dev->config->parent.height;
 			glFinish();
-			glBindTexture(dev->buffers[id].textype, dev->buffers[id].dma_texture);
+			glBindTexture(dev->output.textype, dev->output.texture);
 			glPixelStorei(GL_PACK_ALIGNMENT, 1);
-			glReadPixels(0, 0, width, height, dev->buffers[id].textype,
-					GL_UNSIGNED_BYTE, dev->buffers[id].memory);
-			glBindTexture(dev->buffers[id].textype, 0);
+			glReadPixels(0, 0, width, height, dev->output.textype,
+					GL_UNSIGNED_BYTE, buffer->memory);
+			glBindTexture(dev->output.textype, 0);
 			if (mem)
-				*mem = dev->buffers[id].memory;
+				*mem = buffer->memory;
 		}
-#endif
+
+		if (flags && dev->buffers[id].modifiers)
+			*flags |= FB_FLAGS_MODIFIER;
+		if (bytesused)
+			*bytesused = dev->buffers[id].size;
 		return id;
 	}
 	glUseProgram(0);
-	glBindTexture(dev->buffers[0].textype, 0);
+	glBindTexture(dev->buffers[0].gl.textype, 0);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	if (dev->native->sync(dev->native_window) < 0)

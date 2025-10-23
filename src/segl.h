@@ -29,16 +29,18 @@
 /**
  * structure shared by segl and segl_glprog
  */
+typedef struct GL_Buffer_s GL_Buffer_t;
+struct GL_Buffer_s
+{
+	EGLImageKHR image;
+	GLuint texture;
+	GLenum textype;
+};
+
 typedef struct GLBuffer_s GLBuffer_t;
 struct GLBuffer_s
 {
 	uint32_t fb_id;
-	int egl_fd;
-	GLenum textype;
-	EGLint egltarget;
-	GLuint dma_texture;
-	GLuint rbo;
-	EGLImageKHR dma_image;
 	uint32_t fourcc;
 	int dma_fd;
 	uint32_t *memory;
@@ -46,6 +48,7 @@ struct GLBuffer_s
 	GLuint offset;
 	uint32_t size;
 	uint64_t modifiers;
+	GL_Buffer_t gl;
 };
 
 typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;

@@ -420,7 +420,7 @@ int glprog_setup(GLProgram_t *program, GLuint width, GLuint height)
 
 GLBuffer_t *glprog_getouttexture(GLProgram_t *program, GLuint nbtex)
 {
-	if (program->out_textures[0].dma_texture)
+	if (program->out_textures[0].gl.texture)
 	{
 		return program->out_textures;
 	}
@@ -443,7 +443,7 @@ GLBuffer_t *glprog_getouttexture(GLProgram_t *program, GLuint nbtex)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		program->out_textures[i].dma_texture = texture;
+		program->out_textures[i].gl.texture = texture;
 	}
 	return program->out_textures;
 }
@@ -470,9 +470,9 @@ int glprog_run(GLProgram_t *program, int bufid)
 	if (program->fbID)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, program->fbID);
-		glBindTexture(GL_TEXTURE_2D, program->out_textures[bufid].dma_texture);
+		glBindTexture(GL_TEXTURE_2D, program->out_textures[bufid].gl.texture);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-					program->out_textures[bufid].dma_texture, 0);
+					program->out_textures[bufid].gl.texture, 0);
 		err = glGetError();
 		if (err != GL_NO_ERROR)
 		{
@@ -486,7 +486,7 @@ int glprog_run(GLProgram_t *program, int bufid)
 	glUseProgram(program->ID);
 
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(program->in_textype, program->in_textures[bufid].dma_texture);
+	glBindTexture(program->in_textype, program->in_textures[bufid].gl.texture);
 	GLProgram_Uniform_t *uniform = program->controls;
 	while (uniform)
 	{
@@ -604,7 +604,7 @@ void glprog_destroy(GLProgram_t *program)
 		glDeleteFramebuffers(1, &program->fbID);
 		for (int i = 0; i < MAX_BUFFERS; i++)
 		{
-			glDeleteTextures(1, &program->out_textures[i].dma_texture);
+			glDeleteTextures(1, &program->out_textures[i].gl.texture);
 		}
 	}
 	free(program->config);
