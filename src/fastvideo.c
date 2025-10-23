@@ -170,6 +170,8 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 			err("%s buffer queuing error %m", output->config->name);
 			return -1;
 		}
+		/// push back the buffer to the input device because the ouput is not ready to manage it
+		input->ops->queue(input->dev, index, mem, bytesused, flags);
 	}
 	return 0;
 }
