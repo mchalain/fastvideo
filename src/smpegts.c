@@ -949,6 +949,11 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 	if (id < 0 || id > dev->nbuffers)
 		return -1;
 	FrameBuffer_t *buffer = &dev->buffers[id];
+	if (dev->currentid != -1)
+	{
+		errno = EAGAIN;
+		return -1;
+	}
 	buffer->bytesused = size;
 	buffer->flags = flags;
 	if (buffer->dma_buf > 0)
@@ -969,11 +974,6 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 		buffer->mem = mem;
 	}
 
-	if (dev->currentid != -1)
-	{
-		errno = EAGAIN;
-		return -1;
-	}
 	dev->currentid = id;
 	buffer->state = queued;
 	if (_client_pushdata(dev, id) < 0)
@@ -998,24 +998,24 @@ EXT_API int mpegts_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags
 	if (buffer->state == ready)
 	{
 		_client_flushdata(dev, id);
-		if (buffer->dma_buf > 0)
-		{
-			struct dma_buf_sync sync = { 0 };
-			munmap(buffer->mem, buffer->size);
-			buffer->mem = NULL;
-			sync.flags = DMA_BUF_SYNC_READ | DMA_BUF_SYNC_END;
-			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, &sync);
-		}
 	}
-	if (buffer->state != dequeued)
+	if ((buffer->state == dequeued) && (buffer->dma_buf > 0))
 	{
+		struct dma_buf_sync sync = { 0 };
+		munmap(buffer->mem, buffer->size);
+		buffer->mem = NULL;
+		sync.flags = DMA_BUF_SYNC_READ | DMA_BUF_SYNC_END;
+		ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, &sync);
+	}
+	if (buffer->state == queued)
+	{
+		errno = EAGAIN;
 		return -1;
 	}
 	if (*mem)
 		*mem = buffer->mem;
 	if (*bytesused)
 		*bytesused = buffer->size;
-	buffer->state = dequeued;
 	return id;
 }
 
