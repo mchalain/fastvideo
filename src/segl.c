@@ -335,7 +335,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	dbg("segl: swap interval %d", minswapinterval);
 	eglSwapInterval(eglDisplay, minswapinterval);
 
-	GLProgram_t *programs = glprog_create(config->programs);
+	GLProgram_t *programs = glprog_create(config->programs, width, height);
 	if (programs == NULL)
 		return NULL;
 
@@ -347,8 +347,6 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	dev->eglcontext = eglContext;
 	dev->eglsurface = eglSurface;
 	dev->programs = programs;
-
-	glprog_setup(dev->programs, width, height);
 
 	dev->native_window = nwindow;
 	dev->native_display = ndisplay;
@@ -707,8 +705,8 @@ EXT_API int segl_start(EGL_t *dev)
 		return 0;
 	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
 
-	// initialize the first program with the input stream
-	glprog_setintexture(dev->programs, dev->buffers[0].gl.textype, dev->nbuffers, dev->buffers);
+	// initialize the first program with the output framebuffer
+	glprog_setup(dev->programs, dev->fbo);
 
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
 	dev->curbufferid = -1;
@@ -756,8 +754,7 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 	if (flags & FB_FLAGS_MODIFIER)
 		buffer->modifiers = dev->config->parent.modifiers;
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glClearColor(0.5, 0.5, 0.5, 1.0);
-	glprog_run(dev->programs, id);
+	glprog_run(dev->programs, &buffer->gl);
 	if (eglSwapBuffers(dev->egldisplay, dev->eglsurface) == EGL_FALSE)
 		err("EGL swapbuffers error %m");
 	// errno is set to EAGAIN after eglSwapBuffers

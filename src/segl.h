@@ -105,11 +105,9 @@ typedef void (*segl_export_append_t)(EGLExport_t *export);
 
 extern const GLchar *defaulttexturename;
 
-GLProgram_t *glprog_create(EGLConfig_Program_t *config);
-int glprog_setup(GLProgram_t *program, GLuint width, GLuint height);
-GLBuffer_t *glprog_getouttexture(GLProgram_t *program, GLuint nbtex);
-int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffer_t *in_textures);
-int glprog_run(GLProgram_t *program, int bufid);
+GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height);
+int glprog_setup(GLProgram_t *program, GLuint fbo);
+int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer);
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
 void glprog_destroy(GLProgram_t *program);
 

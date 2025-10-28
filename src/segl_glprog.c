@@ -46,10 +46,8 @@ struct GLProgram_s
 	GLuint vertexArrayID;
 	GLuint vertexBufferObject[3];
 	const char *in_texturename;
-	GLenum in_textype;
-	GLBuffer_t *in_textures;
-	GLBuffer_t out_textures[MAX_BUFFERS];
-	GLuint fbID;
+	GL_Buffer_t out;
+	GLuint fbo;
 	GLfloat width;
 	GLfloat height;
 	GLProgram_Uniform_t *controls;
@@ -345,7 +343,7 @@ static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADER
 	return programID;
 }
 
-GLProgram_t *glprog_create(EGLConfig_Program_t *config)
+GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height)
 {
 	GLuint programID = 0;
 	if (config)
@@ -366,15 +364,6 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config)
 	if (config && config->tex_name)
 		program->in_texturename = config->tex_name;
 
-	if (config && config->next)
-	{
-		program->next = glprog_create(config->next);
-	}
-	return program;
-}
-
-int glprog_setup(GLProgram_t *program, GLuint width, GLuint height)
-{
 	program->width = width;
 	program->height = height;
 
@@ -419,67 +408,64 @@ int glprog_setup(GLProgram_t *program, GLuint width, GLuint height)
 		program->controls = NULL;
 
 	glBindVertexArrayOES(0);
-	if (program->next)
-		return glprog_setup(program->next, width, height);
-
-	return 0;
+	if (config && config->next)
+	{
+		program->next = glprog_create(config->next, width, height);
+	}
+	return program;
 }
 
-GLBuffer_t *glprog_getouttexture(GLProgram_t *program, GLuint nbtex)
+static int glprog_outtexture(GLProgram_t *program, GLenum textype)
 {
-	if (program->out_textures[0].gl.texture)
+	if (program->out.texture)
 	{
-		return program->out_textures;
+		return 0;
 	}
-	glGenFramebuffers(1, &program->fbID);
-	if (program->fbID == 0)
+	glGenFramebuffers(1, &program->fbo);
+	if (program->fbo == 0)
 	{
 		err("segl: framebuffer unsupported");
-		return NULL;
+		return -1;
 	}
-	glBindFramebuffer(GL_FRAMEBUFFER, program->fbID);
-	glEnable(GL_TEXTURE_2D);
+	glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
+	glEnable(textype);
 	GLuint texture = 0;
-	for (int i = 0; i < nbtex; i++)
-	{
-		glGenTextures(1, &texture);
-		glBindTexture(GL_TEXTURE_2D, texture);
-		// The format must be RGB. RGBA generate error during the texture attachment to the frambuffer (glprog_run)
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, program->width, program->height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		program->out_textures[i].gl.texture = texture;
-	}
-	return program->out_textures;
+	glGenTextures(1, &texture);
+	glBindTexture(textype, texture);
+	// The format must be RGB. RGBA generate error during the texture attachment to the frambuffer (glprog_run)
+	glTexImage2D(textype, 0, GL_RGB, program->width, program->height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameterf(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameterf(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	program->out.texture = texture;
+	program->out.textype = textype;
+
+	return 0;
 }
 
-int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffer_t *in_textures)
+int glprog_setup(GLProgram_t *program, GLuint fbo)
 {
-	program->in_textures = in_textures;
-	program->in_textype = type;
+	program->fbo = fbo;
 	if (program->next)
 	{
-		GLBuffer_t *textures;
-		textures = glprog_getouttexture(program, nbtex);
-		if (textures == NULL)
+		if (glprog_outtexture(program, GL_TEXTURE_2D))
 			return -1;
-		return glprog_setintexture(program->next, GL_TEXTURE_2D, nbtex, textures);
+		return glprog_setup(program->next, fbo);
 	}
 	return 0;
 }
 
-int glprog_run(GLProgram_t *program, int bufid)
+int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 {
 	static int programid = 0;
 	GLenum err = 0;
-	if (program->fbID)
+	if (program->fbo  > 0)
 	{
-		glBindFramebuffer(GL_FRAMEBUFFER, program->fbID);
-		glBindTexture(GL_TEXTURE_2D, program->out_textures[bufid].gl.texture);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-					program->out_textures[bufid].gl.texture, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
+		glBindTexture(program->out.textype, program->out.texture);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, program->out.textype,
+					program->out.texture, 0);
 		err = glGetError();
 		if (err != GL_NO_ERROR)
 		{
@@ -489,11 +475,12 @@ int glprog_run(GLProgram_t *program, int bufid)
 	else
 		glClear(GL_COLOR_BUFFER_BIT);
 
+	glClearColor(0.5, 0.5, 0.5, 1.0);
 	glBindVertexArrayOES(program->vertexArrayID);
 	glUseProgram(program->ID);
 
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(program->in_textype, program->in_textures[bufid].gl.texture);
+	glBindTexture(buffer->textype, buffer->texture);
 	GLProgram_Uniform_t *uniform = program->controls;
 	while (uniform)
 	{
@@ -508,19 +495,21 @@ int glprog_run(GLProgram_t *program, int bufid)
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
 
-	if (program->fbID != -1)
+	if (program->fbo != -1)
 	{
 		GLint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 		if (status != GL_FRAMEBUFFER_COMPLETE)
 		{
-			err("framebuffer %u incomplet %#x", program->fbID, status);
+			err("framebuffer %u incomplet %#x", program->fbo, status);
 			//return -1;
 		}
 		//glFramebufferTexture2D to disable the texture is an invalid operation
 	}
 	programid++;
 	if (program->next)
-		return glprog_run(program->next, bufid);
+	{
+		return glprog_run(program->next, &program->out);
+	}
 	programid = 0;
 	return 0;
 }
@@ -606,13 +595,10 @@ void glprog_destroy(GLProgram_t *program)
 {
 	if (program->next)
 		return glprog_destroy(program->next);
-	if (program->fbID)
+	if (program->fbo)
 	{
-		glDeleteFramebuffers(1, &program->fbID);
-		for (int i = 0; i < MAX_BUFFERS; i++)
-		{
-			glDeleteTextures(1, &program->out_textures[i].gl.texture);
-		}
+		glDeleteFramebuffers(1, &program->fbo);
+		glDeleteTextures(1, &program->out.texture);
 	}
 	free(program->config);
 	free(program);
