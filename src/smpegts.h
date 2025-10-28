@@ -34,4 +34,5 @@ struct Proto_s
 
 extern Proto_t proto_udp;
 extern Proto_t proto_unix;
+extern Proto_t proto_file;
 #endif
