@@ -118,6 +118,7 @@ static void proto_destroy(void *arg)
 
 Proto_t proto_file =
 {
+	.name = "file",
 	.create = proto_create,
 	.connect = proto_connect,
 	.close = proto_close,

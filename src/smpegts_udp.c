@@ -274,6 +274,7 @@ static void proto_destroy(void *arg)
 
 Proto_t proto_udp =
 {
+	.name = "udp",
 	.create = proto_create,
 	.connect = proto_connect,
 	.close = proto_close,

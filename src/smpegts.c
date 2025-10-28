@@ -1093,9 +1093,9 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 	if (proto && json_is_string(proto))
 	{
 		const char *value = json_string_value(proto);
-		if (!strncasecmp(value, "unix", 4))
+		if (!strcasecmp(value, proto_unix.name))
 			config->proto = &proto_unix;
-		if (!strncasecmp(value, "file", 4))
+		if (!strcasecmp(value, proto_file.name))
 			config->proto = &proto_file;
 	}
 library_end:

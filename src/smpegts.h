@@ -22,6 +22,7 @@ struct MPEG_TSConf_s
 
 struct Proto_s
 {
+	const char *name;
 	void *(*create)(MPEG_TSConf_t *config);
 	int (*connect)(void *arg);
 	void (*close)(void *arg);
