@@ -134,7 +134,7 @@ void *sdmabuf_map(int dmafd, size_t size, int write)
 	return mem;
 }
 
-void *sdmabuf_unmap(void *mem, size_t size)
+void sdmabuf_unmap(void *mem, size_t size)
 {
 	munmap(mem, size);
 }
