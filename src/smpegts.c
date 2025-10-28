@@ -276,6 +276,7 @@ struct Dev_s
 	MPEG_TSConf_t *config;
 	Proto_t *proto;
 	void *protoctx;
+	uint32_t frames;
 	FrameBuffer_t buffers[MAX_BUFFERS];
 	int nbuffers;
 	int currentid;
@@ -998,6 +999,15 @@ EXT_API int mpegts_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags
 	if (buffer->state == ready)
 	{
 		_client_flushdata(dev, id);
+		dev->frames++;
+		if (dev->frames == dev->config->maxframes)
+		{
+			dev->frames = 0;
+			dev->proto->close(dev->protoctx);
+			dev->proto->connect(dev->protoctx);
+		}
+		if (dev->frames == UINT32_MAX)
+			dev->frames = 0;
 	}
 	if ((buffer->state == dequeued) && (buffer->dma_buf > 0))
 	{
@@ -1072,6 +1082,12 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 	{
 		int value = json_integer_value(periodic);
 		config->periodic = value;
+	}
+	json_t *maxframes = json_object_get(jconfig, "maxframes");
+	if (maxframes && json_is_integer(maxframes))
+	{
+		uint32_t value = json_integer_value(maxframes);
+		config->maxframes = value;
 	}
 	json_t *proto = json_object_get(jconfig, "proto");
 	if (proto && json_is_string(proto))

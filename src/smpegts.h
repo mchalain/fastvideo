@@ -16,6 +16,7 @@ struct MPEG_TSConf_s
 	int pid;
 	int periodic;
 	int maxclients;
+	uint32_t maxframes;
 	Proto_t *proto;
 };
 
