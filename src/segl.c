@@ -209,6 +209,9 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	}
 	EGLNativeDisplayType ndisplay = EGL_DEFAULT_DISPLAY;
 
+	uint32_t width = config->parent.width;
+	uint32_t height = config->parent.height;
+
 	const EGLNative_t * native = _natives[0];
 
 	if (config->native)
@@ -289,7 +292,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		return NULL;
 	}
 
-	EGLNativeWindowType nwindow = native->createwindow(ndisplay, config->parent.width, config->parent.height, "segl");
+	EGLNativeWindowType nwindow = native->createwindow(ndisplay, width, height, "segl");
 
 	EGLSurface eglSurface = NULL;
 	if (nwindow != (EGLNativeWindowType)NULL)
@@ -309,8 +312,8 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 			texture_format = EGL_TEXTURE_RGB;
 		warn("segl: surface on pbuffer");
 		EGLint attribs[] = {
-			EGL_WIDTH, config->parent.width,
-			EGL_HEIGHT, config->parent.height,
+			EGL_WIDTH, width,
+			EGL_HEIGHT, height,
 			EGL_TEXTURE_FORMAT, texture_format,
 			EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
 			//EGL_LARGEST_PBUFFER, EGL_TRUE, // no visible change
@@ -345,7 +348,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	dev->eglsurface = eglSurface;
 	dev->programs = programs;
 
-	glprog_setup(dev->programs, config->parent.width, config->parent.height);
+	glprog_setup(dev->programs, width, height);
 
 	dev->native_window = nwindow;
 	dev->native_display = ndisplay;
@@ -720,23 +723,6 @@ EXT_API int segl_stop(EGL_t *dev)
 	return 0;
 };
 
-static void segl_queue_output(EGL_t *dev, int id, size_t bytesused, GLuint fbo, int flags)
-{
-	dev->curbufferid = id;
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
-#ifdef GLESV300
-	uint32_t width = dev->config->parent.width;
-	uint32_t height = dev->config->parent.height;
-
-	glPixelStorei(GL_PACK_ROW_LENGTH, width);
-	glPixelStorei(GL_PACK_IMAGE_HEIGHT, height);
-#endif
-	glClearColor(0.5, 0.5, 0.5, 1.0);
-
-	glprog_run(dev->programs, id);
-}
-
 EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flags)
 {
 	errno = 0;
@@ -759,26 +745,32 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 		return -1;
 	}
 
+	GLBuffer_t *buffer = &dev->buffers[id];
 #if 0
-	if (dev->buffers[id].dma_fd == 0)
+	if (buffer->dma_fd == 0)
 	{
 		glTexSubImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, mem);
 	}
 #endif
-	dev->buffers[id].modifiers = 0;
+	buffer->modifiers = 0;
 	if (flags & FB_FLAGS_MODIFIER)
-		dev->buffers[id].modifiers = dev->config->parent.modifiers;
-	segl_queue_output(dev, id, bytesused, 0, flags);
+		buffer->modifiers = dev->config->parent.modifiers;
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glClearColor(0.5, 0.5, 0.5, 1.0);
+	glprog_run(dev->programs, id);
 	if (eglSwapBuffers(dev->egldisplay, dev->eglsurface) == EGL_FALSE)
 		err("EGL swapbuffers error %m");
 	// errno is set to EAGAIN after eglSwapBuffers
 	errno = 0;
 	int ret = dev->native->flush(dev->native_window);
-
-	if (dev->dup)
+	if (!ret)
 	{
-		dev->dup->curbufferid = dev->curbufferid;
-		dev->dup->curbufferid %= dev->dup->nbuffers;
+		dev->curbufferid = id;
+		if (dev->dup)
+		{
+			dev->dup->curbufferid = dev->curbufferid;
+			dev->dup->curbufferid %= dev->dup->nbuffers;
+		}
 	}
 	return ret;
 }
