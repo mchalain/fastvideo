@@ -17,7 +17,7 @@
 #include "log.h"
 
 #define IP_HEADER_LENGTH 20
-#define UDP_HEADER_LENGTH 8
+#define TCP_HEADER_LENGTH 60
 
 typedef struct Client_s Client_t;
 struct Client_s
@@ -80,7 +80,7 @@ static void *proto_create(MPEG_TSConf_t *config)
 
 	Proto_UNIX_t *proto = calloc(1, sizeof(*proto));
 	proto->config = config;
-	proto->mtu = mtu - IP_HEADER_LENGTH - UDP_HEADER_LENGTH; /// size of udp/ip header
+	proto->mtu = mtu - IP_HEADER_LENGTH - TCP_HEADER_LENGTH; /// maxsize of tcp/ip header
 	proto->serverfd = sock;
 	for (int i = 0 ; i < config->maxclients; i++)
 	{
