@@ -19,6 +19,7 @@ fastvideo_SOURCES-$(HAVE_EGL)+=segl_glprog.c
 fastvideo_SOURCES-$(HAVE_GBM)+=segl_drm.c
 fastvideo_SOURCES-$(HAVE_X11)+=segl_x11.c
 fastvideo_SOURCES-$(HAVE_WAYLAND_EGL)+=segl_wayland.c
+fastvideo_SOURCES-$(HAVE_EGL)+=segl_exportpixels.c
 fastvideo_GENERATED-$(HAVE_WAYLAND_EGL)+=xdg-shell-protocol.c
 fastvideo_LIBS+=dl
 fastvideo_LIBRARY-$(DRM)+=libdrm

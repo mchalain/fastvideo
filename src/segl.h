@@ -40,7 +40,7 @@ struct GL_Buffer_s
 typedef struct GLBuffer_s GLBuffer_t;
 struct GLBuffer_s
 {
-	uint32_t fb_id;
+	int id;
 	uint32_t fourcc;
 	int dma_fd;
 	uint32_t *memory;
@@ -90,6 +90,18 @@ struct EGLNative_s
 	void (*destroy)(EGLNativeDisplayType native_display);
 };
 typedef void (*segl_native_append_t)(EGLNative_t *native);
+
+typedef struct EGLExport_s EGLExport_t;
+struct EGLExport_s
+{
+	void *(*create)(EGLConfig_t *config);
+	int (*setbuffer)(void *arg, GLBuffer_t *buffer);
+	int (*releasebuffer)(void *arg, GLBuffer_t *buffer);
+	int (*flush)(void *arg, GLBuffer_t *buffer);
+	void (*destroy)(void*arg);
+};
+
+typedef void (*segl_export_append_t)(EGLExport_t *export);
 
 extern const GLchar *defaulttexturename;
 
