@@ -80,20 +80,37 @@ struct EGL_s
 #ifndef GL_OES_EGL_image
 #error "this version of GLES doesn't support EGL Image"
 #endif
-#if defined(EGL_KHR_image) && !defined(EGL_EGLEXT_PROTOTYPES)
+#ifndef EGL_EGLEXT_PROTOTYPES
+#if defined(EGL_KHR_image)
 PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR = NULL;
 PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR = NULL;
 #endif
-#if defined(EGL_MESA_image_dma_buf_export) && !defined(EGL_EGLEXT_PROTOTYPES)
-PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC eglExportDMABUFImageQueryMESA = NULL;
-PFNEGLEXPORTDMABUFIMAGEMESAPROC eglExportDMABUFImageMESA = NULL;
-#endif
-#if defined(GL_OES_EGL_image) && !defined(EGL_EGLEXT_PROTOTYPES)
+#if defined(GL_OES_EGL_image)
 PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
 PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
 #endif
 
-static const char segl[] = "segl";
+static int _egl_initprototypes(void)
+{
+	eglCreateImageKHR = (void *) eglGetProcAddress("eglCreateImageKHR");
+	if(eglCreateImageKHR == NULL)
+	{
+		return -1;
+	}
+	eglDestroyImageKHR = (void *) eglGetProcAddress("eglDestroyImageKHR");
+	if(eglDestroyImageKHR == NULL)
+	{
+		return -1;
+	}
+	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
+	if(glEGLImageTargetTexture2DOES == NULL)
+	{
+		return -1;
+	}
+	return 0;
+}
+#endif
+
 
 static FourccFormat_t _FourccFormats[] =
 {
@@ -325,41 +342,6 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	dev->eglcontext = eglContext;
 	dev->eglsurface = eglSurface;
 	dev->programs = programs;
-
-#ifndef EGL_EGLEXT_PROTOTYPES
-	eglCreateImageKHR = (void *) eglGetProcAddress("eglCreateImageKHR");
-	if(eglCreateImageKHR == NULL)
-	{
-		native->destroy(ndisplay);
-		return NULL;
-	}
-	eglDestroyImageKHR = (void *) eglGetProcAddress("eglDestroyImageKHR");
-	if(eglDestroyImageKHR == NULL)
-	{
-		native->destroy(ndisplay);
-		return NULL;
-	}
-#if defined(EGL_MESA_image_dma_buf_export)
-	eglExportDMABUFImageQueryMESA = (void *) eglGetProcAddress("eglExportDMABUFImageQueryMESA");
-	if(eglExportDMABUFImageQueryMESA == NULL)
-	{
-		native->destroy(ndisplay);
-		return NULL;
-	}
-	eglExportDMABUFImageMESA = (void *) eglGetProcAddress("eglExportDMABUFImageMESA");
-	if(eglExportDMABUFImageMESA == NULL)
-	{
-		native->destroy(ndisplay);
-		return NULL;
-	}
-#endif
-	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
-	if(glEGLImageTargetTexture2DOES == NULL)
-	{
-		native->destroy(ndisplay);
-		return NULL;
-	}
-#endif
 
 	glprog_setup(dev->programs, config->parent.width, config->parent.height);
 
@@ -981,6 +963,10 @@ FastVideoDevice_ops_t segl_ops = {
 
 static void __attribute__ ((constructor)) segl_init()
 {
+#ifndef EGL_EGLEXT_PROTOTYPES
+	_egl_initprototypes();
+#endif
+
 	fastvideodevice_ops_append_t _fastvideodevice_ops_append;
 	void *hdl = dlopen(NULL, RTLD_NOW);
 	_fastvideodevice_ops_append = dlsym(hdl, "fastvideodevice_ops_append");
