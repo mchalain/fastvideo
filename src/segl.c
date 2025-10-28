@@ -109,6 +109,8 @@ static int _egl_initprototypes(void)
 	}
 	return 0;
 }
+#else
+#define _egl_initprototypes(...)
 #endif
 
 
@@ -963,9 +965,7 @@ FastVideoDevice_ops_t segl_ops = {
 
 static void __attribute__ ((constructor)) segl_init()
 {
-#ifndef EGL_EGLEXT_PROTOTYPES
 	_egl_initprototypes();
-#endif
 
 	fastvideodevice_ops_append_t _fastvideodevice_ops_append;
 	void *hdl = dlopen(NULL, RTLD_NOW);

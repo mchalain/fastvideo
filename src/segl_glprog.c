@@ -103,8 +103,26 @@ static const GLchar defaultfragment[] = ""
 "\n";
 #endif
 
+#ifndef EGL_EGLEXT_PROTOTYPES
 PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = NULL;
 PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = NULL;
+static int _egl_initprototypes(void)
+{
+	glGenVertexArraysOES = (void *) eglGetProcAddress("glGenVertexArraysOES");
+	if(glGenVertexArraysOES == NULL)
+	{
+		return -1;
+	}
+	glBindVertexArrayOES = (void *) eglGetProcAddress("glBindVertexArrayOES");
+	if(glBindVertexArrayOES == NULL)
+	{
+		return -1;
+	}
+	return 0;
+}
+#else
+#define _egl_initprototypes(...)
+#endif
 
 static void display_log(GLuint instance)
 {
@@ -347,17 +365,6 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config)
 		program->controls = config->controls;
 	if (config && config->tex_name)
 		program->in_texturename = config->tex_name;
-
-	glGenVertexArraysOES = (void *) eglGetProcAddress("glGenVertexArraysOES");
-	if(glGenVertexArraysOES == NULL)
-	{
-		return NULL;
-	}
-	glBindVertexArrayOES = (void *) eglGetProcAddress("glBindVertexArrayOES");
-	if(glBindVertexArrayOES == NULL)
-	{
-		return NULL;
-	}
 
 	if (config && config->next)
 	{
@@ -870,3 +877,10 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 	return 0;
 }
 #endif
+
+#include <dlfcn.h>
+
+static void __attribute__ ((constructor)) segl_init()
+{
+	_egl_initprototypes();
+}
