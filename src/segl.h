@@ -47,6 +47,7 @@ struct GL_Buffer_s
 	EGLImageKHR image;
 	GLuint texture;
 	GLenum textype;
+	EGLint egltarget;
 };
 
 typedef struct GLBuffer_s GLBuffer_t;
