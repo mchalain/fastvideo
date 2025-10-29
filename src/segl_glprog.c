@@ -444,14 +444,18 @@ static int glprog_outtexture(GLProgram_t *program, GLenum textype)
 	return 0;
 }
 
-int glprog_setup(GLProgram_t *program, GLuint fbo)
+int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out)
 {
 	program->fbo = fbo;
 	if (program->next)
 	{
 		if (glprog_outtexture(program, GL_TEXTURE_2D))
 			return -1;
-		return glprog_setup(program->next, fbo);
+		return glprog_setup(program->next, fbo, out);
+	}
+	if (out)
+	{
+		memcpy(&program->out, out, sizeof(program->out));
 	}
 	return 0;
 }
@@ -469,7 +473,7 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 		err = glGetError();
 		if (err != GL_NO_ERROR)
 		{
-			err("segl: program[%d] Framebuffer access error %#X %#X", programid, err, GL_INVALID_FRAMEBUFFER_OPERATION);
+			err("segl: program[%d] Framebuffer access error", programid);
 		}
 	}
 	else

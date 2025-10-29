@@ -108,7 +108,9 @@ typedef void (*segl_native_append_t)(EGLNative_t *native);
 struct EGLExport_s
 {
 	const char *name;
-	void *(*create)(EGLConfig_t *config);
+	void *(*create)(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext);
+	GLuint (*fbo)(void *arg);
+	GL_Buffer_t * (*out)(void *arg);
 	int (*setbuffer)(void *arg, GLBuffer_t *buffer);
 	int (*releasebuffer)(void *arg, GLBuffer_t *buffer);
 	int (*flush)(void *arg, GLBuffer_t *buffer);
@@ -120,7 +122,7 @@ typedef void (*segl_export_append_t)(EGLExport_t *export);
 extern const GLchar *defaulttexturename;
 
 GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height);
-int glprog_setup(GLProgram_t *program, GLuint fbo);
+int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out);
 int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer);
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
 void glprog_destroy(GLProgram_t *program);

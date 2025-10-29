@@ -548,7 +548,8 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 
 static void _egl_releasebuffer(EGL_t *dev, int id)
 {
-	dev->export->releasebuffer(dev->export_ctx, &dev->buffers[id]);
+	if (dev->export_ctx)
+		dev->export->releasebuffer(dev->export_ctx, &dev->buffers[id]);
 	dev->buffers[id].memory = NULL;
 }
 
@@ -661,7 +662,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	dev->dup = dup;
 	dbg("segl: duplicate %.4s %lux%lu", &dup->config->parent.fourcc, width, height);
 	dup->export = dup->config->export;
-	dup->export_ctx = dup->export->create(dup->config);
+	dup->export_ctx = dup->export->create(dup->config, dev->egldisplay, dev->eglcontext);
 	if (!dup->export_ctx)
 	{
 		err("segl: impossible to export data");
@@ -681,7 +682,8 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		dup->buffers[i].pitch = fformat->stride_factor[0];
 		dup->export->setbuffer(dup->export_ctx, &dup->buffers[i]);
 	}
-
+	/// set the parent fbo
+	dev->fbo = dup->export->fbo(dup->export_ctx);
 	return dup;
 }
 
@@ -692,7 +694,10 @@ EXT_API int segl_start(EGL_t *dev)
 	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
 
 	// initialize the first program with the output framebuffer
-	glprog_setup(dev->programs, dev->fbo);
+	GL_Buffer_t *out = NULL;
+	if (dev->dup)
+		out = dev->dup->export->out(dev->dup->export_ctx);
+	glprog_setup(dev->programs, dev->fbo, out);
 
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
 	dev->curbufferid = -1;
@@ -811,7 +816,8 @@ EXT_API void segl_destroy(EGL_t *dev)
 	{
 		_egl_releasebuffer(dev,i);
 	}
-	dev->export->destroy(dev->export_ctx);
+	if (dev->export_ctx)
+		dev->export->destroy(dev->export_ctx);
 	free(dev);
 }
 

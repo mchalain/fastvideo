@@ -15,11 +15,21 @@ struct EGLExportPixels_s
 
 static const char segl[] = "segl";
 
-static void *_egl_export_create(EGLConfig_t *config)
+static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext)
 {
 	EGLExportPixels_t *ctx = calloc(1, sizeof(*ctx));
 	ctx->config = config;
 	return ctx;
+}
+
+static GLuint _egl_export_fbo(void *arg)
+{
+	return 0;
+}
+
+static GL_Buffer_t *_egl_export_out(void *arg)
+{
+	return NULL;
 }
 
 static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
@@ -87,6 +97,8 @@ static EGLExport_t eglexport_pixels =
 {
 	.name = "pixels",
 	.create = _egl_export_create,
+	.fbo = _egl_export_fbo,
+	.out = _egl_export_out,
 	.setbuffer = _egl_export_setbuffer,
 	.flush = _egl_export_flush,
 	.destroy = _egl_export_destroy,
