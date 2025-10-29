@@ -63,20 +63,22 @@ struct EGLConfig_Program_s
 };
 
 typedef struct GLProgram_s GLProgram_t;
+typedef struct EGLExport_s EGLExport_t;
+typedef struct EGLNative_s EGLNative_t;
 
 typedef struct EGLConfig_s EGLConfig_t;
 struct EGLConfig_s
 {
 	DeviceConf_t parent;
 	DeviceConf_t transfer;
-	const char *native;
+	const EGLNative_t *native;
 	const char *device;
 	EGLConfig_Program_t *programs;
+	const EGLExport_t *export;
 };
 
 typedef struct EGL_s EGL_t;
 
-typedef struct EGLNative_s EGLNative_t;
 struct EGLNative_s
 {
 	const char *name;
@@ -91,7 +93,6 @@ struct EGLNative_s
 };
 typedef void (*segl_native_append_t)(EGLNative_t *native);
 
-typedef struct EGLExport_s EGLExport_t;
 struct EGLExport_s
 {
 	void *(*create)(EGLConfig_t *config);

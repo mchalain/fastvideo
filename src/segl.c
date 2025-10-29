@@ -212,22 +212,11 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	uint32_t width = config->parent.width;
 	uint32_t height = config->parent.height;
 
-	const EGLNative_t * native = _natives[0];
-
-	if (config->native)
-	{
-		for (int i = 0; i < sizeof(_natives) / sizeof(*_natives) && _natives[i]; i++)
-		{
-			if (!strcmp(_natives[i]->name, config->native))
-			{
-				native = _natives[i];
-				warn("segl: native %s", native->name);
-				ndisplay = native->display(config);
-				if (EGL_CAST(EGLint,ndisplay) != EGL_UNKNOWN)
-					break;
-			}
-		}
-	}
+	const EGLNative_t * native = config->native;
+	warn("segl: native %s", native->name);
+	ndisplay = native->display(config);
+	if (EGL_CAST(EGLint,ndisplay) == EGL_UNKNOWN)
+		return NULL;
 
 	EGLDisplay eglDisplay = eglGetDisplay(ndisplay);
 
@@ -680,7 +669,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	dup->type = device_input;
 	dev->dup = dup;
 	dbg("segl: duplicate %.4s %lux%lu", &dup->config->parent.fourcc, width, height);
-	dup->export = _exports[0];
+	dup->export = dup->config->export;
 	dup->export_ctx = dup->export->create(dup->config);
 
 	dup->nbuffers = 0;
@@ -836,6 +825,7 @@ DeviceConf_t * segl_createconfig()
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = segl_loadjsonconfiguration;
 #endif
+	devconfig->export = _exports[0];
 	return (DeviceConf_t *)devconfig;
 }
 
@@ -862,7 +852,14 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	if (native && json_is_string(native))
 	{
 		const char *value = json_string_value(native);
-		config->native = value;
+		for (int i = 0; i < sizeof(_natives) / sizeof(*_natives) && _natives[i]; i++)
+		{
+			if (!strcmp(_natives[i]->name, value))
+			{
+				config->native = _natives[i];
+				break;
+			}
+		}
 	}
 	json_t *device = json_object_get(jconfig, "device");
 	if (device && json_is_string(device))
