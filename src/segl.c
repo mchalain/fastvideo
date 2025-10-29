@@ -654,6 +654,8 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	*pconfig = malloc(sizeof(*(dup->config)));
 	memcpy(*pconfig, dev->config, sizeof(*(dup->config)));
 	memmove(&(*pconfig)->parent, &dev->config->transfer, sizeof((*pconfig)->parent));
+	(*pconfig)->parent.width = width;
+	(*pconfig)->parent.height = height;
 	dup->config = *pconfig;
 	dup->type = device_input;
 	dev->dup = dup;
