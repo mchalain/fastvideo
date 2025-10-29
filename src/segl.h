@@ -29,6 +29,18 @@
 /**
  * structure shared by segl and segl_glprog
  */
+typedef struct FourccFormat_s FourccFormat_t;
+struct FourccFormat_s
+{
+	uint32_t fourcc;
+	GLuint internal;
+	GLuint full;
+	GLuint data;
+	int nplanes;
+	int stride_factor[4];
+};
+const FourccFormat_t *fourcc_getformat(uint32_t fourcc);
+
 typedef struct GL_Buffer_s GL_Buffer_t;
 struct GL_Buffer_s
 {

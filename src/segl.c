@@ -17,17 +17,6 @@
 
 #define segl_dbg(...)
 
-typedef struct FourccFormat_s FourccFormat_t;
-struct FourccFormat_s
-{
-	uint32_t fourcc;
-	GLuint internal;
-	GLuint full;
-	GLuint data;
-	int nplanes;
-	int stride_factor[4];
-};
-
 const EGLNative_t * _natives[5] = {0};
 
 void segl_native_append(EGLNative_t *native)
@@ -129,7 +118,7 @@ static FourccFormat_t _FourccFormats[] =
 	{ .fourcc = FOURCC_YUYV, .internal = GL_RGBA     , .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
 };
 
-static const FourccFormat_t *fourcc_getformat(uint32_t fourcc)
+const FourccFormat_t *fourcc_getformat(uint32_t fourcc)
 {
 	FourccFormat_t *format = NULL;
 	for (int i = 0; i < sizeof(_FourccFormats)/sizeof(*_FourccFormats); i++)
