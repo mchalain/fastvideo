@@ -107,6 +107,7 @@ typedef void (*segl_native_append_t)(EGLNative_t *native);
 
 struct EGLExport_s
 {
+	const char *name;
 	void *(*create)(EGLConfig_t *config);
 	int (*setbuffer)(void *arg, GLBuffer_t *buffer);
 	int (*releasebuffer)(void *arg, GLBuffer_t *buffer);

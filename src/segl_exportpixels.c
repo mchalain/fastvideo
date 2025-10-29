@@ -63,7 +63,6 @@ static int _egl_export_flush(void *arg, GLBuffer_t *buffer)
 		ret = 0;
 	}
 	return ret;
-	return ret;
 }
 
 static int _egl_export_releasebuffer(void *arg, GLBuffer_t *buffer)
@@ -76,6 +75,7 @@ static int _egl_export_releasebuffer(void *arg, GLBuffer_t *buffer)
 	if (buffer->memory != NULL)
 		free(buffer->memory);
 #endif
+	return 0;
 }
 
 static void _egl_export_destroy(void *arg)
@@ -85,6 +85,7 @@ static void _egl_export_destroy(void *arg)
 
 static EGLExport_t eglexport_pixels =
 {
+	.name = "pixels",
 	.create = _egl_export_create,
 	.setbuffer = _egl_export_setbuffer,
 	.flush = _egl_export_flush,

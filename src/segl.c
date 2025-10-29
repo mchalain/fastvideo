@@ -662,6 +662,12 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	dbg("segl: duplicate %.4s %lux%lu", &dup->config->parent.fourcc, width, height);
 	dup->export = dup->config->export;
 	dup->export_ctx = dup->export->create(dup->config);
+	if (!dup->export_ctx)
+	{
+		err("segl: impossible to export data");
+		free(dup);
+		return NULL;
+	}
 
 	dup->nbuffers = 0;
 	const FourccFormat_t *fformat = fourcc_getformat(dup->config->parent.fourcc);
@@ -848,6 +854,19 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 			if (!strcmp(_natives[i]->name, value))
 			{
 				config->native = _natives[i];
+				break;
+			}
+		}
+	}
+	json_t *export = json_object_get(jconfig, "export");
+	if (export && json_is_string(export))
+	{
+		const char *value = json_string_value(export);
+		for (int i = 0; i < sizeof(_exports) / sizeof(*_exports) && _exports[i]; i++)
+		{
+			if (!strcmp(_exports[i]->name, value))
+			{
+				config->export = _exports[i];
 				break;
 			}
 		}
