@@ -30,35 +30,20 @@
 int _createdevices(void *data, const char *name, const char *type, void *config)
 {
 	FastVideoList_t **devices = data;
-	FastVideoDevice_ops_t *fastVideoDevice_ops[] =
+	for (FastVideoDevice_ops_t *ops = fastvideodevice_ops_next(NULL);
+		ops != NULL; ops = fastvideodevice_ops_next(ops))
 	{
-		&sv4l2_ops,
-		&subdev_ops,
-#ifdef SDVB
-		&sdvb_ops,
-#endif
-#ifdef HAVE_EGL
-		&segl_ops,
-#endif
-#ifdef HAVE_LIBDRM
-		&sdrm_ops,
-#endif
-		&sfile_ops,
-		NULL
-	};
-	for (int i = 0; fastVideoDevice_ops[i] != NULL; i++)
-	{
-		if (! strcmp(fastVideoDevice_ops[i]->name, type))
+		if (! strcmp(ops->name, type))
 		{
 			DeviceConf_t *devconfig = NULL;
-			devconfig = config_create(name, fastVideoDevice_ops[i], config);
+			devconfig = config_create(name, ops, config);
 			if (devconfig)
 			{
 				devconfig->ops.loadconfiguration(devconfig, config);
 				FastVideoDevice_t *device = NULL;
 				device = calloc(1, sizeof(*device));
 				device->config = devconfig;
-				device->ops = fastVideoDevice_ops[i];
+				device->ops = ops;
 				*devices = fastvideolist_insert(*devices, device);
 				err("new config for %s %p", name, devconfig);
 				/// 1 will stop the loop about the names list but continue the loop about the devices list
@@ -225,6 +210,8 @@ int main(int argc, char * const argv[])
 	unsigned int mode = 0;
 	const char *logfile = "-";
 	const char *cwd = NULL;
+
+	fastvideodevice_ops_append(&subdev_ops);
 
 	int opt;
 	do
