@@ -686,6 +686,10 @@ int spassthrough_capabilities(Passthrough_t *dev, json_t *capabilities, int all)
 	json_array_append_new(controls, dryrun);
 	json_array_append_new(controls, tee);
 	json_object_set_new(capabilities, "controls", controls);
+	json_t *branch = json_object();
+	json_object_set_new(branch, "name", json_string("enc-h264"));
+	json_object_set_new(branch, "type", json_string("v4l2"));
+	json_object_set_new(capabilities, "branch", branch);
 	json_object_set_new(capabilities, "copy", json_false());
 	json_t *convert = json_object();
 	json_object_set_new(convert, "name", json_string("rgba"));
