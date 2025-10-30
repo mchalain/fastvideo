@@ -49,4 +49,9 @@
 	"name":"passthrough",
 	"type":"passthrough",
 	"end":true
+},{
+	"name":"dryrun",
+	"type":"passthrough",
+	"dryrun": true,
+	"end":true
 }]
