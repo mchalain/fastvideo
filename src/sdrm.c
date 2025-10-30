@@ -1485,7 +1485,10 @@ int sdrm_loadjsonsettings(void *arg, void *entry)
 	Display_t *disp = (Display_t *)arg;
 	json_t *jrotation = NULL;
 	if (json_is_object(jconfig))
+	{
 		jrotation = json_object_get(jconfig, "rotation");
+		jconfig = json_object_get(jconfig, "controls");
+	}
 	if (json_is_array(jconfig))
 	{
 		int index;
