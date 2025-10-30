@@ -1,177 +1,887 @@
-{
-	"devices":
-	[{
-		"name":"cam-ov5647",
-		"type":"cam",
-		"device":"/dev/video0",
-		"subdevice":"/dev/v4l-subdev0",
-		"definition": {
-			"fourcc~":"BA10",
-			"fourcc":"GB10",
-			"width":640,
-			"height":480,
-			"fps":30,
-			"end":true
-		},
-		"controls":[{
-			"name":"White Balance, Automatic",
-			"value":true
-		},{
-			"name":"Gain, Automatic",
-			"value":true
-		},{
-			"name":"~Analogue Gain",
-			"value":1020
-		},{
-			"name":"Auto Exposure",
-			"value":true
-		},{
-			"name":"~Exposure",
-			"value":1000
-		},{
-			"name":"Vertical Flip",
-			"value":true
-		},{
-			"name":"Horizontal Flip",
-			"value":true
-		},{
-			"name":"Vertical Blanking",
-			"value":-1
-		}],
-		"end":true
-	},{
-		"name":"cam-imx477",
-		"type":"cam",
-		"device":"/dev/video0",
-		"subdevice":"/dev/v4l-subdev0",
-		"definition": {
-			"fourcc":"RG12",
-			"width":2028,
-			"height":1080,
-			"fps":30,
-			"end":true
-		},
-		"controls":[{
-			"name":"Auto Exposure",
-			"value":true
-		},{
-			"name":"White Balance, Automatic",
-			"value":true
-		}],
-		"end":true
-	},{
-		"name":"cam-imx708",
-		"type":"cam",
-		"device":"/dev/video0",
-		"subdevice":"/dev/v4l-subdev0",
-		"definition": {
-			"fourcc":"RG10",
-			"width":1536,
-			"height":864,
-			"fps":30,
-			"end":true
-		},
-		"controls":[{
-			"name":"Auto Exposure",
-			"value":true
-		},{
-			"name":"White Balance, Automatic",
-			"value":true
-		}],
-		"end":true
-	},{
-		"name":"cam-imx296",
-		"type":"cam",
-		"device":"/dev/video0",
-		"subdevice":"/dev/v4l-subdev0",
-		"definition": {
-			"fourcc":"BG10",
-			"width":1456,
-			"height":1088,
-			"fps":30,
-			"end":true
-		},
-		"controls":[{
-			"name":"Auto Exposure",
-			"value":true
-		},{
-			"name":"White Balance, Automatic",
-			"value":true
-		}],
-		"end":true
-	},{
-		"name":"isp-in",
-		"type":"cam",
-		"device":"/dev/video13",
-		"definition": {
-			"end":true
-		},
-		"controls":[],
-		"end":true
-	},{
-		"name":"isp-meta",
-		"type":"cam",
-		"device":"/dev/video16",
-		"definition":{
-			"fourcc":"BSTA",
-			"end":true
-		},
-		"controls":[],
-		"end":true
-	},{
-		"name":"isp-out",
-		"type":"cam",
-		"description":"high resolution output",
-		"device":"/dev/video14",
-		"definition": {
-			"width":1920,
-			"height":1080,
-			"fourcc":"XB24",
-			"end":true
-		},
-		"controls":[],
-		"end":true
-	},{
-		"name":"isp-out2",
-		"type":"cam",
-		"description":"low resolution output, needs that video14 running",
-		"device":"/dev/video15",
-		"definition": {
-			"width":640,
-			"height":480,
-			"fourcc":"YUYV",
-			"end":true
-		},
-		"controls":[],
-		"end":true
-	},{
-		"name":"screen",
-		"type":"screen",
-		"device":"/dev/dri/card0",
-		"definition":{
-			"end":true
-		},
-		"end":true
-	},{
-		"name":"enc-h264",
-		"type":"cam",
-		"device":"/dev/video11",
-		"controls":[],
-		"end":true
-	},{
-		"name":"enc-jpeg",
-		"device":"/dev/video31",
-		"controls":[],
-		"end":true
-	},{
-		"name":"gpu",
-		"type":"gpu",
-		"device":"/dev/dri/card0",
-		"native":"drm",
-		"definition":{
-			"end":true
-		},
-		"end":true
-	}],
-	"end":true
-}
+[
+  {
+    "name": ["isp1-in","bcm2835-isp0-output0"],
+    "type": "v4l2",
+    "device": "/dev/video20",
+    "definition": [],
+    "transformation": [],
+    "controls": [
+      {
+        "name": "Red Balance",
+        "id": 9963790,
+        "value": 1000
+      },{
+        "name": "Blue Balance",
+        "id": 9963791,
+        "value": 1000
+      },{
+        "name": "Colour Correction Matrix",
+        "id": 9968097,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0,
+          120, 46, 97,188,127,  0,  0,  0,
+            0,  0,  0,  0,  0,  0,  0,  0,
+           16,108, 90,222,127,  0,  0,  0,
+            0,132,128,188,127,  0,  0,  0,
+           32,108, 90,222,127,  0,  0,  0,
+            0, 46,128,188,127,  0,  0,  0,
+           64,250,143,188,127,  0,  0,  0,
+           32, 46, 97,188,127,  0,  0,  0
+        ]
+      },{
+        "name": "Lens Shading",
+        "id": 9968098,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0,
+          120, 46, 97,188,127,  0,  0,  0,
+            0,  0,  0,  0
+        ]
+      },{
+        "name": "Black Level",
+        "id": 9968099,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0
+        ]
+      },{
+        "name": "Green Equalisation",
+        "id": 9968100,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0
+        ]
+      },{
+        "name": "Gamma",
+        "id": 9968101,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0,
+          120, 46, 97,188,127,  0,  0,  0,
+            0,  0,  0,  0,  0,  0,  0,  0,
+           16,108, 90,222,127,  0,  0,  0,
+            0,132,128,188,127,  0,  0,  0,
+           32,108, 90,222,127,  0,  0,  0,
+            0, 46,128,188,127,  0,  0,  0,
+           64,250,143,188,127,  0,  0,  0,
+           32, 46, 97,188,127,  0,  0,  0,
+           24,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0,
+          120, 46, 97,188,127,  0,  0,  0,
+           64,139,150,188,127,  0,  0,  0,
+            0,  0,  0,  0,  0,  0,  0,  0,
+            0,  1,150,188,127,  0,  0,  0
+        ]
+      },{
+        "name": "Denoise",
+        "id": 9968102,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0
+        ]
+      },{
+        "name": "Sharpen",
+        "id": 9968103,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0,
+          120, 46, 97,188
+        ]
+      },{
+        "name": "Defective Pixel Correction",
+        "id": 9968104,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0
+        ]
+      },{
+        "name": "Colour Denoise",
+        "id": 9968105,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0
+        ]
+      },{
+        "name": "Digital Gain",
+        "id": 10422533,
+        "value": 1000
+      }
+    ],
+    "id": 6,
+    "media": "media4"
+  },{
+    "name": ["isp1-out","bcm2835-isp0-capture1"],
+    "type": "v4l2",
+    "device": "/dev/video21",
+    "definition": {
+      "fourcc": "NV12",
+      "width": 1920,
+      "height": 1080
+    },
+    "id": 12,
+    "media": "media4"
+  },{
+    "name": ["isp1-out2","bcm2835-isp0-capture2"],
+    "type": "v4l2",
+    "device": "/dev/video22",
+    "definition": {
+      "fourcc": "YUYV",
+      "width": 640,
+      "height": 480
+    },
+    "id": 18,
+    "media": "media4"
+  },
+  {
+    "name": ["isp1-meta"],
+    "type": "v4l2",
+    "device": "/dev/video23",
+    "media": "media1",
+    "definition":{
+      "mode": ["capture","meta"],
+      "fourcc": "BSTA",
+      "fps": 30,
+      "end": true
+    },
+    "end": true
+  },{
+    "name": ["dec-h264","bcm2835-codec-decode-source"],
+    "type": "v4l2",
+    "device": "/dev/video10",
+    "definition": {
+      "fourcc": "H264",
+      "width": 1920,
+      "height": 1080
+    },
+    "controls": [
+      {
+        "name": "Min Number of Capture Buffers",
+        "id": 9963815,
+        "value": 1
+      },{
+        "name": "H264 Level",
+        "id": 10029671,
+        "value": 11,
+        "value_show": "4"
+      },{
+        "name": "H264 Profile",
+        "id": 10029675,
+        "value": 4
+      }
+    ],
+    "id": 1,
+    "media": "media2"
+  },{
+    "name": ["enc-h264","bcm2835-codec-encode-source"],
+    "type": "v4l2",
+    "device": "/dev/video11",
+    "definition": {
+      "width":1920,
+      "height":1080,
+      "end":true
+    },
+    "transformation": [
+    ],
+    "controls": [
+      {
+        "name": "Video B Frames",
+        "id": 10029514,
+        "value": 0
+      },{
+        "name": "Video GOP Size",
+        "id": 10029515,
+        "value": 60
+      },{
+        "name": "Video Bitrate Mode",
+        "id": 10029518,
+        "value": 0,
+        "value_show": "Variable Bitrate"
+      },{
+        "name": "Video Bitrate",
+        "id": 10029519,
+        "value": 10000000
+      },{
+        "name": "Sequence Header Mode",
+        "id": 10029528,
+        "value": 1,
+        "value_show": "Joined With 1st Frame"
+      },{
+        "name": "Repeat Sequence Header",
+        "id": 10029538,
+        "value": true
+      },{
+        "name": "Force Key Frame",
+        "id": 10029541
+      },{
+        "name": "H264 Minimum QP Value",
+        "id": 10029665,
+        "value": 20
+      },{
+        "name": "H264 Maximum QP Value",
+        "id": 10029666,
+        "value": 51
+      },{
+        "name": "H264 I-Frame Period",
+        "id": 10029670,
+        "value": 60
+      },{
+        "name": "H264 Level",
+        "id": 10029671,
+        "value": 13,
+        "value_show": "4.2"
+      },{
+        "name": "H264 Profile",
+        "id": 10029675,
+        "value": 4
+      }
+    ],
+    "action": {
+      "periodic":  0,
+      "periodiccontrol": 10029541,
+      "end": true
+    },
+    "id": 15,
+    "media": "media2"
+  },{
+    "name": ["debayer","bcm2835-codec-isp-source"],
+    "type": "v4l2",
+    "device": "/dev/video12",
+    "definition": [
+    ],
+    "transformation": [
+    ],
+    "controls": [
+      {
+        "name": "Horizontal Flip",
+        "id": 9963796,
+        "value": false
+      },{
+        "name": "Vertical Flip",
+        "id": 9963797,
+        "value": false
+      }
+    ],
+    "id": 29,
+    "media": "media2"
+  },{
+    "name": [
+      "crop",
+      "bcm2835-codec-image_fx-source"
+    ],
+    "type": "v4l2",
+    "device": "/dev/video18",
+    "definition": [
+    ],
+    "transformation": [
+      {
+        "name":"crop",
+        "top": 0,
+        "left": 0,
+        "width": 640,
+        "height": 480
+      }
+    ],
+    "id": 43,
+    "media": "media2"
+  },{
+    "name": ["enc-jpeg","bcm2835-codec-encode_image-sour"],
+    "type": "v4l2",
+    "device": "/dev/video31",
+    "definition": [
+    ],
+    "transformation": [
+    ],
+    "controls": [
+      {
+        "name": "Compression Quality",
+        "id": 10291459,
+        "value": 80
+      }
+    ],
+    "id": 57,
+    "media": "media2"
+  },
+  {
+    "name": ["dec-hevc","rpivid-source"],
+    "type": "v4l2",
+    "device": "/dev/video19",
+    "definition": {
+      "fourcc": "S265",
+      "width": 1920,
+      "height": 1088
+    },
+    "controls": [
+      {
+        "name": "HEVC Decode Mode",
+        "id": 10750613,
+        "value": 0,
+        "value_show": "Slice-Based"
+      },{
+        "name": "HEVC Start Code",
+        "id": 10750614,
+        "value": 0,
+        "value_show": "No Start Code"
+      }
+    ],
+    "id": 1,
+    "media": "media0"
+  },{
+    "name": ["isp-in","bcm2835-isp0-output0"],
+    "type": "v4l2",
+    "device": "/dev/video13",
+    "definition": {
+      "width":1920,
+      "height":1080,
+      "end":true
+    },
+    "transformation": [
+    ],
+    "controls": [
+      {
+        "name": "Red Balance",
+        "id": 9963790,
+        "value": 1000
+      },{
+        "name": "Blue Balance",
+        "id": 9963791,
+        "value": 1000
+      },{
+        "name": "Colour Correction Matrix",
+        "id": 9968097,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0,
+          120, 46, 97,188,127,  0,  0,  0,
+            0,  0,  0,  0,  0,  0,  0,  0,
+           16,108, 90,222,127,  0,  0,  0,
+            0,132,128,188,127,  0,  0,  0,
+           32,108, 90,222,127,  0,  0,  0,
+            0, 46,128,188,127,  0,  0,  0,
+           64,250,143,188,127,  0,  0,  0,
+           32, 46, 97,188,127,  0,  0,  0
+        ]
+      },{
+        "name": "Lens Shading",
+        "id": 9968098,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0,
+          120, 46, 97,188,127,  0,  0,  0,
+            0,  0,  0,  0
+        ]
+      },{
+        "name": "Black Level",
+        "id": 9968099,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0
+        ]
+      },{
+        "name": "Green Equalisation",
+        "id": 9968100,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0
+        ]
+      },{
+        "name": "Gamma",
+        "id": 9968101,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0,
+          120, 46, 97,188,127,  0,  0,  0,
+            0,  0,  0,  0,  0,  0,  0,  0,
+           16,108, 90,222,127,  0,  0,  0,
+            0,132,128,188,127,  0,  0,  0,
+           32,108, 90,222,127,  0,  0,  0,
+            0, 46,128,188,127,  0,  0,  0,
+           64,250,143,188,127,  0,  0,  0,
+           32, 46, 97,188,127,  0,  0,  0,
+           24,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0,
+          120, 46, 97,188,127,  0,  0,  0,
+           64,139,150,188,127,  0,  0,  0,
+            0,  0,  0,  0,  0,  0,  0,  0,
+            0,  1,150,188,127,  0,  0,  0
+        ]
+      },{
+        "name": "Denoise",
+        "id": 9968102,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0
+        ]
+      },{
+        "name": "Sharpen",
+        "id": 9968103,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0,
+           59,  0,  0,  0,  0,  0,  0,  0,
+           88,  0,  0,  0,  0,  0,  0,  0,
+          120, 46, 97,188
+        ]
+      },{
+        "name": "Defective Pixel Correction",
+        "id": 9968104,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0
+        ]
+      },{
+        "name": "Colour Denoise",
+        "id": 9968105,
+        "value": [
+           32, 46, 97,188,127,  0,  0,  0
+        ]
+      },{
+        "name": "Digital Gain",
+        "id": 10422533,
+        "value": 1000
+      }
+    ],
+    "id": 6,
+    "media": "media3"
+  },
+  {
+    "name": ["isp-out","bcm2835-isp0-capture1"],
+    "type": "v4l2",
+    "device": "/dev/video14",
+    "definition": {
+      "fourcc": "XR24",
+      "width": 1920,
+      "height": 1080
+    },
+    "id": 12,
+    "media": "media3"
+  },
+  {
+    "name": ["isp-out2","bcm2835-isp0-capture2"],
+    "type": "v4l2",
+    "device": "/dev/video15",
+    "definition": {
+      "fourcc": "YUYV",
+      "width": 640,
+      "height": 480
+    },
+    "id": 18,
+    "media": "media3"
+  },
+  {
+    "name": ["isp-meta"],
+    "type": "v4l2",
+    "device": "/dev/video16",
+    "media": "media1",
+    "definition":{
+      "fourcc": "BSTA",
+      "end": true
+    },
+    "end": true
+  },
+  {
+    "name": ["unicam-image","cam-imx477","cam-imx296","cam-imx708","cam-ov5647"],
+    "type": "v4l2",
+    "device": "/dev/video0",
+    "id": 6,
+    "media": "media1",
+    "definition":{
+      "fourcc": "GB10",
+      "width": 1920,
+      "height": 1080,
+      "end": true
+    },
+    "subdevices": [
+      {
+        "name": ["cam-imx708","imx708_wide_noir"],
+	"disable": true,
+        "type": "subv4l",
+        "device": "/dev/v4l-subdev0",
+        "definition": {
+          "fourcc": "RG10",
+          "width": 2304,
+          "height": 1296
+        },
+        "controls": [
+          {
+            "name": "Exposure",
+            "id": 9963793,
+            "value": 1600
+          },{
+            "name": "Horizontal Flip",
+            "id": 9963796,
+            "value": false
+          },{
+            "name": "Vertical Flip",
+            "id": 9963797,
+            "value": false
+          },{
+            "name": "Wide Dynamic Range",
+            "id": 10094869,
+            "value": false
+          },{
+            "name": "Camera Orientation",
+            "id": 10094882,
+            "value": 2,
+            "value_show": "External"
+          },{
+            "name": "Camera Sensor Rotation",
+            "id": 10094883,
+            "value": 180
+          },{
+            "name": "Vertical Blanking",
+            "id": 10356993,
+            "value": 58
+          },{
+            "name": "Horizontal Blanking",
+            "id": 10356994,
+            "value": 11040
+          },{
+            "name": "Analogue Gain",
+            "id": 10356995,
+            "value": 112
+          },{
+            "name": "Red Pixel Value",
+            "id": 10356996,
+            "value": 4095
+          },{
+            "name": "Green (Red) Pixel Value",
+            "id": 10356997,
+            "value": 4095
+          },{
+            "name": "Blue Pixel Value",
+            "id": 10356998,
+            "value": 4095
+          },{
+            "name": "Green (Blue) Pixel Value",
+            "id": 10356999,
+            "value": 4095
+          },{
+            "name": "Notify Gains",
+            "id": 10357001,
+            "value": -1
+          },{
+            "name": "Link Frequency",
+            "id": 10422529,
+            "value": 0,
+            "value_show": 450000000
+          },{
+            "name": "Pixel Rate",
+            "id": 10422530,
+            "value": 595200000
+          },{
+            "name": "Test Pattern",
+            "id": 10422531,
+            "value": 0,
+            "value_show": "Disabled"
+          },{
+            "name": "Digital Gain",
+            "id": 10422533,
+            "value": 256
+          }
+        ],
+        "sink": 12,
+        "id": 1,
+        "media": "media1"
+      },
+      {
+        "name": ["cam-imx708","dw9807 10-000c"],
+        "disable": true,
+        "type": "subv4l",
+        "device": "/dev/v4l-subdev1",
+        "controls": [
+          {
+            "name": "Focus, Absolute",
+            "id": 10094858,
+            "value": 480
+          }
+        ],
+        "id": 4,
+        "media": "media1"
+      },
+      {
+        "name": ["cam-imx296","imx296 10-001a"],
+	"disable": true,
+        "type": "subv4l",
+        "device": "/dev/v4l-subdev0",
+        "definition": {
+          "fourcc": "RG10",
+          "width":1456,
+          "height":1088
+        },
+        "controls": [
+          {
+            "name": "Exposure",
+            "id": 9963793,
+            "value": 1104
+          },{
+            "name": "Horizontal Flip",
+            "id": 9963796,
+            "value": false
+          },{
+            "name": "Vertical Flip",
+            "id": 9963797,
+            "value": false
+          },{
+            "name": "Camera Orientation",
+            "id": 10094882,
+            "value": 2,
+            "value_show": "External"
+          },{
+            "name": "Camera Sensor Rotation",
+            "id": 10094883,
+            "value": 180
+          },{
+            "name": "Vertical Blanking",
+            "id": 10356993,
+            "value": 30
+          },{
+            "name": "Horizontal Blanking",
+            "id": 10356994,
+            "value": 304
+          },{
+            "name": "Analogue Gain",
+            "id": 10356995,
+            "value": 0
+          },{
+            "name": "Pixel Rate",
+            "id": 10422530,
+            "value": 118800000
+          },{
+            "name": "Test Pattern",
+            "id": 10422531,
+            "value": 0,
+            "value_show": "Disabled"
+          }
+        ],
+        "sink": 3,
+        "id": 1,
+        "media": "/dev/media1"
+      },{
+        "name": ["cam-imx477","imx477 10-001a"],
+        "disable": true,
+        "type": "subv4l",
+        "device": "/dev/v4l-subdev0",
+        "definition": {
+          "fourcc": "RG12",
+          "width": 2028,
+          "height": 1080
+        },
+        "controls": [
+          {
+            "name": "Exposure",
+            "id": 9963793,
+            "value": 1516
+          },
+          {
+            "name": "Horizontal Flip",
+            "id": 9963796,
+            "value": false
+          },
+          {
+            "name": "Vertical Flip",
+            "id": 9963797,
+            "value": false
+          },
+          {
+            "name": "Camera Orientation",
+            "id": 10094882,
+            "value": 2,
+            "value_show": "External"
+          },
+          {
+            "name": "Camera Sensor Rotation",
+            "id": 10094883,
+            "value": 180
+          },
+          {
+            "name": "Vertical Blanking",
+            "id": 10356993,
+            "value": 46
+          },
+          {
+            "name": "Horizontal Blanking",
+            "id": 10356994,
+            "value": 19944
+          },
+          {
+            "name": "Analogue Gain",
+            "id": 10356995,
+            "value": 900
+          },
+          {
+            "name": "Red Pixel Value",
+            "id": 10356996,
+            "value": 4095
+          },
+          {
+            "name": "Green (Red) Pixel Value",
+            "id": 10356997,
+            "value": 2047
+          },
+          {
+            "name": "Blue Pixel Value",
+            "id": 10356998,
+            "value": 4095
+          },
+          {
+            "name": "Green (Blue) Pixel Value",
+            "id": 10356999,
+            "value": 2047
+          },
+          {
+            "name": "Link Frequency",
+            "id": 10422529,
+            "value": 0,
+            "value_show": 450000000
+          },
+          {
+            "name": "Pixel Rate",
+            "id": 10422530,
+            "value": 840000000
+          },
+          {
+            "name": "Test Pattern",
+            "id": 10422531,
+            "value": 0,
+            "value_show": "Disabled"
+          },
+          {
+            "name": "Digital Gain",
+            "id": 10422533,
+            "value": 256
+          }
+        ],
+        "sink": 10,
+        "id": 1,
+        "media": "/dev/media4"
+      },{
+        "name": ["cam-ov5647","ov5647 10-0036"],
+	"disable": false,
+        "type": "subv4l",
+        "device": "/dev/v4l-subdev0",
+        "definition": {
+          "fourcc": "GB10",
+          "width": 1920,
+          "-width": 640,
+          "height": 1080,
+          "-height": 480,
+          "fps": 30,
+          "end": true
+        },
+        "controls": [
+          {
+            "disable": false,
+            "name":"White Balance, Automatic",
+            "id": 9963788,
+            "value":true
+          },{
+            "disable": false,
+            "name":"Gain, Automatic",
+            "id": 9963794,
+            "value": true
+          },{
+            "disable": true,
+            "name":"Analogue Gain",
+            "id": 10356995,
+            "value":100
+          },{
+            "disable": false,
+            "name":"Auto Exposure",
+            "id": 10094849,
+            "value": 0
+          },{
+            "disable": true,
+            "name":"Exposure",
+            "id": 9963793,
+            "value":1000
+          },{
+            "disable": false,
+            "name":"Vertical Flip",
+            "id": 9963797,
+            "comment": "true value fail the startup",
+            "value": false
+          },{
+            "disable": false,
+            "name":"Horizontal Flip",
+            "id": 9963796,
+            "comment": "true value fail the startup",
+            "value": false
+          },{
+            "read-only": true,
+            "name": "Camera Sensor Rotation",
+            "id": 10094883,
+            "value": 180
+          },{
+            "disable": false,
+            "name":"Vertical Blanking",
+            "id": 10356993,
+            "comment": "set this value for fps: value = (pixelrate / fps / (width+hblank)) - height; 24=>60fps 46=>30fps",
+            "value": 24
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name":[ "screen" ],
+    "type":"screen",
+    "device":"/dev/dri/card0",
+    "rotation": [ "reflect"],
+    "end":true
+  },
+  {
+    "name":[ "gpu" ],
+    "type":"gpu",
+    "native":"drm",
+    "device":"/dev/dri/card0",
+    "definition": {
+      "transfer": "XR24",
+      "end": true
+    },
+    "end":true
+  },
+  {
+    "name":[ "offscreen" ],
+    "type":"gpu",
+    "native":"offscreen",
+    "device":"/dev/dri/renderD128",
+    "definition": {
+      "width": 1920,
+      "height": 1080,
+      "transfer": "XR24",
+      "transfer_modifiers": 1,
+      "end": true
+    },
+    "end":true
+  },
+  {
+    "name": "dvb-i",
+    "type": "mpegts",
+    "port": 5024,
+    "host": "192.168.176.12",
+    "periodic": 60,
+    "end": true
+  },
+  {
+    "name": "file",
+    "type": "file",
+    "end": true
+  },
+  {
+    "name": "dryrun",
+    "type": "passthrough",
+    "control": [
+      {
+        "dryrun": true,
+        "end": true
+      }
+    ],
+    "end": true
+  }
+]

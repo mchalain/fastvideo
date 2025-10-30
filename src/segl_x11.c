@@ -24,7 +24,7 @@
 // X11 related local variables
 static Display *display = NULL;
 
-static EGLNativeDisplayType native_display(const char *device)
+static EGLNativeDisplayType native_display(EGLConfig_t *config)
 {
 	if (display == NULL)
 		/** environment management */
@@ -32,6 +32,21 @@ static EGLNativeDisplayType native_display(const char *device)
 	if (display == NULL)
 		err("segl: no connection to X11");
 	return (EGLNativeDisplayType)display;
+}
+
+static const EGLint g_attributes[] = {
+	EGL_RED_SIZE, 8,
+	EGL_GREEN_SIZE, 8,
+	EGL_BLUE_SIZE, 8,
+	EGL_ALPHA_SIZE, 8,
+	//EGL_DEPTH_SIZE, 16, // DEPTH management in useless for this application
+	EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+	EGL_NONE
+};
+
+static const GLint *native_attributes(EGLNativeDisplayType display)
+{
+	return g_attributes;
 }
 
 static int native_fd(EGLNativeWindowType native_win)
@@ -72,9 +87,8 @@ static int native_sync(EGLNativeWindowType native_win)
 	return 0;
 }
 
-static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLuint width, GLuint height, const GLchar *name)
+static EGLNativeWindowType native_createwindow(EGLNativeDisplayType native_display, GLuint width, GLuint height, const GLchar *name)
 {
-	
 	Window root = DefaultRootWindow(display);
 
 	XSetWindowAttributes swa;
@@ -124,13 +138,27 @@ static void native_destroy(EGLNativeDisplayType native_display)
 {
 }
 
-EGLNative_t *eglnative_x11 = &(EGLNative_t)
+EGLNative_t eglnative_x11 =
 {
 	.name = "x11",
 	.display = native_display,
+	.attributes = native_attributes,
 	.createwindow = native_createwindow,
 	.fd = native_fd,
 	.flush = native_flush,
 	.sync = native_sync,
 	.destroy = native_destroy,
 };
+
+#include <dlfcn.h>
+
+static void __attribute__ ((constructor)) segl_init()
+{
+	segl_native_append_t _segl_native_append;
+	void *hdl = dlopen(NULL, RTLD_NOW);
+	_segl_native_append = dlsym(hdl, "segl_native_append");
+	if (_segl_native_append)
+	{
+		_segl_native_append(&eglnative_x11);
+	}
+}

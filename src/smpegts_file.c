@@ -1,0 +1,130 @@
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+
+#include "fastvideo.h"
+#include "config.h"
+#include "smpegts.h"
+#include "log.h"
+
+typedef struct Proto_FILE_s Proto_FILE_t;
+struct Proto_FILE_s
+{
+	MPEG_TSConf_t *config;
+	int rootfd;
+	int fd[2];
+	int currentfd;
+	char filename[64];
+	int fileid;
+	size_t mtu;
+};
+
+static void *proto_create(MPEG_TSConf_t *config)
+{
+	int rootfd;
+	size_t mtu = 188 * 10;
+
+	rootfd = open(config->host, O_DIRECTORY);
+	if (rootfd < 0)
+	{
+		mkdir(config->host, 0777);
+		rootfd = open(config->host, O_DIRECTORY);
+	}
+	if (rootfd < 0)
+		return NULL;
+	Proto_FILE_t *proto = calloc(1, sizeof(*proto));
+	proto->config = config;
+	proto->mtu = mtu;
+	proto->rootfd = rootfd;
+	return proto;
+}
+
+static int proto_connect(void *arg)
+{
+	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
+	MPEG_TSConf_t *config = proto->config;
+
+	int newfd = proto->currentfd + 1;
+	newfd %= 2;
+	if (proto->fd[newfd] > 0)
+	{
+		close(proto->fd[newfd]);
+	}
+	snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.ts", proto->fileid);
+#ifdef O_TMPFILE
+	proto->fd[newfd] = open(config->host, O_TMPFILE | O_RDWR, 0644);
+#else
+	proto->fd[newfd] = openat(proto->rootfd, proto->filename, O_CREAT | O_WRONLY, 0644);
+#endif
+	if (proto->fd[newfd] < 0)
+		return -1;
+	proto->currentfd = newfd;
+	proto->fileid++;
+	return 0;
+}
+
+static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
+{
+	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
+	ssize_t ret = 0;
+
+	ret = write(proto->fd[proto->currentfd], buf, len);
+//warn("%s %d %d", __FILE__, __LINE__, ret);
+	return ret;
+}
+
+static void proto_flush(void *arg)
+{
+	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
+	fsync(proto->fd[proto->currentfd]);
+}
+
+static int proto_fd(void *arg)
+{
+	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
+	return -1;
+}
+
+static size_t proto_mtu(void *arg)
+{
+	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
+	return proto->mtu;
+}
+
+static void proto_close(void *arg)
+{
+	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
+	MPEG_TSConf_t *config = proto->config;
+
+	if (proto->fd[proto->currentfd])
+	{
+#ifdef O_TMPFILE
+		linkat(proto->fd[proto->currentfd], "", proto->fd[proto->currentfd], proto->filename, AT_EMPTY_PATH);
+#endif
+		close(proto->fd[proto->currentfd]);
+		proto->fd[proto->currentfd] = -1;
+	}
+}
+
+static void proto_destroy(void *arg)
+{
+	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
+	free(proto);
+}
+
+Proto_t proto_file =
+{
+	.name = "file",
+	.create = proto_create,
+	.connect = proto_connect,
+	.close = proto_close,
+	.mtu = proto_mtu,
+	.fd = proto_fd,
+	.send = proto_send,
+	.flush = proto_flush,
+	.destroy = proto_destroy,
+};

@@ -4,6 +4,7 @@
 #include <GLES2/gl2.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include "fastvideo.h"
 #include "config.h"
 #include "log.h"
 
@@ -28,20 +29,39 @@
 /**
  * structure shared by segl and segl_glprog
  */
+typedef struct FourccFormat_s FourccFormat_t;
+struct FourccFormat_s
+{
+	uint32_t fourcc;
+	GLuint internal;
+	GLuint full;
+	GLuint data;
+	int nplanes;
+	int stride_factor[4];
+};
+const FourccFormat_t *fourcc_getformat(uint32_t fourcc);
+
+typedef struct GL_Buffer_s GL_Buffer_t;
+struct GL_Buffer_s
+{
+	EGLImageKHR image;
+	GLuint texture;
+	GLenum textype;
+	EGLint egltarget;
+};
+
 typedef struct GLBuffer_s GLBuffer_t;
 struct GLBuffer_s
 {
-	uint32_t fb_id;
-	int egl_fd;
-	GLenum textype;
-	GLuint dma_texture;
-	EGLImageKHR dma_image;
+	int id;
 	uint32_t fourcc;
 	int dma_fd;
 	uint32_t *memory;
 	GLuint pitch;
 	GLuint offset;
 	uint32_t size;
+	uint64_t modifiers;
+	GL_Buffer_t gl;
 };
 
 typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
@@ -56,32 +76,27 @@ struct EGLConfig_Program_s
 };
 
 typedef struct GLProgram_s GLProgram_t;
+typedef struct EGLExport_s EGLExport_t;
+typedef struct EGLNative_s EGLNative_t;
 
 typedef struct EGLConfig_s EGLConfig_t;
 struct EGLConfig_s
 {
 	DeviceConf_t parent;
-	const char *native;
+	DeviceConf_t transfer;
+	const EGLNative_t *native;
 	const char *device;
 	EGLConfig_Program_t *programs;
+	const EGLExport_t *export;
 };
 
 typedef struct EGL_s EGL_t;
 
-EGL_t *segl_create(const char *devicename, EGLConfig_t *config);
-int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...);
-int segl_queue(EGL_t *dev, int id, size_t bytesused);
-int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused);
-int segl_start(EGL_t *dev);
-int segl_stop(EGL_t *dev);
-int segl_fd(EGL_t *dev);
-void segl_destroy(EGL_t *dev);
-
-typedef struct EGLNative_s EGLNative_t;
 struct EGLNative_s
 {
 	const char *name;
-	EGLNativeDisplayType (*display)(const char *device);
+	EGLNativeDisplayType (*display)(EGLConfig_t *config);
+	const EGLint *(*attributes)(EGLNativeDisplayType native_display);
 	EGLNativeWindowType (*createwindow)(EGLNativeDisplayType native_display,
 							GLuint width, GLuint height, const GLchar *name);
 	int (*fd)(EGLNativeWindowType native_win);
@@ -89,18 +104,32 @@ struct EGLNative_s
 	int (*sync)(EGLNativeWindowType native_win);
 	void (*destroy)(EGLNativeDisplayType native_display);
 };
+typedef void (*segl_native_append_t)(EGLNative_t *native);
+
+struct EGLExport_s
+{
+	const char *name;
+	void *(*create)(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext);
+	GLuint (*fbo)(void *arg);
+	GL_Buffer_t * (*out)(void *arg);
+	int (*setbuffer)(void *arg, GLBuffer_t *buffer);
+	int (*releasebuffer)(void *arg, GLBuffer_t *buffer);
+	int (*flush)(void *arg, GLBuffer_t *buffer);
+	void (*destroy)(void*arg);
+};
+
+typedef void (*segl_export_append_t)(EGLExport_t *export);
 
 extern const GLchar *defaulttexturename;
 
-GLProgram_t *glprog_create(EGLConfig_Program_t *config);
-int glprog_setup(GLProgram_t *program, GLuint width, GLuint height);
-GLBuffer_t *glprog_getouttexture(GLProgram_t *program, GLuint nbtex);
-int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffer_t *in_textures);
-int glprog_run(GLProgram_t *program, int bufid);
+GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height);
+int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out);
+int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer);
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
 void glprog_destroy(GLProgram_t *program);
 
-DeviceConf_t * segl_createconfig();
+int _egl_hasextension(EGLDisplay eglDisplay, const char *extension);
+int segl_hasextension(EGL_t *dev, const char *extension);
 
 #ifdef HAVE_JANSSON
 int segl_loadjsonsettings(EGL_t *dev, void *jconfig);
@@ -116,4 +145,5 @@ int glprog_loadjsonconfiguration(void *arg, void *entry);
 #define segl_loadconfiguration NULL
 #endif
 
+extern FastVideoDevice_ops_t segl_ops;
 #endif

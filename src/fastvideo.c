@@ -5,134 +5,106 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/timerfd.h>
+#include <fcntl.h>
 
+#include "fastvideo.h"
 #include "log.h"
 #include "daemonize.h"
 #include "sv4l2.h"
+#include "spassthrough.h"
 #include "sdrm.h"
 #include "segl.h"
 #include "sfile.h"
+#include "sdvb.h"
 #include "config.h"
 
 #define MODE_DAEMONIZE 0x01
+#define MODE_INITIALIZE 0x02
+//#define DISABLE_TRANSFER
 
-typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
-typedef void *(*FastVideoDevice_create_t)(const char *devicename, DeviceConf_t *config);
-typedef void *(*FastVideoDevice_loadsettings_t)(void *dev, void *configentry);
-typedef int (*FastVideoDevice_requestbuffer_t)(void *dev, enum buf_type_e t, ...);
-typedef int (*FastVideoDevice_eventfd_t)(void *dev);
-typedef int (*FastVideoDevice_start_t)(void *dev);
-typedef int (*FastVideoDevice_stop_t)(void *dev);
-typedef int (*FastVideoDevice_dequeue_t)(void *dev, void **mem, size_t *bytesused);
-typedef int (*FastVideoDevice_queue_t)(void *dev, int index, size_t bytesused);
-typedef void (*FastVideoDevice_destroy_t)(void *dev);
-
-typedef struct FastVideoDevice_ops_s FastVideoDevice_ops_t;
-struct FastVideoDevice_ops_s
+typedef struct FastVideoPipe_s FastVideoPipe_t;
+struct FastVideoPipe_s
 {
-	const char *name;
-	FastVideoDevice_createconfig_t createconfig;
-	FastVideoDevice_create_t create;
-	FastVideoDevice_loadsettings_t loadsettings;
-	FastVideoDevice_requestbuffer_t requestbuffer;
-	FastVideoDevice_eventfd_t eventfd;
-	FastVideoDevice_start_t start;
-	FastVideoDevice_stop_t stop;
-	FastVideoDevice_dequeue_t dequeue;
-	FastVideoDevice_queue_t queue;
-	FastVideoDevice_destroy_t destroy;
+	FastVideoDevice_t *input;
+	FastVideoDevice_t *output;
 };
 
-FastVideoDevice_ops_t sv4l2_ops = {
-	.name = "cam",
-	.createconfig = sv4l2_createconfig,
-	.create = (FastVideoDevice_create_t)sv4l2_create,
-	.loadsettings = (FastVideoDevice_loadsettings_t)sv4l2_loadsettings,
-	.requestbuffer = (FastVideoDevice_requestbuffer_t)sv4l2_requestbuffer,
-	.eventfd = (FastVideoDevice_eventfd_t)sv4l2_fd,
-	.start = (FastVideoDevice_start_t)sv4l2_start,
-	.stop = (FastVideoDevice_stop_t)sv4l2_stop,
-	.dequeue = (FastVideoDevice_dequeue_t)sv4l2_dequeue,
-	.queue = (FastVideoDevice_queue_t)sv4l2_queue,
-	.destroy = (FastVideoDevice_destroy_t)sv4l2_destroy,
-};
-#ifdef HAVE_EGL
-FastVideoDevice_ops_t segl_ops = {
-	.name = "gpu",
-	.createconfig = segl_createconfig,
-	.create = (FastVideoDevice_create_t)segl_create,
-	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
-	.requestbuffer = (FastVideoDevice_requestbuffer_t)segl_requestbuffer,
-	.eventfd = (FastVideoDevice_eventfd_t)segl_fd,
-	.start = (FastVideoDevice_start_t)segl_start,
-	.stop = (FastVideoDevice_stop_t)segl_stop,
-	.dequeue = (FastVideoDevice_dequeue_t)segl_dequeue,
-	.queue = (FastVideoDevice_queue_t)segl_queue,
-	.destroy = (FastVideoDevice_destroy_t)segl_destroy,
-};
-#endif
-#ifdef HAVE_LIBDRM
-FastVideoDevice_ops_t sdrm_ops = {
-	.name = "screen",
-	.createconfig = sdrm_createconfig,
-	.create = (FastVideoDevice_create_t)sdrm_create,
-	.loadsettings = (FastVideoDevice_loadsettings_t)sdrm_loadsettings,
-	.requestbuffer = (FastVideoDevice_requestbuffer_t)sdrm_requestbuffer,
-	.eventfd = (FastVideoDevice_eventfd_t)NULL,
-	.start = (FastVideoDevice_start_t)sdrm_start,
-	.stop = (FastVideoDevice_stop_t)sdrm_stop,
-	.dequeue = (FastVideoDevice_dequeue_t)sdrm_dequeue,
-	.queue = (FastVideoDevice_queue_t)sdrm_queue,
-	.destroy = (FastVideoDevice_destroy_t)sdrm_destroy,
-};
-#endif
-FastVideoDevice_ops_t sfile_ops = {
-	.name = "file",
-	.createconfig = sfile_createconfig,
-	.create = (FastVideoDevice_create_t)sfile_create,
-	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
-	.requestbuffer = (FastVideoDevice_requestbuffer_t)sfile_requestbuffer,
-	.eventfd = (FastVideoDevice_eventfd_t)NULL,
-	.start = (FastVideoDevice_start_t)sfile_start,
-	.stop = (FastVideoDevice_stop_t)sfile_stop,
-	.dequeue = (FastVideoDevice_dequeue_t)sfile_dequeue,
-	.queue = (FastVideoDevice_queue_t)sfile_queue,
-	.destroy = (FastVideoDevice_destroy_t)sfile_destroy,
-};
-
-typedef struct FastVideoDevice_s FastVideoDevice_t;
-struct FastVideoDevice_s
-{
-	DeviceConf_t *config;
-	void *dev;
-	FastVideoDevice_ops_t *ops;
-};
-
-FastVideoDevice_t *config_createdevice(const char *name, const char *configfile, FastVideoDevice_ops_t *ops[])
+FastVideoDevice_t *device_duplicate(FastVideoDevice_t *dev)
 {
 	FastVideoDevice_t *device = NULL;
-	DeviceConf_t devconfig = {0};
-	if (configfile != NULL)
+	if (dev->ops->duplicate == NULL)
 	{
-		config_parseconfigfile(name, configfile, &devconfig);
+		err("fastvideo: device may not be duplicated");
+		return NULL;
 	}
-	if (devconfig.type == NULL)
+	void *ndev = NULL;
+	DeviceConf_t *config = dev->config;
+	ndev = dev->ops->duplicate(dev->dev, &config);
+	if (ndev)
 	{
-		devconfig.type = name;
+		device = calloc(1, sizeof(*device));
+		device->config = config;
+		device->ops = dev->ops;
+		device->dev = ndev;
 	}
+	return device;
+}
 
-	for (int i = 0; ops[i] != NULL; i++)
+typedef struct FastVideo_s FastVideo_t;
+struct FastVideo_s
+{
+	FastVideoDevice_ops_t **ops;
+	FastVideoDevice_t *device;
+	const char *name;
+};
+
+static int _config_createdevice(void *data, const char *name, const char *type, void *config)
+{
+	FastVideo_t *fastvideo = data;
+
+	/// This part allows to use option with argument
+	/// cam:width=640
+	char tmpname[256] = {0};
+	const char *end = strchr(fastvideo->name, ':');
+	int length = strlen(fastvideo->name);
+	if (end)
+		length = end - fastvideo->name;
+	if (length > 255)
+		return -1;
+	strncpy(tmpname, fastvideo->name, length);
+
+	if (strcmp(tmpname, name))
+		return -1;
+	for (FastVideoDevice_ops_t *ops = fastvideodevice_ops_next(NULL);
+		ops != NULL; ops = fastvideodevice_ops_next(ops))
 	{
-		if (! strcmp(ops[i]->name, devconfig.type))
+		if (! strcmp(ops->name, type))
 		{
-			DeviceConf_t *config = ops[i]->createconfig();
-			config->name = name;
-			config_parseconfigfile(name, configfile, config);
-			device = calloc(1, sizeof(*device));
-			device->config = config;
-			device->ops = ops[i];
+			DeviceConf_t *devconfig = NULL;
+			devconfig = config_create(name, ops, config);
+			if (devconfig)
+			{
+				if (devconfig->ops.loadconfiguration)
+					devconfig->ops.loadconfiguration(devconfig, config);
+				fastvideo->device = calloc(1, sizeof(*fastvideo->device));
+				fastvideo->device->config = devconfig;
+				fastvideo->device->ops = ops;
+			}
 			break;
 		}
+	}
+	return 0;
+}
+
+FastVideoDevice_t *config_createdevice(const char *name, const char *configfile)
+{
+	FastVideoDevice_t *device = NULL;
+	FastVideo_t fastvideo = {0};
+	fastvideo.name = name;
+	if (configfile != NULL &&
+		config_parseconfigfile(configfile, _config_createdevice, &fastvideo) == 0)
+	{
+		device =  fastvideo.device;
 	}
 	return device;
 }
@@ -155,31 +127,77 @@ int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 	{
 		inconfig->height = outconfig->height = 480;
 	}
-	if (inconfig->fourcc)
+	if (inconfig->modifiers && !outconfig->modifiers)
+		outconfig->modifiers = inconfig->modifiers;
+	else if (outconfig->modifiers && !inconfig->modifiers)
+		inconfig->modifiers = outconfig->modifiers;
+	if (inconfig->fourcc && !outconfig->fourcc)
 		outconfig->fourcc = inconfig->fourcc;
-	else if (outconfig->fourcc)
+	else if (outconfig->fourcc && !inconfig->fourcc)
 		inconfig->fourcc = outconfig->fourcc;
-	else
+	else if (!inconfig->fourcc && !outconfig->fourcc)
 		inconfig->fourcc = outconfig->fourcc = FOURCC('A','B','2','4');
+	dbg("input %s size %lu %lu", inconfig->name, inconfig->width, inconfig->height);
+	dbg("output %s size %lu %lu", outconfig->name, outconfig->width, outconfig->height);
 	return 0;
 }
 
-int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
+static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *output)
 {
-	output->ops->start(output->dev);
-	input->ops->start(input->dev);
-	int maxfd = 0;
-	int infd = -1;
-	if (input->ops->eventfd)
+	int index = 0;
+	size_t bytesused = 0;
+	void *mem = NULL;
+	int flags = 0;
+	/// reset errno for the new loop
+	errno = 0;
+
+	if ((index = input->ops->dequeue(input->dev, &mem, &bytesused, &flags)) < 0)
 	{
-		infd = input->ops->eventfd(input->dev);
-		maxfd = (infd > maxfd)?infd:maxfd;
+		if (errno == EAGAIN)
+		{
+			return 0;
+		}
+		if (errno)
+			err("%s buffer dequeuing error %m", input->config->name);
+		return -1;
 	}
-	int outfd = -1;
-	if (output->ops->eventfd)
+	//dbg("transfer (%d) %s => %s %lu bytes", index, input->config->name, output->config->name, bytesused);
+
+	if (output->ops->queue(output->dev, index, mem, bytesused, flags) < 0)
 	{
-		outfd = output->ops->eventfd(output->dev);
-		maxfd = (outfd > maxfd)?outfd:maxfd;
+		if (errno != EAGAIN)
+		{
+			err("%s buffer queuing error %m", output->config->name);
+			return -1;
+		}
+		/// push back the buffer to the input device because the ouput is not ready to manage it
+		input->ops->queue(input->dev, index, mem, bytesused, flags);
+	}
+	return 0;
+}
+
+int main_loop(FastVideoList_t *pipes)
+{
+	int maxfd = 0;
+	for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+			pipe != NULL; pipe = fastvideolist_next(pipes))
+	{
+		if (pipe->output->ops->start(pipe->output->dev) == -1)
+			return -1;
+		warn("stream %s started", pipe->output->config->name);
+		if (pipe->output->ops->eventfd)
+		{
+			int fd = pipe->output->ops->eventfd(pipe->output->dev, 0);
+			maxfd = (fd > maxfd)?fd:maxfd;
+		}
+		if (pipe->input->ops->start(pipe->input->dev) == -1)
+			return -1;
+		warn("stream %s started", pipe->input->config->name);
+		if (pipe->input->ops->eventfd)
+		{
+			int fd = pipe->input->ops->eventfd(pipe->input->dev, 0);
+			maxfd = (fd > maxfd)?fd:maxfd;
+		}
 	}
 	int timerfd = timerfd_create(CLOCK_REALTIME, 0);
 	struct itimerspec timeout = {
@@ -187,7 +205,7 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 		.it_value = {.tv_sec = 1, .tv_nsec = 0},
 	};
 	timerfd_settime(timerfd, TFD_TIMER_CANCEL_ON_SET, &timeout, NULL);
-	maxfd = (outfd > timerfd)?outfd:timerfd;
+	maxfd = (maxfd > timerfd)?maxfd:timerfd;
 
 	unsigned int count = 0;
 	while (isrunning())
@@ -196,12 +214,29 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 		fd_set wfds;
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
-		if (infd > 0)
-			FD_SET(infd, &rfds);
-		if (outfd > 0)
+		for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+				pipe != NULL; pipe = fastvideolist_next(pipes))
 		{
-			FD_SET(outfd, &rfds);
-			FD_SET(outfd, &wfds);
+			if (pipe->output->ops->eventfd)
+			{
+				int fd;
+				fd = pipe->output->ops->eventfd(pipe->output->dev, 2);
+				if (fd > 0)
+					FD_SET(fd, &rfds);
+				fd = pipe->output->ops->eventfd(pipe->output->dev, 1);
+				if (fd > 0)
+					FD_SET(fd, &wfds);
+			}
+			if (pipe->input->ops->eventfd)
+			{
+				int fd;
+				fd = pipe->input->ops->eventfd(pipe->input->dev, 0);
+				if (fd > 0)
+					FD_SET(fd, &rfds);
+				fd = pipe->input->ops->eventfd(pipe->input->dev, 1);
+				if (fd > 0)
+					FD_SET(fd, &wfds);
+			}
 		}
 		if (timerfd > 0)
 			FD_SET(timerfd, &rfds);
@@ -225,58 +260,133 @@ int main_loop(FastVideoDevice_t *input, FastVideoDevice_t *output)
 		{
 			continue;
 		}
-		if (infd < 0 || (ret > 0 && FD_ISSET(infd, &rfds)))
+		ret = 0;
+		for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+				pipe != NULL; pipe = fastvideolist_next(pipes))
 		{
-			int index = 0;
-			size_t bytesused = 0;
-			if ((index = input->ops->dequeue(input->dev, NULL, &bytesused)) < 0)
+			int infd = -1;
+			if (pipe->input->ops->eventfd)
+				infd = pipe->input->ops->eventfd(pipe->input->dev, 0);
+			if (infd < 0 ||
+				(infd > 0 && FD_ISSET(infd, &rfds)))
 			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("input buffer dequeuing error %m");
-				killdaemon(NULL);
-				break;
+				ret = main_transferbuffer(pipe->input, pipe->output);
+				if (ret && infd > 0)
+				{
+					killdaemon(NULL);
+					break;
+				}
 			}
-
-			if (output->ops->queue(output->dev, index, bytesused) < 0)
-			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("output buffer queuing error %m");
-				killdaemon(NULL);
-				break;
-			}
-			ret--;
 		}
-		if (outfd < 0 || (ret > 0 && FD_ISSET(outfd, &wfds)) || (ret > 0 && FD_ISSET(outfd, &rfds)))
+
+		for (FastVideoPipe_t *pipe = fastvideolist_previous(pipes);
+					pipe != NULL; pipe = fastvideolist_previous(pipes))
 		{
-			int index = 0;
-			if ((index = output->ops->dequeue(output->dev, NULL, NULL)) < 0)
+			int outfd = -1;
+			if (pipe->output->ops->eventfd)
+				outfd = pipe->output->ops->eventfd(pipe->output->dev, 1);
+			if (outfd < 0)
+				outfd = pipe->output->ops->eventfd(pipe->output->dev, 2);
+			if (outfd < 0 ||
+				(outfd > 0 && FD_ISSET(outfd, &rfds)) ||
+				(outfd > 0 && FD_ISSET(outfd, &wfds)))
 			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("output buffer dequeuing error %m");
-				killdaemon(NULL);
-				break;
+				ret = main_transferbuffer(pipe->output, pipe->input);
+				if (ret && outfd > 0)
+				{
+					killdaemon(NULL);
+					break;
+				}
+				if (!ret && fastvideolist_islast(pipes, pipe) && errno == 0)
+					count++;
 			}
-			if (input->ops->queue(input->dev, index, 0) < 0)
-			{
-				if (errno == EAGAIN)
-					continue;
-				if (errno)
-					err("input buffer queuing error %m");
-				killdaemon(NULL);
-				break;
-			}
-			count++;
-			ret--;
 		}
 	}
-	input->ops->stop(input->dev);
-	output->ops->stop(output->dev);
+	for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+			pipe != NULL; pipe = fastvideolist_next(pipes))
+	{
+
+		pipe->output->ops->stop(pipe->output->dev);
+		pipe->input->ops->stop(pipe->input->dev);
+	}
+	return 0;
+}
+
+FastVideoDevice_t *main_createdevice(const char *name, const char *configfile, device_type_e type, DeviceConf_t *choiceconfig)
+{
+	if (configfile == NULL)
+	{
+		err("load json file first");
+		return NULL;
+	}
+	FastVideoDevice_t *device = NULL;
+	device = config_createdevice(name, configfile);
+	if (!device)
+	{
+		err("device %s not available", name);
+		return NULL;
+	}
+	if (choiceconfig)
+		choice_config(choiceconfig, device->config);
+
+	device->dev = device->ops->create(name, type, device->config);
+	if (device->dev == NULL)
+		return NULL;
+	if (device->ops->loadsettings && device->config->entry)
+	{
+		dbg("loadsettings");
+		device->ops->loadsettings(device->dev, device->config->entry);
+	}
+	return device;
+}
+
+FastVideoPipe_t *main_createinput(const char *name, const char *configfile)
+{
+	FastVideoPipe_t *pipe = NULL;
+	pipe = calloc(1, sizeof(*pipe));
+	FastVideoDevice_t *indev = NULL;
+	indev = main_createdevice(name, configfile, device_input, NULL);
+	if (!indev)
+	{
+		free(pipe);
+		return NULL;
+	}
+	pipe->input = indev;
+	return pipe;
+}
+
+FastVideoPipe_t *main_createtransfer(const char *name, const char *configfile, FastVideoPipe_t *pipe)
+{
+	FastVideoDevice_t *transferdev = NULL;
+	transferdev = main_createdevice(name, configfile, device_transfer, pipe->input->config);
+	if (!transferdev)
+	{
+		return NULL;
+	}
+	pipe->output = transferdev;
+
+	pipe = calloc(1, sizeof(*pipe));
+	FastVideoDevice_t *transferdevD = NULL;
+	transferdevD = device_duplicate(transferdev);
+	if (!transferdevD)
+	{
+		err("%s not duplicated", transferdev->config->name);
+		free(pipe);
+		return NULL;
+	}
+	pipe->input = transferdevD;
+	return pipe;
+}
+
+int main_createoutput(const char *name, const char *configfile, FastVideoPipe_t *pipe)
+{
+	FastVideoDevice_t *outdev = NULL;
+	outdev = main_createdevice(name, configfile, device_output, pipe->input->config);
+	if (!outdev)
+	{
+		return -1;
+	}
+	pipe->output = outdev;
 	return 0;
 }
 
@@ -285,23 +395,46 @@ int main(int argc, char * const argv[])
 	const char *owner = NULL;
 	const char *pidfile= NULL;
 	const char *configfile = NULL;
-	const char *input = "cam";
+	const char *input = "v4l2";
 	const char *output = "gpu";
+	const char *transfer = "passthrough";
 	int width = 640;
 	int height = 480;
 	unsigned int mode = 0;
+	const char *logfile = "-";
+	const char *cwd = NULL;
+	FastVideoList_t *pipes = NULL;
+	FastVideoPipe_t *pipe = NULL;
+
+	fastvideodevice_ops_append(&spassthrough_ops);
 
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:j:w:h:D");
+		opt = getopt(argc, argv, "i:o:t:j:w:h:DP:L:W:I");
 		switch (opt)
 		{
 			case 'i':
-				input = optarg;
+				pipe = main_createinput(optarg, configfile);
+				if (pipe == NULL)
+				{
+					return -1;
+				}
 			break;
 			case 'o':
-				output = optarg;
+				if (main_createoutput(optarg, configfile, pipe))
+				{
+					return -1;
+				}
+				pipes = fastvideolist_insert(pipes, pipe);
+			break;
+			case 't':
+				pipes = fastvideolist_insert(pipes, pipe);
+				pipe = main_createtransfer(optarg, configfile, pipe);
+				if (pipe == NULL)
+				{
+					return -1;
+				}
 			break;
 			case 'j':
 				configfile = optarg;
@@ -315,77 +448,105 @@ int main(int argc, char * const argv[])
 			case 'D':
 				mode |= MODE_DAEMONIZE;
 			break;
+			case 'I':
+				mode |= MODE_INITIALIZE;
+			break;
+			case 'L':
+				logfile = optarg;
+			break;
+			case 'P':
+				pidfile = optarg;
+			break;
+			case 'W':
+				if (chdir(optarg) != 0)
+					err("main: working directory %m");
+			break;
 		}
 	} while(opt != -1);
 
-	FastVideoDevice_ops_t *fastVideoDevice_ops[] =
+	if (strcmp(logfile,"-"))
 	{
-		&sv4l2_ops,
-#ifdef HAVE_EGL
-		&segl_ops,
-#endif
-#ifdef HAVE_LIBDRM
-		&sdrm_ops,
-#endif
-		&sfile_ops,
-		NULL
-	};
-
-	FastVideoDevice_t *indev = NULL;
-	indev = config_createdevice(input, configfile, fastVideoDevice_ops);
-	if (!indev->ops)
-	{
-		err("input not available");
-		return -1;
+		int logfd = open(logfile, O_WRONLY | O_CREAT | O_TRUNC, 00644);
+		if (logfd > 0)
+		{
+			dup2(logfd, 1);
+			dup2(logfd, 2);
+			close(logfd);
+		}
+		else
+			err("log file error %m");
 	}
 
-	FastVideoDevice_t *outdev = NULL;
-	outdev = config_createdevice(output, configfile, fastVideoDevice_ops);
-	if (!outdev->ops)
+	for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+			pipe != NULL; pipe = fastvideolist_next(pipes))
 	{
-		err("output not available");
-		return -1;
+		int *dma_bufs = {0};
+		size_t size = 0;
+		int nbbufs = 0;
+		FastVideoDevice_t *input = pipe->input;
+		FastVideoDevice_t *output = pipe->output;
+		struct
+		{
+			FastVideoDevice_t *master;
+			FastVideoDevice_t *slave;
+			enum buf_type_e buf_type;
+		} device_list[] = {
+			{
+				.master = input,
+				.slave = output,
+				.buf_type = buf_type_dmabuf,
+			},
+			{
+				.master = input,
+				.slave = output,
+				.buf_type = buf_type_memory,
+			},
+			{
+				.master = output,
+				.slave = input,
+				.buf_type = buf_type_dmabuf,
+			},
+			{
+				.master = output,
+				.slave = input,
+				.buf_type = buf_type_memory,
+			},
+		};
+		int ret = -1;
+		for (int i = 0; i < sizeof(device_list)/sizeof(*device_list); i++)
+		{
+			enum buf_type_e buf_type = device_list[i].buf_type;
+			FastVideoDevice_t *master = device_list[i].master;
+			if (master->ops->requestbuffer(master->dev, buf_type | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
+			{
+				err("%s buffer type(%d) not allowed", master->config->name, buf_type);
+				continue;
+			}
+			FastVideoDevice_t *slave = device_list[i].slave;
+			if (slave->ops->requestbuffer(slave->dev, buf_type, nbbufs, dma_bufs, size, NULL) < 0)
+			{
+				err("%s buffer type(%d) not linked", slave->config->name, buf_type);
+				continue;
+			}
+			ret = 0;
+			break;
+		}
+		if (ret)
+			return -1;
+		warn("pipe %s => %s ready", input->config->name, output->config->name);
 	}
-
-	choice_config(indev->config, outdev->config);
-
-	indev->dev = indev->ops->create(input, indev->config);
-	if (indev->ops->loadsettings && indev->config->entry)
-	{
-		dbg("loadsettings");
-		indev->ops->loadsettings(indev->dev, indev->config->entry);
-	}
-	if (indev->dev == NULL)
-		return -1;
-
-	outdev->dev = outdev->ops->create(output, outdev->config);
-	if (outdev->ops->loadsettings && outdev->config->entry)
-	{
-		dbg("loadsettings");
-		outdev->ops->loadsettings(outdev->dev, outdev->config->entry);
-	}
-	if (outdev->dev == NULL)
-		return -1;
 
 	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
 
-	int *dma_bufs = {0};
-	size_t size = 0;
-	int nbbufs = 0;
-	if (indev->ops->requestbuffer(indev->dev, buf_type_dmabuf | buf_type_master, &nbbufs, &dma_bufs, &size, NULL) < 0)
-	{
-		err("input dma buffer not allowed");
-		return -1;
-	}
-	if (outdev->ops->requestbuffer(outdev->dev, buf_type_dmabuf, nbbufs, dma_bufs, size, NULL) < 0)
-	{
-		err("output dma buffers not linked");
-		return -1;
-	}
-	main_loop(indev, outdev);
+	if ((mode & MODE_INITIALIZE) == 0)
+		main_loop(pipes);
 
 	killdaemon(pidfile);
-	indev->ops->destroy(indev->dev);
-	outdev->ops->destroy(outdev->dev);
+	for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
+			pipe != NULL; pipe = fastvideolist_next(pipes))
+	{
+		pipe->input->ops->destroy(pipe->input->dev);
+		pipe->output->ops->destroy(pipe->output->dev);
+	}
 	return 0;
 }

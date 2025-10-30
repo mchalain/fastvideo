@@ -8,6 +8,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <linux/dma-buf.h>
+#include <errno.h>
 
 #ifdef HAVE_JANSSON
 #include <jansson.h>
@@ -17,30 +18,35 @@
 #include "config.h"
 #include "log.h"
 
-typedef struct FileBuffer_s FileBuffer_t;
-struct FileBuffer_s
-{
-	void *mem;
-	int dma_buf;
-	size_t size;
-	size_t bytesused;
-	FileBuffer_t *next;
-};
-
 typedef struct File_s File_t;
 struct File_s
 {
-	FileConfig_t *config;
 	const char *path;
-	int fd;
+	void *ctx;
+	File_ops_t *ops;
+	device_type_e type;
+	uint32_t fourcc;
+	uint32_t width;
+	uint32_t height;
+	uint32_t stride;
 	size_t size;
 	size_t nbuffers;
-	FileBuffer_t *buffers;
+	FrameBuffer_t *buffers;
 	int lastbufferid;
 };
+EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int flags);
 
-File_t * sfile_create(const char *filename, FileConfig_t *config)
+EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
 {
+	const char *start = strchr(filename, ':');
+	if (start)
+		filename = start + 1;
+	File_ops_t *ops = &_passthrough_ops;
+	if (type == device_transfer)
+	{
+		err("sfile: %s bad device type", config->parent.name);
+		return NULL;
+	}
 	int rootfd = AT_FDCWD;
 	if (config == NULL)
 	{
@@ -62,7 +68,7 @@ File_t * sfile_create(const char *filename, FileConfig_t *config)
 		filename = config->filename;
 	size_t fsize = 0;
 	int mode = 0;
-	if (config->direction & File_Output_e)
+	if (type == device_input)
 	{
 		mode = O_RDONLY;
 		if (faccessat(rootfd, filename, R_OK, 0) < 0)
@@ -84,32 +90,44 @@ File_t * sfile_create(const char *filename, FileConfig_t *config)
 
 		}
 	}
-	else
+	else if (device_output)
 	{
 		mode = O_WRONLY;
 		if (faccessat(rootfd, filename, F_OK, 0) < 0)
 			mode |= O_CREAT;
-		config->direction = File_Input_e;
+	}
+	else
+	{
+		if (rootfd != AT_FDCWD)
+			close(rootfd);
+		return NULL;
 	}
 
-	int fd = openat(rootfd, filename, mode, 0644);
-	if (fd < 0)
+	void *ctx = ops->open(rootfd, filename, mode);
+	if (ctx == NULL)
 	{
 		err("file \"%s\" opening error %m", filename);
 		return NULL;
 	}
 	close(rootfd);
 	File_t *dev = calloc(1, sizeof(*dev));
-	dev->fd = fd;
+	dev->ctx = ctx;
+	dev->ops = ops;
 	dev->size = fsize;
-	dev->config = config;
+	dev->type = type;
+	dev->fourcc = config->parent.fourcc;
+	dev->width = config->parent.width;
+	dev->height = config->parent.height;
+	if (config->parent.stride)
+		dev->stride = config->parent.stride;
+	else if (fsize)
+		dev->stride = fsize / config->parent.height;
 	dev->path = filename;
 	return dev;
 }
 
-int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
+EXT_API int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 {
-	FileConfig_t *config = dev->config;
 	int ret = 0;
 	va_list ap;
 	va_start(ap, t);
@@ -120,8 +138,8 @@ int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 			int nmem = va_arg(ap, int);
 			void **mems = va_arg(ap, void **);
 			size_t size = va_arg(ap, size_t);
-			FileBuffer_t *buffers = NULL;
-			buffers = calloc(nmem, sizeof(FileBuffer_t));
+			FrameBuffer_t *buffers = NULL;
+			buffers = calloc(nmem, sizeof(FrameBuffer_t));
 			for (int i = 0; i < nmem; i++)
 			{
 				buffers[i].mem = mems[i];
@@ -138,8 +156,8 @@ int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
-			FileBuffer_t *buffers = NULL;
-			buffers = calloc(ntargets, sizeof(FileBuffer_t));
+			FrameBuffer_t *buffers = NULL;
+			buffers = calloc(ntargets, sizeof(FrameBuffer_t));
 			for (int i = 0; i < ntargets; i++)
 			{
 				buffers[i].dma_buf = targets[i];
@@ -160,89 +178,82 @@ int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 	return ret;
 }
 
-int sfile_fd(File_t *dev)
+EXT_API int sfile_fd(File_t *dev, int writer)
 {
-	return dev->fd;
+	return dev->ops->fd(dev);
 }
 
-int sfile_start(File_t *dev)
+EXT_API int sfile_start(File_t *dev)
 {
-	FileConfig_t *config = dev->config;
 	dev->lastbufferid = 0;
-	if (config->direction & File_Input_e)
-	{
-		switch (config->parent.fourcc)
-		{
-			case FOURCC('R','G', 'B', 'A'):
-				dprintf(dev->fd, "P7 WIDTH %d HEIGHT %d DEPTH %d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR", config->parent.width, config->parent.height, config->parent.stride / config->parent.width);
-			break;
-			case FOURCC('J','P','E','G'):
-			case FOURCC('M','J','P','G'):
-			break;
-			default:
-			break;
-		}
-
-	}
-	else
+	if (dev->type & device_input)
 	{
 		dbg("start buffers enqueuing");
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
-			if (sfile_queue(dev, i, 0))
+			if (sfile_queue(dev, i, NULL, 0, 0))
 				return -1;
 		}
 	}
 	return 0;
 }
 
-int sfile_stop(File_t *dev)
+EXT_API int sfile_stop(File_t *dev)
 {
 	return 0;
 }
 
-int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused)
+EXT_API int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused, int *flags)
 {
-	FileConfig_t *config = dev->config;
 	int ret = dev->lastbufferid;
-	FileBuffer_t *buffer = &dev->buffers[dev->lastbufferid];
+	FrameBuffer_t *buffer = &dev->buffers[dev->lastbufferid];
+	if (buffer->state != queued)
+	{
+		errno = EAGAIN;
+		return -1;
+	}
 	if (bytesused)
 		*bytesused = buffer->bytesused;
 	if (mem && buffer->mem)
 		*mem = buffer->mem;
+	if (flags)
+		*flags = buffer->flags;
 	dev->lastbufferid++;
 	dev->lastbufferid %= dev->nbuffers;
+	buffer->state = dequeued;
 	return ret;
 }
 
-int sfile_queue(File_t *dev, int index, size_t bytesused)
+EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
-	FileConfig_t *config = dev->config;
 	if (index > dev->nbuffers)
 	{
 		err("unkown %d buffer index to queue", index);
 		return -1;
 	}
-	FileBuffer_t *buffer = &dev->buffers[index];
+	FrameBuffer_t *buffer = &dev->buffers[index];
 	if (bytesused == 0)
 		bytesused = buffer->size;
 	if (bytesused > buffer->size)
 	{
 		warn("sfile: buffer too small %lu %lu", buffer->size, bytesused);
 	}
-	if (config->direction & File_Input_e)
+	if (dev->type == device_output)
 	{
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
 			sync.flags = DMA_BUF_SYNC_READ | DMA_BUF_SYNC_START;
 			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
-			buffer->mem = mmap(NULL, buffer->size, PROT_READ, MAP_SHARED, buffer->dma_buf, 0 );
+			mem = mmap(NULL, buffer->size, PROT_READ, MAP_SHARED, buffer->dma_buf, 0 );
 		}
-		ssize_t ret = write(dev->fd, buffer->mem, bytesused);
+		if (mem == NULL)
+			mem = buffer->mem;
+		ssize_t ret = dev->ops->write(dev, mem, bytesused);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
+			munmap(mem, buffer->size);
 			sync.flags = DMA_BUF_SYNC_READ | DMA_BUF_SYNC_END;
 			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
 		}
@@ -253,7 +264,7 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 		}
 		buffer->bytesused = ret;
 	}
-	else if (config->direction & File_Output_e)
+	else if (dev->type == device_input)
 	{
 		if (buffer->dma_buf > 0)
 		{
@@ -262,7 +273,7 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
 			buffer->mem = mmap(NULL, buffer->size, PROT_WRITE, MAP_SHARED, buffer->dma_buf, 0 );
 		}
-		ssize_t ret = read(dev->fd, buffer->mem, bytesused);
+		ssize_t ret = dev->ops->read(dev, buffer->mem, bytesused);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
@@ -276,12 +287,14 @@ int sfile_queue(File_t *dev, int index, size_t bytesused)
 		}
 		buffer->bytesused = ret;
 	}
+	buffer->flags = flags;
+	buffer->state = queued;
 	return 0;
 }
 
-void sfile_destroy(File_t *dev)
+EXT_API void sfile_destroy(File_t *dev)
 {
-	close(dev->fd);
+	dev->ops->close(dev);
 	if (dev->nbuffers > 0)
 		free(dev->buffers);
 	free(dev);
@@ -304,6 +317,12 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 			if (filepath[0] == '/' && filepath[1] == '/') filepath += 2;
 			config->filename = filepath;
 		}
+	}
+	json_t *filename = json_object_get(jconfig, "filename");
+	if (filename && json_is_string(filename))
+	{
+		const char *value = json_string_value(filename);
+		config->filename = value;
 	}
 	json_t *path = json_object_get(jconfig, "path");
 	if (path && json_is_string(path))
@@ -334,6 +353,36 @@ DeviceConf_t * sfile_createconfig()
 {
 	FileConfig_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(FileConfig_t));
+#ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sfile_loadjsonconfiguration;
+#endif
 	return (DeviceConf_t *)devconfig;
+}
+
+FastVideoDevice_ops_t sfile_ops = {
+	.name = "file",
+	.createconfig = sfile_createconfig,
+	.create = (FastVideoDevice_create_t)sfile_create,
+	.duplicate = (FastVideoDevice_duplicate_t)NULL,
+	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
+	.requestbuffer = (FastVideoDevice_requestbuffer_t)sfile_requestbuffer,
+	.eventfd = (FastVideoDevice_eventfd_t)NULL,
+	.start = (FastVideoDevice_start_t)sfile_start,
+	.stop = (FastVideoDevice_stop_t)sfile_stop,
+	.dequeue = (FastVideoDevice_dequeue_t)sfile_dequeue,
+	.queue = (FastVideoDevice_queue_t)sfile_queue,
+	.destroy = (FastVideoDevice_destroy_t)sfile_destroy,
+};
+
+#include <dlfcn.h>
+
+static void __attribute__ ((constructor)) sfile_init()
+{
+	fastvideodevice_ops_append_t _fastvideodevice_ops_append;
+	void *hdl = dlopen(NULL, RTLD_NOW);
+	_fastvideodevice_ops_append = dlsym(hdl, "fastvideodevice_ops_append");
+	if (_fastvideodevice_ops_append)
+	{
+		_fastvideodevice_ops_append(&sfile_ops);
+	}
 }

@@ -211,6 +211,8 @@ void killdaemon(const char *pidfile)
 			close(_pidfd);
 		}
 	}
+	else
+		_run = 's';
 	if (pidfile && !access(pidfile, W_OK))
 		unlink(pidfile);
 }

@@ -8,6 +8,8 @@
 #include "segl.h"
 #include "log.h"
 
+#define segl_dbg(...)
+
 typedef enum{
 	Uniform_UNKNOWN_e = 0,
 	Uniform_INT_e,
@@ -44,10 +46,8 @@ struct GLProgram_s
 	GLuint vertexArrayID;
 	GLuint vertexBufferObject[3];
 	const char *in_texturename;
-	GLenum in_textype;
-	GLBuffer_t *in_textures;
-	GLBuffer_t out_textures[MAX_BUFFERS];
-	GLuint fbID;
+	GL_Buffer_t out;
+	GLuint fbo;
 	GLfloat width;
 	GLfloat height;
 	GLProgram_Uniform_t *controls;
@@ -101,8 +101,26 @@ static const GLchar defaultfragment[] = ""
 "\n";
 #endif
 
+#ifndef EGL_EGLEXT_PROTOTYPES
 PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = NULL;
 PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = NULL;
+static int _egl_initprototypes(void)
+{
+	glGenVertexArraysOES = (void *) eglGetProcAddress("glGenVertexArraysOES");
+	if(glGenVertexArraysOES == NULL)
+	{
+		return -1;
+	}
+	glBindVertexArrayOES = (void *) eglGetProcAddress("glBindVertexArrayOES");
+	if(glBindVertexArrayOES == NULL)
+	{
+		return -1;
+	}
+	return 0;
+}
+#else
+#define _egl_initprototypes(...)
+#endif
 
 static void display_log(GLuint instance)
 {
@@ -165,7 +183,7 @@ static GLint readFile(const char* fileName, char** fileContent)
 	if (fread(*fileContent, fileSize, 1, pFile) < 0)
 	{
 		fclose(pFile);
-		err("glmotor: File loading error %m");
+		err("File loading error %m");
 	}
 	(*fileContent)[fileSize] = '\0';
 
@@ -193,7 +211,8 @@ static void deleteShader(GLuint programID, GLuint fragmentID, GLuint vertexID)
 
 static GLuint loadShader(GLenum shadertype, const char *shaderfile, const char *defaultshader)
 {
-	GLchar* shaderSource = NULL;
+	const GLchar* shaderSource = NULL;
+	GLchar* shaderSourceDyn = NULL;
 	GLuint shaderID = glCreateShader(shadertype);
 	if (shaderID == 0)
 		return 0;
@@ -201,10 +220,11 @@ static GLuint loadShader(GLenum shadertype, const char *shaderfile, const char *
 	GLuint shaderSize = 0;
 	if (shaderfile)
 	{
-		shaderSize = readFile(shaderfile, &shaderSource);
-		if (shaderSource == NULL)
+		shaderSize = readFile(shaderfile, &shaderSourceDyn);
+		if (shaderSourceDyn == NULL)
 			return 0;
-		warn("load dynamic shader:\n%s<=", shaderSource);
+		shaderSource = shaderSourceDyn;
+		segl_dbg("load dynamic shader:\n%s<=", shaderSource);
 	}
 	else
 	{
@@ -212,13 +232,13 @@ static GLuint loadShader(GLenum shadertype, const char *shaderfile, const char *
 		shaderSize = strlen(shaderSource);
 		if (shaderSource == NULL)
 			return 0;
-		warn("load default shader:\n%s", shaderSource);
+		segl_dbg("load default shader:\n%s", shaderSource);
 	}
 	glShaderSource(shaderID, 1, (const GLchar**)(&shaderSource), &shaderSize);
 	glCompileShader(shaderID);
 	GLint compilationStatus = 0;
-	if (shaderSource != defaultshader)
-		free(shaderSource);
+	if (shaderSourceDyn)
+		free(shaderSourceDyn);
 
 	glGetShaderiv(shaderID, GL_COMPILE_STATUS, &compilationStatus);
 	if ( compilationStatus != GL_TRUE )
@@ -237,24 +257,27 @@ static GLuint loadShaders(GLenum shadertype, const char *shaderfiles[MAX_SHADERS
 		return 0;
 
 	GLint nbShaderSources = 0;
-	GLchar* shaderSources[4] = {0};
-	GLuint shaderSizes[4] = {0};
+	GLchar* shaderSources[MAX_SHADERS] = {0};
+	GLuint shaderSizes[MAX_SHADERS] = {0};
 
-	for (int i = 0; i < MAX_SHADERS; i++)
+	for (int i = 0; i < MAX_SHADERS && shaderfiles[i]; i++)
 	{
-		if (shaderfiles[i])
+		shaderSizes[i] = readFile(shaderfiles[i], &shaderSources[i]);
+		if (shaderSources[i] == NULL)
 		{
-			shaderSizes[i] = readFile(shaderfiles[i], &shaderSources[i]);
-			if (shaderSources[i] == NULL)
-				return 0;
-			warn("load dynamic shader:\n%s<=", shaderSources[i]);
-			nbShaderSources++;
+			err("shader %s not loaded", shaderfiles[i]);
+			break;
 		}
+		segl_dbg("load dynamic shader:\n%s<=", shaderSources[i]);
+		nbShaderSources++;
 	}
 	glShaderSource(shaderID, nbShaderSources, (const char *const*)shaderSources, shaderSizes);
 	glCompileShader(shaderID);
 	GLint compilationStatus = 0;
-
+	for (int i = 0; i < MAX_SHADERS && shaderSources[i]; i++)
+	{
+		free(shaderSources[i]);
+	}
 	glGetShaderiv(shaderID, GL_COMPILE_STATUS, &compilationStatus);
 	if ( compilationStatus != GL_TRUE )
 	{
@@ -320,7 +343,7 @@ static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADER
 	return programID;
 }
 
-GLProgram_t *glprog_create(EGLConfig_Program_t *config)
+GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height)
 {
 	GLuint programID = 0;
 	if (config)
@@ -341,26 +364,6 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config)
 	if (config && config->tex_name)
 		program->in_texturename = config->tex_name;
 
-	glGenVertexArraysOES = (void *) eglGetProcAddress("glGenVertexArraysOES");
-	if(glGenVertexArraysOES == NULL)
-	{
-		return NULL;
-	}
-	glBindVertexArrayOES = (void *) eglGetProcAddress("glBindVertexArrayOES");
-	if(glBindVertexArrayOES == NULL)
-	{
-		return NULL;
-	}
-
-	if (config && config->next)
-	{
-		program->next = glprog_create(config->next);
-	}
-	return program;
-}
-
-int glprog_setup(GLProgram_t *program, GLuint width, GLuint height)
-{
 	program->width = width;
 	program->height = height;
 
@@ -405,81 +408,83 @@ int glprog_setup(GLProgram_t *program, GLuint width, GLuint height)
 		program->controls = NULL;
 
 	glBindVertexArrayOES(0);
-	if (program->next)
-		return glprog_setup(program->next, width, height);
-
-	return 0;
+	if (config && config->next)
+	{
+		program->next = glprog_create(config->next, width, height);
+	}
+	return program;
 }
 
-GLBuffer_t *glprog_getouttexture(GLProgram_t *program, GLuint nbtex)
+static int glprog_outtexture(GLProgram_t *program, GLenum textype)
 {
-	if (program->out_textures[0].dma_texture)
+	if (program->out.texture)
 	{
-		return program->out_textures;
+		return 0;
 	}
-	glGenFramebuffers(1, &program->fbID);
-	if (program->fbID == 0)
+	glGenFramebuffers(1, &program->fbo);
+	if (program->fbo == 0)
 	{
 		err("segl: framebuffer unsupported");
-		return NULL;
+		return -1;
 	}
-	glBindFramebuffer(GL_FRAMEBUFFER, program->fbID);
-	glEnable(GL_TEXTURE_2D);
+	glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
+	glEnable(textype);
 	GLuint texture = 0;
-	for (int i = 0; i < nbtex; i++)
-	{
-		glGenTextures(1, &texture);
-		glBindTexture(GL_TEXTURE_2D, texture);
-		// The format must be RGB. RGBA generate error during the texture attachment to the frambuffer (glprog_run)
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, program->width, program->height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		program->out_textures[i].dma_texture = texture;
-	}
-	return program->out_textures;
+	glGenTextures(1, &texture);
+	glBindTexture(textype, texture);
+	// The format must be RGB. RGBA generate error during the texture attachment to the frambuffer (glprog_run)
+	glTexImage2D(textype, 0, GL_RGB, program->width, program->height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameterf(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameterf(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	program->out.texture = texture;
+	program->out.textype = textype;
+
+	return 0;
 }
 
-int glprog_setintexture(GLProgram_t *program, GLenum type, GLuint nbtex, GLBuffer_t *in_textures)
+int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out)
 {
-	program->in_textures = in_textures;
-	program->in_textype = type;
+	program->fbo = fbo;
 	if (program->next)
 	{
-		GLBuffer_t *textures;
-		textures = glprog_getouttexture(program, nbtex);
-		if (textures == NULL)
+		if (glprog_outtexture(program, GL_TEXTURE_2D))
 			return -1;
-		return glprog_setintexture(program->next, GL_TEXTURE_2D, nbtex, textures);
+		return glprog_setup(program->next, fbo, out);
+	}
+	if (out)
+	{
+		memcpy(&program->out, out, sizeof(program->out));
 	}
 	return 0;
 }
 
-int glprog_run(GLProgram_t *program, int bufid)
+int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 {
 	static int programid = 0;
 	GLenum err = 0;
-	if (program->fbID)
+	if (program->fbo  > 0)
 	{
-		glBindFramebuffer(GL_FRAMEBUFFER, program->fbID);
-		glBindTexture(GL_TEXTURE_2D, program->out_textures[bufid].dma_texture);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-					program->out_textures[bufid].dma_texture, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
+		glBindTexture(program->out.textype, program->out.texture);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, program->out.textype,
+					program->out.texture, 0);
 		err = glGetError();
 		if (err != GL_NO_ERROR)
 		{
-			err("segl: program[%d] Framebuffer access error %#X %#X", programid, err, GL_INVALID_FRAMEBUFFER_OPERATION);
+			err("segl: program[%d] Framebuffer access error", programid);
 		}
 	}
 	else
 		glClear(GL_COLOR_BUFFER_BIT);
 
+	glClearColor(0.5, 0.5, 0.5, 1.0);
 	glBindVertexArrayOES(program->vertexArrayID);
 	glUseProgram(program->ID);
 
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(program->in_textype, program->in_textures[bufid].dma_texture);
+	glBindTexture(buffer->textype, buffer->texture);
 	GLProgram_Uniform_t *uniform = program->controls;
 	while (uniform)
 	{
@@ -494,20 +499,21 @@ int glprog_run(GLProgram_t *program, int bufid)
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
 
-	if (program->fbID != -1)
+	if (program->fbo != -1)
 	{
 		GLint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 		if (status != GL_FRAMEBUFFER_COMPLETE)
 		{
-			err("framebuffer %u incomplet %#x", program->fbID, status);
+			err("framebuffer %u incomplet %#x", program->fbo, status);
 			//return -1;
 		}
 		//glFramebufferTexture2D to disable the texture is an invalid operation
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 	programid++;
 	if (program->next)
-		return glprog_run(program->next, bufid);
+	{
+		return glprog_run(program->next, &program->out);
+	}
 	programid = 0;
 	return 0;
 }
@@ -593,13 +599,10 @@ void glprog_destroy(GLProgram_t *program)
 {
 	if (program->next)
 		return glprog_destroy(program->next);
-	if (program->fbID)
+	if (program->fbo)
 	{
-		glDeleteFramebuffers(1, &program->fbID);
-		for (int i = 0; i < MAX_BUFFERS; i++)
-		{
-			glDeleteTextures(1, &program->out_textures[i].dma_texture);
-		}
+		glDeleteFramebuffers(1, &program->fbo);
+		glDeleteTextures(1, &program->out.texture);
 	}
 	free(program->config);
 	free(program);
@@ -760,7 +763,7 @@ int glprog_loadjsonsetting(GLProgram_t *program, void *entry)
 	return 0;
 }
 
-int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jconfig)
+static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jconfig)
 {
 	json_t *disable = json_object_get(jconfig, "disable");
 	if (disable && json_is_boolean(disable) && json_is_true(disable))
@@ -832,18 +835,29 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 		json_array_foreach(jconfig, i, jfield)
 		{
 			EGLConfig_Program_t *config = calloc(1, sizeof(*config));
+			if (_glprog_loadjsonconfiguration(config, jfield))
+			{
+				free(config);
+				continue;
+			}
 			if (first == NULL)
 				first = config;
 			if (previous)
 				previous->next = config;
 			previous = config;
-			_glprog_loadjsonconfiguration(config, jfield);
 		}
 	}
 	else if (jconfig && json_is_object(jconfig))
 	{
-		first = calloc(1, sizeof(*first));
-		_glprog_loadjsonconfiguration(first, jconfig);
+		EGLConfig_Program_t *config = calloc(1, sizeof(*first));
+		if(_glprog_loadjsonconfiguration(config, jconfig))
+		{
+			free(config);
+		}
+		else
+		{
+			first = config;
+		}
 	}
 	if (arg != NULL)
 	{
@@ -853,3 +867,10 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 	return 0;
 }
 #endif
+
+#include <dlfcn.h>
+
+static void __attribute__ ((constructor)) segl_init()
+{
+	_egl_initprototypes();
+}
