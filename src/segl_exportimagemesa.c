@@ -179,10 +179,10 @@ static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 	EGLint offset[5] = {0};
 	int fourcc = ctx->config->parent.fourcc;
 	int dma_buf[5] = {0};
-	uint64_t modifiers = 0;
+	uint64_t modifiers[4] = {0};
 
 	eglExportDMABUFImageQueryMESA(ctx->egldisplay, image,
-								&fourcc, &numplanes, &modifiers);
+								&fourcc, &numplanes, &modifiers[0]);
 	if (numplanes < 5)
 	{
 		eglExportDMABUFImageMESA(ctx->egldisplay, image, &dma_buf[0], &stride[0], &offset[0]);
@@ -193,10 +193,10 @@ static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 		err("segl: requests %.4s, obtains %.4s", &ctx->config->parent.fourcc, &fourcc);
 	ctx->config->parent.fourcc = fourcc;
 
-	dbg("segl: export format modifier %.4s, %#x", &fourcc, modifiers);
-	if (modifiers != ctx->config->parent.modifiers)
-		err("segl: format modifier present but not set (%lld/%lld)", modifiers, ctx->config->parent.modifiers);
-	ctx->config->parent.modifiers = modifiers;
+	dbg("segl: export format modifier %.4s, %#x", &fourcc, modifiers[0]);
+	for (int i = 0; i < 4 && modifiers[0] != ctx->config->parent.modifiers; i++)
+		err("segl: format modifier present but not set (%lld/%lld)", modifiers[i], ctx->config->parent.modifiers);
+	ctx->config->parent.modifiers = modifiers[0];
 	eglDestroyImageKHR(ctx->egldisplay, image);
 
 	uint32_t size = stride[0] * ctx->config->parent.height;
