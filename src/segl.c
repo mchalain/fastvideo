@@ -78,6 +78,10 @@ static PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR = NULL;
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
 static PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
 #endif
+#if EGL_EXT_image_dma_buf_import_modifiers
+static PFNEGLQUERYDMABUFFORMATSEXTPROC eglQueryDmaBufFormatsEXT = NULL;
+static PFNEGLQUERYDMABUFMODIFIERSEXTPROC eglQueryDmaBufModifiersEXT = NULL;
+#endif
 
 static int _egl_initprototypes(void)
 {
@@ -93,6 +97,16 @@ static int _egl_initprototypes(void)
 	}
 	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
 	if(glEGLImageTargetTexture2DOES == NULL)
+	{
+		return -1;
+	}
+	eglQueryDmaBufFormatsEXT = (void *) eglGetProcAddress("eglQueryDmaBufFormatsEXT");
+	if(eglQueryDmaBufFormatsEXT == NULL)
+	{
+		return -1;
+	}
+	eglQueryDmaBufModifiersEXT = (void *) eglGetProcAddress("eglQueryDmaBufModifiersEXT");
+	if(eglQueryDmaBufModifiersEXT == NULL)
 	{
 		return -1;
 	}
@@ -229,12 +243,38 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	EGLint num_configs;
 	eglGetConfigs(eglDisplay, NULL, 0, &num_configs);
 
+#if 0
+	// the function eglQueryDmaBufModifiersEXT looks bugged
+	uint32_t fourccs[4] = {0};
+	int numfourccs = 0;
+	eglQueryDmaBufFormatsEXT(eglDisplay, 4, &fourccs[0], &numfourccs);
+	for (int i = 0; i < 4 && i < numfourccs; i++)
+	{
+		dbg("segl: %.4s supported with modifiers:", &fourccs[i]);
+		uint64_t modifiers[4] = {0};
+		EGLint nummodifiers = 0;
+		EGLBoolean external = 0;
+		eglQueryDmaBufModifiersEXT(eglDisplay, fourccs[i], 0, NULL, &external, &nummodifiers);
+		if (nummodifiers > (sizeof(modifiers)/sizeof(*modifiers)))
+			nummodifiers = (sizeof(modifiers)/sizeof(*modifiers));
+		eglQueryDmaBufModifiersEXT(eglDisplay, fourccs[i], nummodifiers, modifiers, &external, &nummodifiers);
+		for (int j = 0; j < 4 && j < nummodifiers;j++)
+		{
+			dbg("\t%#llx %s", modifiers[j], external?"ext":"");
+		}
+	}
+#endif
 	EGLConfig eglConfigs[20];
 	if (num_configs > 20)
 	{
 		dbg("segl: choose %d/%d configs", 20, num_configs);
 		num_configs = 20;
 	}
+#if 0
+	// it looks to do nothing
+	eglConfigs[0] = EGL_SURFACE_TYPE;
+	eglConfigs[1] = EGL_VG_COLORSPACE_LINEAR_BIT;
+#endif
 #ifdef DEBUG
 	eglGetConfigs(eglDisplay, eglConfigs, sizeof(eglConfigs)/ sizeof(*eglConfigs), &num_configs);
 	for (int i = 0; i < num_configs; i++)
