@@ -87,7 +87,10 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 	{
 		connector = drmModeGetConnector(fd, resources->connectors[i]);
 		if (!force && connector->connection != DRM_MODE_CONNECTED)
+		{
+			connector = NULL;
 			continue;
+		}
 		for (int j = 0; j < connector->count_modes; j++)
 		{
 			drmModeModeInfo *current_mode = &connector->modes[j];
@@ -503,7 +506,7 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	}
 	if (! fourcc)
 		fourcc = defaultfourcc;
-	dbg("segl: screen format %.4s", &drm.fourcc);
+	dbg("segl: screen format %.4s", &fourcc);
 
 	if (init_drm(fd, fourcc, config->parent.width, config->parent.height))
 	{
@@ -637,7 +640,7 @@ static void native_destroy(EGLNativeDisplayType native_display)
 {
 }
 
-EGLNative_t eglnative_drm = 
+EGLNative_t eglnative_drm =
 {
 	.name = "drm",
 	.display = native_display,
