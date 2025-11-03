@@ -467,7 +467,11 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	const char *device = config->device;
 	if (device == NULL)
 		device = "/dev/dri/card0";
-	int fd = open(device, O_RDWR);
+	int fd = 0;
+	if (!access(device, R_OK | W_OK))
+		fd = open(device, O_RDWR);
+	else /// open with the device name instead the device node
+		fd = drmOpen(device, NULL);
 
 	if (fd < 0)
 	{

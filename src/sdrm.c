@@ -379,8 +379,7 @@ static int sdrm_listconnector(Display_t *disp)
 			prop = drmModeGetProperty(disp->fd, props->props[j]);
 			if (prop)
 			{
-				dbg("\tproperty %s %d", prop->name, prop->prop_id);
-				dbg("\t\t%s : %llu", prop->name, props->prop_values[j]);
+				dbg("\tproperty %s %d => %llu", prop->name, prop->prop_id, props->prop_values[j]);
 			}
 		}
 	}
@@ -439,8 +438,7 @@ static int sdrm_listproperties(Display_t *disp,  uint32_t type)
 			prop = drmModeGetProperty(disp->fd, props->props[j]);
 			if (prop)
 			{
-				dbg("\tproperty %s %d", prop->name, prop->prop_id);
-				dbg("\t\t%s : %llu", prop->name, props->prop_values[j]);
+				dbg("\tproperty %s %d => %llu", prop->name, prop->prop_id, props->prop_values[j]);
 			}
 		}
 	}
@@ -701,7 +699,11 @@ static int sdrm_atomic_commit(Display_t *disp, FrameBuffer_t *buffer)
 		goto commit_error;
 	if (drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_CRTC_ID], disp->crtc_id) < 0) /// <=== failed ???
 		goto commit_error;
-	/// the src rectangle must be move from 16 bits without any reason found ???
+	/**
+	 * about 16bits, see drm_plane_state documentation into the kernel
+	 * "visible portion of plane within plane (in 16.16 fixed point)"
+	 * https://www.kernel.org/doc/html/latest/gpu/drm-kms.html#c.drm_plane_state
+	 */
 	if (disp->properties[SDRM_PROPID_SRC_X] != (uint32_t)-1 &&
 		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_SRC_X], 0 << 16) < 0)
 		goto commit_error;
@@ -925,7 +927,7 @@ static int sdrm_requestbuffer_output(Display_t *disp, enum buf_type_e t, va_list
 			disp->nbuffers = 0;
 			if (targets != NULL)
 			{
-				*targets = calloc(disp->nbuffers, sizeof(void*));
+				*targets = calloc(MAX_BUFFERS, sizeof(void*));
 				for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 				{
 					if (sdrm_buffer_dumb(disp, &disp->buffers[i]))
