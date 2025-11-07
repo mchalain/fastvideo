@@ -131,27 +131,67 @@ static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 {
 	uint32_t ret = -1;
 	uint32_t code = _v4l2_subdev_fourcc2buscode(fourcc);
-	ret = _v4l2_subdev_getfmtbus(ctrlfd, 0, _v4l2_subdev_fmtbus, &code);
+	ret = code;
 	return ret;
 }
 
 int sv4l2_subdev_setpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, uint32_t fourcc, uint32_t width, uint32_t height)
 {
+	uint32_t fmtbus = sv4l2_subdev_translate_fmtbus(subdev->fd, fourcc);
+
 	struct v4l2_subdev_format ffs = {0};
 	ffs.pad = stream->pad;
 	ffs.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	ffs.format.width = width;
 	ffs.format.height = height;
-	ffs.format.code = sv4l2_subdev_translate_fmtbus(subdev->fd, fourcc);
-	dbg("sv4l2: subdev format request %lux%lu %#x for %.4s", width, height, ffs.format.code, &fourcc);
+	ffs.format.code = 0;
+	ffs.format.field = V4L2_FIELD_NONE;
+	dbg("sv4l2: subdev format request %lux%lu for %.4s(%#x)", width, height, &fourcc, fmtbus);
 	/**
-	 * currently this ioctl unconfigure the media if set as ACTIVE and not TRY
+	 * The sensor has a Bayer colour filter which is arranged depending a colours' grid
+	 * he only way you can change the colour format would be either:
+	 * - cropping an odd number of pixels off the left side
+	 * - cropping an odd number of lines off the top of the image
+	 * - horizontal flip to start reading from the right hand side
+	 * - vertical flip to start reading from the last line
+	 * The first two aren't supported by the sensor, but the last two are.
+	 * Thx 6by9
 	 */
-	if (ffs.format.code != (uint32_t)-1 && ioctl(subdev->fd, VIDIOC_SUBDEV_S_FMT, &ffs) != 0)
+	struct control_s
 	{
-		err("sv4l2: subdev set format error %m");
-		return -1;
+		int id;
+		int value;
+	};
+	struct control_s controls[] = {
+		{0, 0},
+		{V4L2_CID_VFLIP, 1},
+		{V4L2_CID_HFLIP, 1},
+		{V4L2_CID_VFLIP, 0},
+	};
+	for (int i = 0; i < (sizeof(controls)/sizeof(*controls)) &&
+			ffs.format.code != fmtbus; i++)
+	{
+		ffs.format.code = fmtbus;
+		int ret = -1;
+		if (controls[i].id)
+		{
+			struct v4l2_control control = {0};
+			control.id = controls[i].id;
+			control.value = controls[i].value;
+			ret = ioctl(subdev->fd, VIDIOC_S_CTRL, &control);
+			if (ret)
+				err("sv4l2: subdev control error %m");
+		}
+		if (ffs.format.code != (uint32_t)-1)
+			ret = ioctl(subdev->fd, VIDIOC_SUBDEV_S_FMT, &ffs);
+		if (ret != 0)
+		{
+			err("sv4l2: subdev set format error %m");
+			return -1;
+		}
 	}
+	if (fmtbus != ffs.format.code)
+		err("v4l2: subdev bus format not set! %#x", ffs.format.code);
 	return 0;
 }
 
