@@ -640,11 +640,12 @@ static int _v4l2_setfps_vblank(int ctrlfd, uint32_t width, uint32_t height, int 
 	{
 		fps = vblank + height;
 		fps *= width + hblank;
-		fps = pixelrate / fps;
+		if (fps)
+			fps = pixelrate / fps;
 	}
 	if (fps != -1)
 		warn("sv4l2: Frame rate: %d/%d fps vertical blank %lu",
-			(fps > 0)?1:-fps, (fps > 0)?fps:1, vblank);
+			(fps > 0)?fps:1, (fps > 0)?1:-fps, vblank);
 	return fps;
 }
 
