@@ -146,7 +146,7 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 	dev->config = config;
 	dev->name = devicename;
 	dev->type = device_output;
-	if (config->mode & MODE_COPY)
+	if (config && config->mode & MODE_COPY)
 	{
 		dev->copy = _default_copy;
 		dev->convert_ctx = dev;
@@ -157,7 +157,7 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 		}
 #endif
 	}
-	if (config->convert &&
+	if (config && config->convert &&
 		(config->convert->fourcc_in == 0 || config->convert->fourcc_in == config->parent.fourcc))
 	{
 		if (config->parent.width && config->parent.height)
@@ -533,12 +533,16 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 		if (dev->buffers[i].mem)
 			sdmabuf_unmap(dev->buffers[i].mem, dev->buffers[i].size);
 	}
-	if (dev->config->mode & MODE_COPY)
+	if (dev->config)
 	{
-		_passthrough_freedmabuf(dev);
+		if (dev->config->mode & MODE_COPY)
+		{
+			_passthrough_freedmabuf(dev);
+		}
+		if (dev->config->convert && dev->convert_ctx)
+			dev->config->convert->ops.destroy(dev->convert_ctx);
+		free(dev->config);
 	}
-	if (dev->config->convert && dev->convert_ctx)
-		dev->config->convert->ops.destroy(dev->convert_ctx);
 #if 0
 	/**
 	 * currently this member may contain local buffers info or the pipe client
@@ -549,8 +553,6 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 	if (dev->dmabufs)
 		free(dev->dmabufs);
 #endif
-	if (dev->config)
-		free(dev->config);
 	free(dev);
 }
 
