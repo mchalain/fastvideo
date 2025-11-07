@@ -35,6 +35,10 @@
 #define V4L2_TRYRATIO 40
 #endif
 
+#ifdef V4L2_SUBDEV
+#define ADD_SUBDEVICES 1
+#endif
+
 #define dbg_buffer_splane(v4l2) 		dbg("sv4l2: buf %d info:", v4l2->index); \
 		dbg("\ttype: %s", (v4l2->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)? "CAPTURE":"OUTPUT"); \
 		dbg("\tmemory: %s", (v4l2->memory == V4L2_MEMORY_DMABUF)? "DMABUF":(v4l2->memory == V4L2_MEMORY_MMAP)?"MMAP":"USERPTR"); \
@@ -1430,6 +1434,20 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 	else
 		type = _v4l2_getbuftype(type, mode);
 
+#if ADD_SUBDEVICES
+	/// the subdevices must be intialized, even if they are not used after
+	V4L2_t *subdevs[MAX_SUBDEVS] = {0};
+	for (int i = 0; config && i < (sizeof(subdevs) / sizeof(*subdevs)); i++)
+	{
+		if (config->subdev_entries[i])
+		{
+			subdevs[i] = subdev_ops.create("", device_control, (DeviceConf_t *)config->subdev_entries[i]);
+			if (subdevs[i])
+				subdev_ops.destroy(subdevs[i]);
+		}
+	}
+#endif
+
 	V4L2_t *dev = calloc(1, sizeof(*dev));
 	dev->name = name;
 	strncpy(dev->devicename, devicename, sizeof(dev->devicename) - 1);
@@ -2123,11 +2141,13 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevice, const char *nam
 					_v4l2_parsedefinition(definition, config);
 					if (subdev_id >= (sizeof(config->subdev_entries) / sizeof(*config->subdev_entries)))
 						break;
-					config->subdev_entries[subdev_id] = field;
+
+					config->subdev_entries[subdev_id] = (V4l2Config_t *)subdev_ops.createconfig();
+					config->subdev_entries[subdev_id]->parent.entry = field;
+					config->subdev_entries[subdev_id]->parent.ops.loadconfiguration(config->subdev_entries[subdev_id], field);
 					subdev_id++;
 				}
 			}
-			if (subdev_id >= sizeof(config->subdev_entries)/sizeof(*config->subdev_entries))
 		}
 	}
 	return 0;
