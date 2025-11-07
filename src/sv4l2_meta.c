@@ -264,7 +264,7 @@ static int sv4l2_meta_capabilities(MetaDev_t *dev, json_t *capabilities, int all
 	json_object_set_new(capabilities, "type", json_string(sv4l2_meta_ops.name));
 	json_object_set_new(capabilities, "server-path", json_string(FASTSETTING_DEFAULT_SERVER));
 	json_t *fourcc = NULL;
-	if (all || (dev->meta && dev->meta->fourcc != 0) || (_metas[0]->fourcc != 0))
+	if (all || (dev->meta && dev->meta->fourcc != 0) || (_metas[0] && _metas[0]->fourcc != 0))
 	{
 		fourcc = json_object();
 		json_object_set_new(fourcc, "name", json_string("fourcc"));
