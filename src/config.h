@@ -85,6 +85,8 @@ int scommon_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devcon
 typedef struct FastVideoDevice_ops_s FastVideoDevice_ops_t;
 DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *entry);
 
+int config_isnamed(DeviceConf_t *devconfig, const char *name);
+
 int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data);
 json_t *config_getdevices(json_t *jconfig);
 int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data);

@@ -60,13 +60,14 @@ int _loadjsonsetting(FastVideoList_t *devices, const char *name, json_t *jentry)
 {
 	int ret = -1;
 	fastvideolist_first(devices);
+	dbg("loadsettings look for %s", name);
 	for (FastVideoDevice_t *device = fastvideolist_next(devices);
 			device != NULL; device = fastvideolist_next(devices))
 	{
-		if (!strcmp(name, device->config->name) &&
+		if (device->config && config_isnamed(device->config, name) &&
 			device->ops->loadsettings && device->dev)
 		{
-			dbg("loadsettings");
+			warn("loadseettings for %s", name);
 			ret = device->ops->loadsettings(device->dev, jentry);
 			break;
 		}

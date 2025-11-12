@@ -2004,15 +2004,18 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 	if (jname && json_is_array(jname))
 	{
 		int index = 0;
-		json_t *jcontrol = NULL;
-		json_array_foreach(jconfig, index, jcontrol)
+		json_t *jentry = NULL;
+		json_array_foreach(jname, index, jentry)
 		{
-			if (strcasecmp(dev->devicename, json_string_value(jname)))
-				return -1;
+			if (dev->config && config_isnamed(&dev->config->parent, json_string_value(jentry)))
+			{
+				jname = jentry;
+				break;
+			}
 		}
 	}
 	if (jname && json_is_string(jname) &&
-		strcasecmp(dev->devicename, json_string_value(jname)))
+			!config_isnamed(&dev->config->parent, json_string_value(jname)))
 	{
 		return -1;
 	}

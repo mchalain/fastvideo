@@ -231,6 +231,11 @@ DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *
 	return devconfig;
 }
 
+int config_isnamed(DeviceConf_t *devconfig, const char *name)
+{
+	return scommon_isnamed(devconfig->entry, name);
+}
+
 int scommon_isnamed(json_t *jdevice, const char *name)
 {
 	json_t *jname = json_object_get(jdevice, "name");
