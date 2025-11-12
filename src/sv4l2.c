@@ -2000,6 +2000,23 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 {
 	json_t *jconfig = entry;
 
+	json_t *jname = json_object_get(jconfig, "name");
+	if (jname && json_is_array(jname))
+	{
+		int index = 0;
+		json_t *jcontrol = NULL;
+		json_array_foreach(jconfig, index, jcontrol)
+		{
+			if (strcasecmp(dev->devicename, json_string_value(jname)))
+				return -1;
+		}
+	}
+	if (jname && json_is_string(jname) &&
+		strcasecmp(dev->devicename, json_string_value(jname)))
+	{
+		return -1;
+	}
+
 	json_t *transformations = json_object_get(jconfig, "transformation");
 	if (transformations && json_is_array(transformations))
 	{
