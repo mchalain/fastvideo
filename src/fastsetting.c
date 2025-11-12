@@ -67,21 +67,32 @@ int _loadjsonsetting(FastVideoList_t *devices, const char *name, json_t *jentry)
 		if (device->config && config_isnamed(device->config, name) &&
 			device->ops->loadsettings && device->dev)
 		{
-			warn("loadseettings for %s", name);
+			warn("loadsttings for %s", name);
 			ret = device->ops->loadsettings(device->dev, jentry);
 			break;
 		}
 	}
 	return ret;
 }
-int _loadsetting(FastVideoList_t *devices, client_t *clt, json_t *jentry)
+int _loadsetting(FastVideoList_t *devices, client_t *clt, json_t *jsetting)
 {
 	int ret = 0;
-	if (jentry && json_is_object(jentry))
+	if (jsetting && json_is_array(jsetting))
 	{
-		json_t *jname = json_object_get(jentry, "name");
+		json_t *jentry;
+		int index;
+		json_array_foreach(jsetting, index, jentry)
+		{
+			ret = _loadsetting(devices, clt, jentry);
+		}
+	}
+	if (jsetting && json_is_object(jsetting))
+	{
+		json_t *jname = json_object_get(jsetting, "name");
+		if (jname && json_is_array(jname))
+			jname = json_array_get(jname, 0);
 		if (jname && json_is_string(jname))
-			ret = _loadjsonsetting(devices, json_string_value(jname), jentry);
+			ret = _loadjsonsetting(devices, json_string_value(jname), jsetting);
 #define RESPONSE_LOADSETTING_OK "{\"cmd\":\"loadsetting\", \"status\":0}"
 #define RESPONSE_LOADSETTING_KO "{\"cmd\":\"loadsetting\", \"status\":-1}"
 		if (clt && ret > 0)
@@ -300,7 +311,9 @@ int main(int argc, char * const argv[])
 			err("config %s:%d error %s", configfile, error.line, error.text);
 			return -1;
 		}
+		warn("load json file %s", configfile);
 		_loadsetting(devices, NULL, jsettings);
+
 	}
 	if ((mode & MODE_INITIALIZE) == 0)
 	{
