@@ -83,9 +83,9 @@ int _loadsetting(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 			ret = _loadjsonsetting(devices, json_string_value(jname), jentry);
 #define RESPONSE_LOADSETTING_OK "{\"cmd\":\"loadsetting\", \"status\":0}"
 #define RESPONSE_LOADSETTING_KO "{\"cmd\":\"loadsetting\", \"status\":-1}"
-		if (ret > 0)
+		if (clt && ret > 0)
 			client_send(clt, RESPONSE_LOADSETTING_OK, sizeof(RESPONSE_LOADSETTING_OK) - 1);
-		else
+		else if (clt)
 			client_send(clt, RESPONSE_LOADSETTING_KO, sizeof(RESPONSE_LOADSETTING_KO) - 1);
 	}
 	return ret;
@@ -210,17 +210,21 @@ int main(int argc, char * const argv[])
 	unsigned int mode = 0;
 	const char *logfile = "-";
 	const char *cwd = NULL;
+	FastVideoList_t *settings = NULL;
 
 	fastvideodevice_ops_append(&subdev_ops);
 
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "j:L:W:IDP:");
+		opt = getopt(argc, argv, "j:J:L:W:IDP:");
 		switch (opt)
 		{
 			case 'j':
 				configfile = optarg;
+			break;
+			case 'J':
+				settings = fastvideolist_insert(settings, optarg);
 			break;
 			case 'L':
 				logfile = optarg;
@@ -278,6 +282,24 @@ int main(int argc, char * const argv[])
 				config_loaddevice(subdevices, _createdevices, &devices);
 			}
 		}
+	}
+	for (const char *configfile = fastvideolist_next(settings); configfile != NULL; configfile = fastvideolist_next(settings))
+	{
+		FILE *cf = fopen(configfile, "r");
+		if (cf == NULL)
+		{
+			err("config %s error %m", configfile);
+			return -1;
+		}
+		json_t *jsettings;
+		json_error_t error;
+		jsettings = json_loadf(cf, 0, &error);
+		if (! jsettings || !(json_is_object(jsettings) || json_is_array(jsettings)))
+		{
+			err("config %s:%d error %s", configfile, error.line, error.text);
+			return -1;
+		}
+		_loadsetting(devices, NULL, jsettings);
 	}
 	if ((mode & MODE_INITIALIZE) == 0)
 	{
