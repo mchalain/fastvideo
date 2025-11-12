@@ -87,7 +87,7 @@ The modules description may be into the root object of json's file or into the "
 ```json
  {
    "name": ["cam-ov5647","ov5647 10-0036"],
-   "disable": false,
+   "disable": true,
    "type": "subv4l",
    "device": "/dev/v4l-subdev0",
    "definition": {
@@ -370,7 +370,7 @@ The project uses only GNU Makefile, gcc (or clang). The *defconfig* file contain
 
 Other interesting configuration's options :
 
- - CROSS_COMPILE=arm-none-linux-gnueabi
+ - CROSS\_COMPILE=arm-none-linux-gnueabi
  - SYSROOT=/opt/arm-none-linux-gnueabi-sdk/arm-none-linux-gnueabi/sysroot
 
 ## Contribute
@@ -379,3 +379,66 @@ You can find a module's skeleton into the sources directory, to start a new modu
 
 A lot modules are missing but the main goal is the speed on light boards, and the currently all video devices are supported.
 It should be easy to push the stream from the last device into another application that uses the CPU.
+
+## Missing
+
+## Automatic White Balance, Automatic Exposure Algo
+
+The project offers the *sv4l2\_meta* to unpack camera metadata and send command to the *fastsetting* application to change the controls.
+But the algorithms are missing.
+
+## Video extraction from GPU
+
+The *gpu* module allows to stream out the EGL Texture as a bitmap in CPU memory, or as a dma buffer. The second case, is more efficient but the embedded GPU use a tiled image format.
+
+## Video convertion intp CPU
+
+The current *convert* plugins are not ready.
+
+## Configuration
+
+As the V4L2 system may be a succession of link between devices and subdevices, the naming of each *v4l2* or *subdev* object is complex and the code is not really clear.
+This part of configuration may be refactored.
+
+# testing
+## Raspberry Pi 3/4
+
+The project offers configuration files to use with Raspberry Pi and Broadcom ISP, the [main file](data/raspicam.json) contains default configuration for camera, isp, gpu, screen. Several camera modules are supported and needs settings file.
+
+By default the output is the GPU rendering into X11 window. The native rendering available are *X11*, *wayland*, *drm* and *offscreen*, the choice is done by the first entry into the *native* table of the *gpu* object.
+
+### Raspberry Pi Camera Module 1
+
+This camera uses a ov5647 camera sensor. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-ov5647 -o isp-in -i isp-out -o gpu &
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-ov5647.json
+```
+
+### Raspberry Pi Camera Module 3
+
+The camera uses a imx708 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx708 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu &
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx708.json
+```
+
+### Raspberry Pi Camera Module HQ
+
+The camera uses a imx477 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx477 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu &
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx477.json
+```
+
+### Raspberry Pi Camera Module GS
+
+This camera uses a imx296 camera sensor. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx296 -o isp-in -i isp-out -o gpu &
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx296.json
+```
