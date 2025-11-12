@@ -175,7 +175,9 @@ static json_t *_device_v4l2(json_t *devices, int devfd, const char *path, const 
 static json_t * _device_subv4l2(json_t *devices, int devfd, const char *path, const char *name, uint32_t type)
 {
 	json_t *device = json_object();
-	json_object_set_new(device, "name", json_string(name));
+	json_t *jname = json_array();
+	json_array_insert_new(jname, 0, json_string(name));
+	json_object_set_new(device, "name", jname);
 #if 0
 	switch (type)
 	{
@@ -385,6 +387,9 @@ static int _media_device(void *arg, int fd, const char *path, const char *name)
 	}
 	json_array_foreach(mediadevices, i, device)
 	{
+		json_t *jdevicename = json_object_get(device, "name");
+		if (json_is_array(jdevicename))
+			jdevicename = json_array_get(jdevicename, 0);
 		json_t *subdevices = NULL;
 		int id = json_integer_value(json_object_get(device, "id"));
 		json_t *subdevice;
@@ -406,7 +411,17 @@ static int _media_device(void *arg, int fd, const char *path, const char *name)
 			}
 		}
 		if (subdevices != NULL)
+		{
+			json_t *subdevice;
+			int index;
+			json_array_foreach(subdevices, index, subdevice)
+			{
+				json_t *jname = json_object_get(subdevice, "name");
+				if (json_is_array(jname))
+					json_array_insert_new(jname, 0, jdevicename);
+			}
 			json_object_set_new(device,"subdevices", subdevices);
+		}
 		const char *type = json_string_value(json_object_get(device, "type"));
 
 		if (type && !strcmp("v4l2", type))
