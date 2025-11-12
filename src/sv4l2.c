@@ -2015,6 +2015,10 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 		_v4l2_loadjsontransformation(dev, transformations);
 	}
 
+	json_t *disable = json_object_get(jconfig, "disable");
+	if (json_is_true(disable))
+		return -1;
+
 	json_t *jcontrols = json_object_get(jconfig,"controls");
 	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
 	{
@@ -2134,10 +2138,6 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevice, const char *nam
 					!strcmp(json_string_value(jname), name) &&
 					json_is_object(field))
 				{
-					json_t *disable = json_object_get(field, "disable");
-					if (json_is_true(disable))
-						continue;
-
 					json_t *definition = json_object_get(field, "definition");
 					_v4l2_parsedefinition(definition, config);
 					if (subdev_id >= (sizeof(config->subdev_entries) / sizeof(*config->subdev_entries)))

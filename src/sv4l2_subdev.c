@@ -364,41 +364,37 @@ int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
 
 	if (subdevice && json_is_object(subdevice))
 	{
-		int disable = json_is_true(json_object_get(subdevice, "disable"));
-		if (!disable)
+		sv4l2_loadjsonconfiguration(config, subdevice);
+		json_t *definition = json_object_get(subdevice, "definition");
+		json_t *fmtbus = NULL;
+		if (definition && json_is_array(definition))
 		{
-			sv4l2_loadjsonconfiguration(config, subdevice);
-			json_t *definition = json_object_get(subdevice, "definition");
-			json_t *fmtbus = NULL;
-			if (definition && json_is_array(definition))
+			int index;
+			json_t *item;
+			json_array_foreach(definition, index, item)
 			{
-				int index;
-				json_t *item;
-				json_array_foreach(definition, index, item)
+				if (json_is_object(item))
 				{
-					if (json_is_object(item))
+					json_t *name = json_object_get(item, "name");
+					if (name && !strcmp(json_string_value(name), "fmtbus"))
 					{
-						json_t *name = json_object_get(item, "name");
-						if (name && !strcmp(json_string_value(name), "fmtbus"))
-						{
-							fmtbus = json_object_get(item, "value");
-							break;
-						}
+						fmtbus = json_object_get(item, "value");
+						break;
 					}
 				}
 			}
-			if (definition && json_is_object(definition))
-			{
-					fmtbus = json_object_get(definition, "fmtbus");
-			}
-			if (fmtbus && json_is_string(fmtbus))
-			{
-				config->fmtbus = strtol(json_string_value(fmtbus), NULL, 16);
-			}
-			if (fmtbus && json_is_integer(fmtbus))
-			{
-				config->fmtbus = json_integer_value(fmtbus);
-			}
+		}
+		if (definition && json_is_object(definition))
+		{
+				fmtbus = json_object_get(definition, "fmtbus");
+		}
+		if (fmtbus && json_is_string(fmtbus))
+		{
+			config->fmtbus = strtol(json_string_value(fmtbus), NULL, 16);
+		}
+		if (fmtbus && json_is_integer(fmtbus))
+		{
+			config->fmtbus = json_integer_value(fmtbus);
 		}
 	}
 	if (subdevice && json_is_string(subdevice))
