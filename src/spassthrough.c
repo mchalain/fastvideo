@@ -13,6 +13,10 @@
 #include "sfile.h"
 #include "sdmabuf.h"
 
+#if defined(__ARM_NEON) && !__aarch64__
+#define NEON_COPY 1
+#endif
+
 static const char spassthrough[] = "spassthrough";
 static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry);
 
@@ -91,16 +95,16 @@ DeviceConf_t * spassthrough_createconfig(void)
 	return &config->parent;
 }
 
-#ifdef __ARM_NEON
+#if NEON_COPY
 static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t size)
 {
-	/// [%[src]:256] for alignment on 256bits
+	/// [%[src]:256] for alignment on 256bits d{n} => 2 words (2*32bits = 8bytes)
 	asm volatile (
-		"1:                                               \n"
+		"loop:                                            \n"
 		"subs     %[size], %[size], #32                   \n"
 		"vld1.u8  {d0, d1, d2, d3}, [%[src]:256]!         \n"
 		"vst1.u8  {d0, d1, d2, d3}, [%[dst]:256]!         \n"
-		"bgt      1b                                      \n"
+		"bne      loop                                    \n"
 		: [dst]"+r"(dst)
 		: [src]"r"(src), [size]"r"(size)
 		: "d0", "d1", "d2", "d3", "cc", "memory"
@@ -150,7 +154,7 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 	{
 		dev->copy = _default_copy;
 		dev->convert_ctx = dev;
-#ifdef __ARM_NEON
+#if NEON_COPY
 		if (scpu_check(SCPU_NEON))
 		{
 			dev->copy = _neon_copy;
