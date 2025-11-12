@@ -19,8 +19,8 @@ static void *convert_create(Passthrough_config_t *config)
 	int green1 = 0, green2 = 3, red = 2, blue = 1;
 	conv->coefs[green1] = 32;
 	conv->coefs[green2] = 32;
-	conv->coefs[red] = 32;
-	conv->coefs[blue] = 32;
+	conv->coefs[red] = 0;
+	conv->coefs[blue] = 0;
 	return conv;
 create_error:
 	free(conv);
@@ -45,26 +45,26 @@ static size_t convert_convert(void *arg, const char *const src, char *dst, size_
 #ifdef __ARM_NEON
 	/// only d0 to d7 accept 16 bits scalars
 	asm volatile (
-		"vld1.u16      {d7}, [%[coefs]]            \n"
-		"1:                                        \n"
-		"subs          %[size], %[size], #32       \n"
-		"vld4.u16      {d0, d1, d2, d3}, [%[src]]! \n"
-		"vmull.s16     q12, d0, d7[0]              \n"
-		"vqrshrn.s32   d0, q12, #8                 \n"
-		"vmull.s16     q13, d1, d7[1]              \n"
-		"vqrshrn.s32   d1, q13, #8                 \n"
-		"vmull.s16     q14, d2, d7[0]              \n"
-		"vqrshrn.s32   d2, q14, #8                 \n"
-		"vmull.s16     q15, d3, d7[1]              \n"
-		"vqrshrn.s32   d3, q15, #8                 \n"
-		"vst4.u16      {d0, d1, d2, d3}, [%[dst]]! \n"
-		"bgt      1b                               \n"
+		" vld1.u16      {d7}, [%[coefs]]            \n"
+		"loop:                                      \n"
+		" subs          %[size], %[size], #32       \n"
+		" vld4.u16      {d0, d1, d2, d3}, [%[src]]! \n"
+		" vmull.u16     q12, d0, d7[0]              \n"
+		" vmull.u16     q13, d1, d7[1]              \n"
+		" vmull.u16     q14, d2, d7[0]              \n"
+		" vmull.u16     q15, d3, d7[1]              \n"
+		" vqrshrn.u16   d0, q12, #8                 \n"
+		" vqrshrn.u16   d1, q13, #8                 \n"
+		" vqrshrn.u16   d2, q14, #8                 \n"
+		" vqrshrn.u16   d3, q15, #8                 \n"
+		" vst4.u16      {d0, d1, d2, d3}, [%[dst]]! \n"
+		" bne      loop                             \n"
 		: [dst]"+r"(dst)
 		: [src]"r"(srcline), [size]"r"(size), [coefs]"r"(coefs)
 		: "d0", "d1", "d2", "d3", "d7", "q12", "q13", "q14", "q15", "cc", "memory"
 	);
 #else
-# error must support ARM NEON
+# warning must support ARM NEON
 #endif
 #if BYLINE
 		//dst += origsize / conv->config->parent.height;
