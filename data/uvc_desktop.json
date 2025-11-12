@@ -46,6 +46,21 @@
 	"native":"offscreen",
 	"end":true
 },{
+	"name":"convert",
+	"type":"passthrough",
+	"convert": "rgba",
+	"end":true
+},{
+	"name":"copy",
+	"type":"passthrough",
+	"copy": true,
+	"end":true
+},{
+	"name":"dryrun",
+	"type":"passthrough",
+	"controls":["dryrun"],
+	"end":true
+},{
 	"name":"passthrough",
 	"type":"passthrough",
 	"end":true

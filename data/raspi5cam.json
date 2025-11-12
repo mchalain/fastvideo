@@ -7,193 +7,47 @@
     "media": "media2"
   },
   {
-    "name": ["ips-out","ips-out0","ips0-out0","pispbe-output0"],
+    "name": ["isp-out","ips-out0","ips0-out0","pispbe-output0"],
     "type": "v4l2",
     "device": "/dev/video24",
-    "definition": [
-      {
-        "name": "fourcc",
-        "value": "YUYV",
-        "type": "string",
-        "items": [
-          "YU12",
-          "YV12",
-          "NV12",
-          "NV21",
-          "YUYV",
-          "UYVY",
-          "YVYU",
-          "VYUY",
-          "YM12",
-          "NM12",
-          "NM21",
-          "YM21",
-          "YM16",
-          "YM61",
-          "YM24",
-          "YM42",
-          "RGB3",
-          "BGR3",
-          "XR24",
-          "XB24",
-          "RGB6",
-          "BGR6",
-          "RGGB",
-          "BA81",
-          "GRBG",
-          "GBRG",
-          "RG16",
-          "BYR2",
-          "GR16",
-          "GB16",
-          "RG10",
-          "BG10",
-          "BA10",
-          "GB10",
-          "RG12",
-          "BG12",
-          "BA12",
-          "GB12",
-          "RG14",
-          "BG14",
-          "GR14",
-          "GB14",
-          "PC1B",
-          "PC1R",
-          "PC1G",
-          "PC1g",
-          "GREY",
-          "Y16 ",
-          "PC1M",
-          "RPBP"
-        ]
-      },
-      {
-        "name": "width",
-        "value": 1920,
-        "type": "integer",
-        "minimum": 32,
-        "maximum": 65535,
-        "step": 2
-      },
-      {
-        "name": "height",
-        "value": 1080,
-        "type": "integer",
-        "minimum": 32,
-        "maximum": 65535,
-        "step": 2
-      }
-    ],
+    "definition": {
+      "fourcc": "YUYV",
+      "width": 1920,
+      "height": 1080
+    },
     "id": 35,
     "media": "media2"
   },
   {
-    "name": ["ips-out1","ips0-out1","pispbe-output1"],
+    "name": ["isp-out1","isp0-out1","pispbe-output1"],
     "type": "v4l2",
     "device": "/dev/video25",
-    "definition": [
-      {
-        "name": "fourcc",
-        "value": "YUYV",
-        "type": "string",
-        "items": [
-          "YU12",
-          "YV12",
-          "NV12",
-          "NV21",
-          "YUYV",
-          "UYVY",
-          "YVYU",
-          "VYUY",
-          "YM12",
-          "NM12",
-          "NM21",
-          "YM21",
-          "YM16",
-          "YM61",
-          "YM24",
-          "YM42",
-          "RGB3",
-          "BGR3",
-          "XR24",
-          "XB24",
-          "RGB6",
-          "BGR6",
-          "RGGB",
-          "BA81",
-          "GRBG",
-          "GBRG",
-          "RG16",
-          "BYR2",
-          "GR16",
-          "GB16",
-          "RG10",
-          "BG10",
-          "BA10",
-          "GB10",
-          "RG12",
-          "BG12",
-          "BA12",
-          "GB12",
-          "RG14",
-          "BG14",
-          "GR14",
-          "GB14",
-          "PC1B",
-          "PC1R",
-          "PC1G",
-          "PC1g",
-          "GREY",
-          "Y16 ",
-          "PC1M",
-          "RPBP"
-        ]
-      },
-      {
-        "name": "width",
-        "value": 1920,
-        "type": "integer",
-        "minimum": 32,
-        "maximum": 65535,
-        "step": 2
-      },
-      {
-        "name": "height",
-        "value": 1080,
-        "type": "integer",
-        "minimum": 32,
-        "maximum": 65535,
-        "step": 2
-      }
-    ],
+    "definition": {
+      "fourcc": "YUYV",
+      "width": 1920,
+      "height": 1080
+    },
     "id": 41,
     "media": "media2"
+  },
+  {
+    "name": ["isp-config","isp0-config","pispbe-config"],
+    "type": "v4l2",
+    "device": "/dev/video25",
+    "definition": {
+      "fourcc": "RPBC",
+      "size": 16720
+    }
   },
   {
     "name": ["enc-hevc","rpivid-source"],
     "type": "v4l2",
     "device": "/dev/video19",
-    "definition": [
-      {
-        "name": "fourcc",
-        "value": "S265",
-        "type": "string",
-        "items": [
-          "S265"
-        ]
-      },
-      {
-        "name": "width",
-        "value": 1920,
-        "type": "integer"
-      },
-      {
-        "name": "height",
-        "value": 1088,
-        "type": "integer"
-      }
-    ],
+    "definition": {
+      "fourcc": "S265",
+      "width": 1920,
+      "height": 1088
+    },
     "controls": [
       {
         "name": "Stateless Codec Controls",
@@ -255,15 +109,27 @@
     "media": "media0"
   },
   {
-    "name": ["cam","imx296","imx477","rp1-cfe-fe_image0"],
+    "name": ["cam-stats","rp1-cfe-fe_stats"],
+    "type": "v4l2",
+    "device": "/dev/video6",
+    "definition": {
+      "fourcc": "RPFS",
+      "size": 23200
+    }
+  },
+  {
+    "name": ["cam-config","rp1-cfe-fe_config"],
+    "type": "v4l2",
+    "device": "/dev/video7",
+    "definition": {
+      "fourcc": "RPFC",
+      "size": 632
+    }
+  },
+  {
+    "name": ["cam","cam-imx296","cam-imx477","rp1-cfe-fe_image0"],
     "type": "v4l2",
     "device": "/dev/video4",
-    "definition": [
-      {
-        "name": "fourcc",
-        "value": "RG16"
-      }
-    ],
     "id": 35,
     "media": "media1",
     "subdevices": [
@@ -284,35 +150,14 @@
       "media": "media1"
       },
       {
-        "name": ["imx296","imx296 6-001a"],
+        "name": ["cam-imx296","imx296 6-001a"],
         "type": "subv4l",
         "device": "/dev/v4l-subdev2",
-        "definition": [
-          {
-            "name": "fourcc",
-            "value": "RG10",
-            "type": "string",
-            "items": [
-              "RG10"
-            ]
-          },
-          {
-            "name": "width",
-            "value": 1456,
-            "type": "integer",
-            "items": [
-              1456
-            ]
-          },
-          {
-            "name": "height",
-            "value": 1088,
-            "type": "integer",
-            "items": [
-              1088
-            ]
-          }
-        ],
+        "definition": {
+          "fourcc": "BG16",
+          "width":1456,
+          "height":1088
+	},
         "controls": [
           {
             "name": "User Controls",
@@ -454,7 +299,7 @@
         "media": "media1"
       },
       {
-      "name": ["inx477","imx477 6-001a"],
+      "name": ["cam-inx477","imx477 6-001a"],
       "type": "subv4l",
       "device": "/dev/v4l-subdev2",
       "definition": [
@@ -678,10 +523,21 @@
       "media": "media1"
       }
     ]
-  }
-  ,{
+  },
+  {
+    "name": "dryrun",
+    "type": "passthrough",
+    "controls": [
+      {
+        "dryrun": true,
+        "end": true
+      }
+    ],
+    "end": true
+  },
+  {
      "name": ["gpu"],
      "type": "gpu",
-     "native": "drm"
+     "native": ["x11","wayland","drm"]
   }
 ]

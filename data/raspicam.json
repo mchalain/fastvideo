@@ -344,11 +344,11 @@
       {
         "name": "Red Balance",
         "id": 9963790,
-        "value": 1000
+        "value": 2315
       },{
         "name": "Blue Balance",
         "id": 9963791,
-        "value": 1000
+        "value": 2878
       },{
         "name": "Colour Correction Matrix",
         "id": 9968097,
@@ -485,25 +485,25 @@
     "end": true
   },
   {
+    "name": ["unicam-embedded"],
+    "type": "v4l2",
+    "device": "/dev/video1",
+    "end": true
+  },
+  {
     "name": ["unicam-image","cam-imx477","cam-imx296","cam-imx708","cam-ov5647"],
     "type": "v4l2",
     "device": "/dev/video0",
     "id": 6,
     "media": "media1",
-    "definition":{
-      "fourcc": "GB10",
-      "width": 1920,
-      "height": 1080,
-      "end": true
-    },
     "subdevices": [
       {
-        "name": ["cam-imx708","imx708_wide_noir"],
-	"disable": true,
+        "name": ["cam-imx708","unicam-image","imx708_wide_noir"],
+        "disable": true,
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "RG10",
+          "fourcc": "pBAA",
           "width": 2304,
           "height": 1296
         },
@@ -511,7 +511,7 @@
           {
             "name": "Exposure",
             "id": 9963793,
-            "value": 1600
+            "value": 1367
           },{
             "name": "Horizontal Flip",
             "id": 9963796,
@@ -536,11 +536,12 @@
           },{
             "name": "Vertical Blanking",
             "id": 10356993,
-            "value": 58
+            "value": 1198
           },{
             "name": "Horizontal Blanking",
             "id": 10356994,
-            "value": 11040
+            "read-only": true,
+            "value": 5520
           },{
             "name": "Analogue Gain",
             "id": 10356995,
@@ -568,12 +569,14 @@
           },{
             "name": "Link Frequency",
             "id": 10422529,
+            "read-only": true,
             "value": 0,
             "value_show": 450000000
           },{
             "name": "Pixel Rate",
             "id": 10422530,
-            "value": 595200000
+            "read-only": true,
+            "value": 585600000
           },{
             "name": "Test Pattern",
             "id": 10422531,
@@ -590,7 +593,7 @@
         "media": "media1"
       },
       {
-        "name": ["cam-imx708","dw9807 10-000c"],
+        "name": ["cam-imx708","unicam-image","dw9807 10-000c"],
         "disable": true,
         "type": "subv4l",
         "device": "/dev/v4l-subdev1",
@@ -598,19 +601,19 @@
           {
             "name": "Focus, Absolute",
             "id": 10094858,
-            "value": 480
+            "value": 452
           }
         ],
         "id": 4,
         "media": "media1"
       },
       {
-        "name": ["cam-imx296","imx296 10-001a"],
-	"disable": true,
+        "name": ["cam-imx296","unicam-image","imx296 10-001a"],
+        "disable": true,
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "RG10",
+          "fourcc": "pBAA",
           "width":1456,
           "height":1088
         },
@@ -618,7 +621,7 @@
           {
             "name": "Exposure",
             "id": 9963793,
-            "value": 1104
+            "value": 2244
           },{
             "name": "Horizontal Flip",
             "id": 9963796,
@@ -639,7 +642,7 @@
           },{
             "name": "Vertical Blanking",
             "id": 10356993,
-            "value": 30
+            "value": 1161
           },{
             "name": "Horizontal Blanking",
             "id": 10356994,
@@ -647,7 +650,7 @@
           },{
             "name": "Analogue Gain",
             "id": 10356995,
-            "value": 0
+            "value": 239
           },{
             "name": "Pixel Rate",
             "id": 10422530,
@@ -663,12 +666,12 @@
         "id": 1,
         "media": "/dev/media1"
       },{
-        "name": ["cam-imx477","imx477 10-001a"],
+        "name": ["cam-imx477","unicame-image","imx477 10-001a"],
         "disable": true,
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "RG12",
+          "fourcc": "pBCC",
           "width": 2028,
           "height": 1080
         },
@@ -676,7 +679,7 @@
           {
             "name": "Exposure",
             "id": 9963793,
-            "value": 1516
+            "value": 2175
           },
           {
             "name": "Horizontal Flip",
@@ -691,28 +694,30 @@
           {
             "name": "Camera Orientation",
             "id": 10094882,
+            "read-only": true,
             "value": 2,
             "value_show": "External"
           },
           {
             "name": "Camera Sensor Rotation",
             "id": 10094883,
+            "read-only": true,
             "value": 180
           },
           {
             "name": "Vertical Blanking",
             "id": 10356993,
-            "value": 46
+            "value": 677
           },
           {
             "name": "Horizontal Blanking",
             "id": 10356994,
-            "value": 19944
+            "value": 10712
           },
           {
             "name": "Analogue Gain",
             "id": 10356995,
-            "value": 900
+            "value": 958
           },
           {
             "name": "Red Pixel Value",
@@ -761,12 +766,12 @@
         "id": 1,
         "media": "/dev/media4"
       },{
-        "name": ["cam-ov5647","ov5647 10-0036"],
-	"disable": false,
+        "name": ["cam-ov5647","unicam-image","ov5647 10-0036"],
+        "disable": true,
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "GB10",
+          "fourcc": "BG10",
           "width": 1920,
           "-width": 640,
           "height": 1080,
@@ -838,7 +843,7 @@
   {
     "name":[ "gpu" ],
     "type":"gpu",
-    "native":"drm",
+    "native":["x11","wayland","drm"],
     "device":"/dev/dri/card0",
     "definition": {
       "transfer": "XR24",
@@ -861,8 +866,9 @@
     "end":true
   },
   {
-    "name": "dvb-i",
+    "name": "dvb-e",
     "type": "mpegts",
+    "protocol": "udp",
     "port": 5024,
     "host": "192.168.176.12",
     "periodic": 60,
@@ -876,7 +882,7 @@
   {
     "name": "dryrun",
     "type": "passthrough",
-    "control": [
+    "controls": [
       {
         "dryrun": true,
         "end": true
