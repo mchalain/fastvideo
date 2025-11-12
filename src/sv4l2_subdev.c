@@ -51,7 +51,7 @@ static _V4L2_subdev_format_t _buscode2fourcc[] =
 	{.fourcc=V4L2_PIX_FMT_SRGGB16, .fourcc_packed=V4L2_PIX_FMT_SRGGB16P, .buscode=MEDIA_BUS_FMT_SRGGB16_1X16},
 };
 
-const char sv4l2_subdev_defaultdevice[20] = "/dev/v4l_subdev0";
+const char sv4l2_subdev_defaultdevice[20] = "/dev/v4l-subdev0";
 
 uint32_t _v4l2_subdev_buscode2fourcc(int buscode, int packed)
 {
