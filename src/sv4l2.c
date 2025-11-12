@@ -1223,8 +1223,20 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 	int ctrlfd = dev->fd;
 	struct v4l2_query_ext_ctrl queryctrl = {0};
 	queryctrl.id = id;
+	void *retvalue = NULL;
 	int ret = ioctl(ctrlfd, VIDIOC_QUERYCTRL, &queryctrl);
 	if (ret != 0)
+	{
+		retvalue = (void *)(long)-1;
+#if ADD_SUBDEVICES
+		for (int i = 0; retvalue == (void *)(long)-1 && i < (sizeof(dev->subdevs) / sizeof(*(dev->subdevs))); i++)
+		{
+			if (dev->subdevs[i])
+				retvalue = sv4l2_control(dev->subdevs[i], id, value);
+		}
+#endif
+	}
+	if (retvalue == (void *)(long)-1)
 	{
 		err("sv4l2: control %d not supported", id);
 		return (void *)-1;
@@ -1243,7 +1255,8 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 		err("sv4l2: control %d with payload unsupported", id);
 		return 0;
 	}
-	return _sv4l2_control(ctrlfd, id, value, &queryctrl);
+	retvalue =  _sv4l2_control(ctrlfd, id, value, &queryctrl);
+	return retvalue;
 }
 
 static int _v4l2_periodiccontrol(V4L2_t *dev, int bufferid)
@@ -1435,20 +1448,6 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 	else
 		type = _v4l2_getbuftype(type, mode);
 
-#if ADD_SUBDEVICES
-	/// the subdevices must be intialized, even if they are not used after
-	V4L2_t *subdevs[MAX_SUBDEVS] = {0};
-	for (int i = 0; config && i < (sizeof(subdevs) / sizeof(*subdevs)); i++)
-	{
-		if (config->subdev_entries[i])
-		{
-			subdevs[i] = subdev_ops.create("", device_control, (DeviceConf_t *)config->subdev_entries[i]);
-			if (subdevs[i])
-				subdev_ops.destroy(subdevs[i]);
-		}
-	}
-#endif
-
 	V4L2_t *dev = calloc(1, sizeof(*dev));
 	dev->name = name;
 	strncpy(dev->devicename, devicename, sizeof(dev->devicename) - 1);
@@ -1457,6 +1456,17 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 	dev->type = type;
 	dev->mode = mode;
 	dev->ops.createbuffers = createbuffers_splane;
+#if ADD_SUBDEVICES
+	/// the subdevices must be intialized, even if they are not used after
+	for (int i = 0; config && i < (sizeof(dev->subdevs) / sizeof(*(dev->subdevs))) &&
+			i < (sizeof(config->subdev_entries) / sizeof(*(config->subdev_entries))); i++)
+	{
+		if (config->subdev_entries[i])
+		{
+			dev->subdevs[i] = subdev_ops.create("", device_control, (DeviceConf_t *)config->subdev_entries[i]);
+		}
+	}
+#endif
 	if (mode & MODE_MPLANE)
 	{
 		dev->ops.createbuffers = createbuffers_mplane;
@@ -1660,6 +1670,13 @@ void sv4l2_destroy(V4L2_t *dev)
 			if (dev->buffers[i].map[j])
 				munmap(dev->buffers[i].map[j], dev->buffers[i].length);
 	}
+#if ADD_SUBDEVICES
+	for (int i = 0; i < (sizeof(dev->subdevs) / sizeof(*(dev->subdevs))); i++)
+	{
+		if (dev->subdevs[i])
+			subdev_ops.destroy(dev->subdevs[i]);
+	}
+#endif
 	free(dev->buffers);
 	close(dev->fd);
 	free(dev);

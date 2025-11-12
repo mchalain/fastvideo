@@ -62,6 +62,7 @@ struct V4L2_s
 	} ops;
 	int (*periodicfunc)(V4L2_t *dev, int bufferid);
 	int periodic;
+	V4L2_t *subdevs[MAX_SUBDEVS];
 };
 
 /**
