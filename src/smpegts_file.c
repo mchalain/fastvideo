@@ -73,7 +73,6 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 	ssize_t ret = 0;
 
 	ret = write(proto->fd[proto->currentfd], buf, len);
-//warn("%s %d %d", __FILE__, __LINE__, ret);
 	return ret;
 }
 
