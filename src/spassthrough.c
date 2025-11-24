@@ -149,7 +149,7 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 	Passthrough_t *dev = calloc(1, sizeof(*dev));
 	dev->config = config;
 	dev->name = devicename;
-	dev->type = device_output;
+	dev->type = type;
 	if (config && config->mode & MODE_COPY)
 	{
 		dev->copy = _default_copy;
@@ -224,7 +224,11 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 
 EXT_API int spassthrough_loadsettings(Passthrough_t *dev, void *configentry)
 {
+#ifdef HAVE_JANSSON
 	return spassthrough_loadjsonsettings(dev, configentry);
+#else
+	return 0;
+#endif
 }
 
 static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems, int *dmabufs, size_t size, int copy)
