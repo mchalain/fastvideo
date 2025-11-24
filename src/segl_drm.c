@@ -24,13 +24,39 @@
 # define GBM_FORMAT_ABGR16161616F DRM_FORMAT_ABGR16161616F
 #endif
 
+typedef enum {
+	SDRM_PROPID_CRTC_ID,
+	SDRM_PROPID_MODE_ID,
+	SDRM_PROPID_FB_ID,
+	SDRM_PROPID_ACTIVE,
+	SDRM_PROPID_SRC_X,
+	SDRM_PROPID_SRC_Y,
+	SDRM_PROPID_SRC_W,
+	SDRM_PROPID_SRC_H,
+	SDRM_PROPID_CRTC_X,
+	SDRM_PROPID_CRTC_Y,
+	SDRM_PROPID_CRTC_W,
+	SDRM_PROPID_CRTC_H,
+	SDRM_PROPID_ROTATION,
+	SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR,
+	SDRM_PROPID_WRITEBACK_FB_ID,
+	SDRM_PROPID_LAST
+} properties_id;
+
 static struct drm_s {
 	uint32_t fourcc;
 	int fd;
 	drmModeModeInfo *mode;
+	int mode_id;
 	uint32_t crtc_id;
 	uint32_t connector_id;
+	uint32_t plane_id;
 	int waiting_for_flip;
+#ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
+	uint32_t properties[SDRM_PROPID_LAST];
+	drmModeAtomicReq *req;
+	uint32_t flags;
+#endif
 } drm;
 
 struct drm_fb {
@@ -38,6 +64,65 @@ struct drm_fb {
 	struct gbm_bo *bo;
 	uint32_t fb_id;
 };
+
+#ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
+static uint32_t sdrm_propertyid(int fd,  uint32_t type, uint32_t id, const char *property)
+{
+	uint32_t ret = -1;
+	drmModeObjectPropertiesPtr props;
+
+	props = drmModeObjectGetProperties(fd, id, type);
+	for (int i = 0; props && i < props->count_props; i++)
+	{
+		drmModePropertyPtr prop;
+
+		prop = drmModeGetProperty(fd, props->props[i]);
+		if (prop && !strcmp(prop->name, property))
+		{
+			ret = props->props[i];
+		}
+		if (prop)
+			drmModeFreeProperty(prop);
+	}
+	drmModeFreeObjectProperties(props);
+	return ret;
+}
+
+static uint64_t sdrm_properties(int fd,  uint32_t type, uint32_t id, const char *property, uint64_t value)
+{
+	uint64_t ret = 0;
+	drmModeObjectPropertiesPtr props;
+
+	props = drmModeObjectGetProperties(fd, id, type);
+	segl_dbg("sdrm: property for %#x", type);
+	for (int i = 0; props && i < props->count_props; i++)
+	{
+		drmModePropertyPtr prop;
+
+		prop = drmModeGetProperty(fd, props->props[i]);
+		if (prop)
+		{
+#ifdef DEBUG
+			segl_dbg("\t%s [%lu] => %lu", prop->name, props->props[i], props->prop_values[i]);
+#endif
+			if (!strcmp(prop->name, property))
+			{
+				ret = props->prop_values[i];
+				if (value != (uint64_t) -1)
+				{
+					drmModeObjectSetProperty(fd, id, type, props->props[i], value);
+				}
+#ifndef DEBUG
+				break;
+#endif
+			}
+			drmModeFreeProperty(prop);
+		}
+	}
+	drmModeFreeObjectProperties(props);
+	return ret;
+}
+#endif
 
 static uint32_t find_crtc_for_encoder(const drmModeRes *resources,
 				      const drmModeEncoder *encoder) {
@@ -80,17 +165,12 @@ static uint32_t find_crtc_for_connector(int fd, const drmModeRes *resources,
 	return -1;
 }
 
-static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t width, uint32_t height, drmModeModeInfo **mode, int force)
+static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t width, uint32_t height, drmModeModeInfo **mode, int *mode_id)
 {
 	drmModeConnector *connector = NULL;
 	for (int i = 0; i < resources->count_connectors; i++)
 	{
 		connector = drmModeGetConnector(fd, resources->connectors[i]);
-		if (!force && connector->connection != DRM_MODE_CONNECTED)
-		{
-			connector = NULL;
-			continue;
-		}
 		for (int j = 0; j < connector->count_modes; j++)
 		{
 			drmModeModeInfo *current_mode = &connector->modes[j];
@@ -102,6 +182,7 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 					(current_mode->type & DRM_MODE_TYPE_PREFERRED))
 				{
 					*mode = current_mode;
+					*mode_id = j;
 					break;
 				}
 			}
@@ -130,7 +211,7 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height)
 	}
 
 	/* find a connected connector: */
-	connector = find_connector(fd, resources, width, height, &drm.mode, 0);
+	connector = find_connector(fd, resources, width, height, &drm.mode, &drm.mode_id);
 
 	if (!connector)
 	{
@@ -138,7 +219,6 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height)
 		 * a connector..
 		 */
 		err("segl: no connected connector!");
-		connector = find_connector(fd, resources, width, height, &drm.mode, 1);
 	}
 
 	if (!drm.mode)
@@ -168,9 +248,45 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height)
 
 		drm.crtc_id = crtc_id;
 	}
+	dbg("segl: drm CRTC_ID %d", drm.crtc_id);
 
 	drm.connector_id = connector->connector_id;
 
+#ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
+	drmModePlaneResPtr planes;
+
+	planes = drmModeGetPlaneResources(fd);
+	for (int i = 0; i < planes->count_planes; ++i)
+	{
+		drmModePlanePtr plane;
+		plane = drmModeGetPlane(fd, planes->planes[i]);
+		if (plane->crtc_id == drm.crtc_id)
+			drm.plane_id = plane->plane_id;
+		drmModeFreePlane(plane);
+	}
+	drmModeFreePlaneResources(planes);
+
+	drm.properties[SDRM_PROPID_CRTC_ID] = sdrm_propertyid(fd, DRM_MODE_OBJECT_CONNECTOR, drm.connector_id, "CRTC_ID");
+	uint32_t prop_plane_crtc_id = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "CRTC_ID");
+	if (prop_plane_crtc_id != drm.properties[SDRM_PROPID_CRTC_ID])
+	{
+		warn("sdrm: CRTC_ID for plane(%lu) and connector(%lu) differents", prop_plane_crtc_id, drm.properties[SDRM_PROPID_CRTC_ID]);
+	}
+	drm.properties[SDRM_PROPID_MODE_ID] = sdrm_propertyid(fd, DRM_MODE_OBJECT_CRTC, drm.crtc_id, "MODE_ID");
+	drm.properties[SDRM_PROPID_ACTIVE] = sdrm_propertyid(fd, DRM_MODE_OBJECT_CRTC, drm.crtc_id, "ACTIVE");
+	drm.properties[SDRM_PROPID_FB_ID] = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "FB_ID");
+	drm.properties[SDRM_PROPID_SRC_X] = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "SRC_X");
+	drm.properties[SDRM_PROPID_SRC_Y] = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "SRC_Y");
+	drm.properties[SDRM_PROPID_SRC_W] = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "SRC_W");
+	drm.properties[SDRM_PROPID_SRC_H] = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "SRC_H");
+	drm.properties[SDRM_PROPID_CRTC_X] = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "CRTC_X");
+	drm.properties[SDRM_PROPID_CRTC_Y] = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "CRTC_Y");
+	drm.properties[SDRM_PROPID_CRTC_W] = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "CRTC_W");
+	drm.properties[SDRM_PROPID_CRTC_H] = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "CRTC_H");
+	drm.properties[SDRM_PROPID_ROTATION] = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "rotation");
+
+	drm.flags = (DRM_MODE_ATOMIC_NONBLOCK | DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_ALLOW_MODESET);
+#endif
 	drmModeCrtc *saved_crtc = drmModeGetCrtc(fd, drm.crtc_id);
 	return 0;
 }
@@ -482,11 +598,21 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 		return EGL_CAST(EGLNativeDisplayType, EGL_UNKNOWN);
 	}
 
+#ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
+	if (drmSetMaster(fd))
+		err("segl: drm setmaster failed %m");
+	/// enable atomic and writeback before setting the primary connector
+	if (drmSetClientCap(fd, DRM_CLIENT_CAP_ATOMIC, 1))
+		err("segl: drm atomic not supported %m");
+	if (drmSetClientCap(fd, DRM_CLIENT_CAP_WRITEBACK_CONNECTORS, 1))
+		err("segl: drm writeback not supported %m");
+#endif
+
 	struct gbm_device *gbm = gbm_create_device(fd);
 	dbg("segl: open (%s) %s", device, gbm_device_get_backend_name(gbm));
 
 	uint32_t defaultfourcc = 0;
-	uint32_t requestfourcc = config->transfer.fourcc;
+	uint32_t requestfourcc = config->parent.fourcc;
 	if (requestfourcc == FOURCC_NV12)
 		requestfourcc = FOURCC_R8;
 	uint32_t fourcc = 0;
@@ -510,7 +636,9 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 
 	if (init_drm(fd, fourcc, config->parent.width, config->parent.height))
 	{
+#if 0
 		return EGL_CAST(EGLNativeDisplayType, EGL_UNKNOWN);
+#endif
 	}
 
 	return (EGLNativeDisplayType)gbm;
@@ -522,7 +650,10 @@ static const GLint *native_attributes(EGLNativeDisplayType display)
 	for (int i = 0; i < sizeof(g_formats)/sizeof(*g_formats); i++)
 	{
 		if (g_formats[i].fourcc == drm.fourcc)
+		{
 			attributes = g_formats[i].attributes;
+			dbg("found attributes %.4s", &g_formats[i].fourcc);
+		}
 	}
 	return attributes;
 }
@@ -530,6 +661,8 @@ static const GLint *native_attributes(EGLNativeDisplayType display)
 static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLuint width, GLuint height, const GLchar *name)
 {
 	struct gbm_device *gbm = (struct gbm_device *)display;
+	if (drm.mode == NULL)
+		return (EGLNativeWindowType)NULL;
 
 	uint64_t modifiers[1] = {DRM_FORMAT_MOD_LINEAR};
 	int modifiers_length = 1;
@@ -586,9 +719,55 @@ static int native_flush(EGLNativeWindowType native_win)
 		old_bo = bo;
 		return 0;
 	}
+	int ret = 0;
+#ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
+	drm->req = drmModeAtomicAlloc();
+	if (!(drm->flags & DRM_MODE_ATOMIC_ALLOW_MODESET))
+	{
+		if (drmModeAtomicAddProperty(drm->req, drm->connector_id, drm->properties[SDRM_PROPID_CRTC_ID], drm->crtc_id) < 0)
+			goto commit_error;
+		if (drmModeAtomicAddProperty(drm->req, drm->crtc_id, drm->properties[SDRM_PROPID_MODE_ID], drm->mode_id) < 0)
+			goto commit_error;
+		if (drmModeAtomicAddProperty(drm->req, drm->crtc_id, drm->properties[SDRM_PROPID_ACTIVE], 1) < 0)
+			goto commit_error;
+	}
+	if (drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_FB_ID], fb->fb_id) < 0)
+		goto commit_error;
+	if (drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_ID], drm->crtc_id) < 0) /// <=== failed ???
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_SRC_X] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_X], 0 << 16) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_SRC_Y] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_Y], 0 << 16) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_SRC_W] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_W], drm->mode->hdisplay << 16) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_SRC_H] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_H], drm->mode->vdisplay << 16) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_CRTC_X] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_X], 0) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_CRTC_Y] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_Y], 0) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_CRTC_W] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_W], drm->mode->hdisplay) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_CRTC_H] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_H], drm->mode->vdisplay) < 0)
+		goto commit_error;
+
+	drmModeAtomicCommit(drm->fd, drm->req, drm->flags, &drm->waiting_for_flip);
+	drmModeAtomicFree(drm->req);
+	drm->flags &= ~DRM_MODE_ATOMIC_ALLOW_MODESET;
+#else
 	drm->waiting_for_flip = 1;
-	int ret = drmModePageFlip(drm->fd, drm->crtc_id, fb->fb_id,
+	ret = drmModePageFlip(drm->fd, drm->crtc_id, fb->fb_id,
 			DRM_MODE_PAGE_FLIP_EVENT, &drm->waiting_for_flip);
+#endif
 	if (ret)
 	{
 		err("segl: failed to queue page flip: %m");
@@ -600,6 +779,9 @@ static int native_flush(EGLNativeWindowType native_win)
 	old_bo = bo;
 
 	return 0;
+commit_error:
+	err("segl: drm commit error");
+	return -1;
 }
 
 static int native_sync(EGLNativeWindowType native_win)
