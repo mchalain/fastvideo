@@ -1474,7 +1474,7 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 	{
 		if (config->subdev_entries[i])
 		{
-			dev->subdevs[i] = subdev_ops.create("", device_control, (DeviceConf_t *)config->subdev_entries[i]);
+			dev->subdevs[i] = subdev_ops.create(config->subdev_entries[i]->parent.name, device_control, (DeviceConf_t *)config->subdev_entries[i]);
 		}
 	}
 #endif
@@ -2156,20 +2156,22 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
  * the subdevices should be useless for video
  * It is enought to manage the subdevices independently for the controls
  */
-int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevice, const char *name)
+int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevices, const char *name)
 {
 	int subdev_id = 0;
-	if (subdevice && json_is_array(subdevice))
+	if (subdevices && json_is_array(subdevices))
 	{
-		json_t *field = NULL;
+		json_t *subdevice = NULL;
 		int index = 0;
-		json_array_foreach(subdevice, index, field)
+		json_t *jlastname = NULL;
+		json_array_foreach(subdevices, index, subdevice)
 		{
-			if (json_is_object(field))
+			if (json_is_object(subdevice))
 			{
-				json_t *jname = json_object_get(field, "name");
+				json_t *jname = json_object_get(subdevice, "name");
 				if (jname && json_is_array(jname))
 				{
+					jlastname = json_array_get(jname, json_array_size(jname) - 1);
 					json_t *it = NULL;
 					int i = 0;
 					json_array_foreach(jname, i, it)
@@ -2184,16 +2186,26 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevice, const char *nam
 				}
 				if (jname && json_is_string(jname) &&
 					!strcmp(json_string_value(jname), name) &&
-					json_is_object(field))
+					json_is_object(subdevice))
 				{
-					json_t *definition = json_object_get(field, "definition");
+					json_t *jdisable = json_object_get(subdevice, "disable");
+					if (json_is_true(jdisable))
+					{
+						warn("sv4l2: subdev %s is disabled", name);
+#if 0
+						continue;
+#endif
+					}
+					json_t *definition = json_object_get(subdevice, "definition");
 					_v4l2_parsedefinition(definition, config);
 					if (subdev_id >= (sizeof(config->subdev_entries) / sizeof(*config->subdev_entries)))
 						break;
 
 					config->subdev_entries[subdev_id] = (V4l2Config_t *)subdev_ops.createconfig();
-					config->subdev_entries[subdev_id]->parent.entry = field;
-					config->subdev_entries[subdev_id]->parent.ops.loadconfiguration(config->subdev_entries[subdev_id], field);
+					config->subdev_entries[subdev_id]->parent.entry = subdevice;
+					config->subdev_entries[subdev_id]->parent.ops.loadconfiguration(config->subdev_entries[subdev_id], subdevice);
+					if (jlastname && json_is_string(jlastname))
+						config->subdev_entries[subdev_id]->parent.name = json_string_value(jlastname);
 					subdev_id++;
 				}
 			}
