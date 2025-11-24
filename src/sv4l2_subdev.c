@@ -29,10 +29,10 @@ struct _V4L2_subdev_format_s
 };
 
 #ifndef V4L2_PIX_FMT_SGBRG16P
-# define V4L2_PIX_FMT_SGBRG16P 0
-# define V4L2_PIX_FMT_SBGGR16P 0
-# define V4L2_PIX_FMT_SGRBG16P 0
-# define V4L2_PIX_FMT_SRGGB16P 0
+# define V4L2_PIX_FMT_SGBRG16P v4l2_fourcc('P', 'C', '1', 'g')
+# define V4L2_PIX_FMT_SBGGR16P v4l2_fourcc('P', 'C', '1', 'B')
+# define V4L2_PIX_FMT_SGRBG16P v4l2_fourcc('P', 'C', '1', 'G')
+# define V4L2_PIX_FMT_SRGGB16P v4l2_fourcc('P', 'C', '1', 'R')
 #endif
 
 static _V4L2_subdev_format_t _buscode2fourcc[] =
@@ -135,10 +135,8 @@ static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 	return ret;
 }
 
-int sv4l2_subdev_setpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, uint32_t fourcc, uint32_t width, uint32_t height)
+int sv4l2_subdev_setpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, uint32_t fmtbus, uint32_t width, uint32_t height)
 {
-	uint32_t fmtbus = sv4l2_subdev_translate_fmtbus(subdev->fd, fourcc);
-
 	struct v4l2_subdev_format ffs = {0};
 	ffs.pad = stream->pad;
 	ffs.which = V4L2_SUBDEV_FORMAT_ACTIVE;
@@ -146,7 +144,7 @@ int sv4l2_subdev_setpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, uin
 	ffs.format.height = height;
 	ffs.format.code = 0;
 	ffs.format.field = V4L2_FIELD_NONE;
-	dbg("sv4l2: subdev format request %lux%lu for %.4s(%#x)", width, height, &fourcc, fmtbus);
+	dbg("sv4l2: subdev format request %lux%lu for (%#x)", width, height, fmtbus);
 	/**
 	 * The sensor has a Bayer colour filter which is arranged depending a colours' grid
 	 * he only way you can change the colour format would be either:
@@ -319,6 +317,9 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 		err("sv4l2: subdevice %s not exist", config->device);
 		return NULL;
 	}
+	if (config->parent.fourcc && !config->fmtbus[0])
+		config->fmtbus[0] = sv4l2_subdev_translate_fmtbus(ctrlfd, config->parent.fourcc);
+
 	V4L2_t *subdev = sv4l2_subdev_create2(ctrlfd, devicename, type, config);
 	if (subdev == NULL)
 	{
@@ -329,11 +330,21 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 	if (config->parent.height) subdev->height = config->parent.height;
 	if (config->parent.fourcc) subdev->fourcc = config->parent.fourcc;
 
-	sv4l2_subdev_stream_t stream = {0};
-	sv4l2_subdev_setpixformat(subdev, &stream, subdev->fourcc, subdev->width, subdev->height);
-	if (sv4l2_subdev_fps(subdev, &stream, config->fps) == -1)
-		sv4l2_fps(subdev, config->fps);
-	sv4l2_subdev_fps(subdev, &stream, -1);
+	if (config->fmtbus)
+	{
+		for (int i = 0; i < (sizeof(config->fmtbus)/sizeof(*config->fmtbus)); i++)
+		{
+			sv4l2_subdev_stream_t stream = {0};
+			stream.pad = i;
+			if (!config->fmtbus[i])
+				continue;
+			sv4l2_subdev_setpixformat(subdev, &stream, config->fmtbus[i], subdev->width, subdev->height);
+			if (sv4l2_subdev_fps(subdev, &stream, config->fps) == -1)
+				sv4l2_fps(subdev, config->fps);
+			else
+				sv4l2_subdev_fps(subdev, &stream, -1);
+		}
+	}
 	return subdev;
 }
 
@@ -388,13 +399,31 @@ int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
 		{
 				fmtbus = json_object_get(definition, "fmtbus");
 		}
+		if (fmtbus && json_is_array(fmtbus))
+		{
+			json_t *entry;
+			int index;
+			json_array_foreach(fmtbus, index, entry)
+			{
+				if (index == (sizeof(config->fmtbus)/sizeof(*config->fmtbus)))
+					break;
+				if (json_is_string(entry))
+				{
+					config->fmtbus[index] = strtol(json_string_value(entry), NULL, 16);
+				}
+				if (json_is_integer(entry))
+				{
+					config->fmtbus[index] = json_integer_value(entry);
+				}
+			}
+		}
 		if (fmtbus && json_is_string(fmtbus))
 		{
-			config->fmtbus = strtol(json_string_value(fmtbus), NULL, 16);
+			config->fmtbus[0] = strtol(json_string_value(fmtbus), NULL, 16);
 		}
 		if (fmtbus && json_is_integer(fmtbus))
 		{
-			config->fmtbus = json_integer_value(fmtbus);
+			config->fmtbus[0] = json_integer_value(fmtbus);
 		}
 	}
 	if (subdevice && json_is_string(subdevice))

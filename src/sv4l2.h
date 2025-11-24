@@ -12,6 +12,7 @@
 #define MODE_SHOT 0x08
 
 #define MAX_SUBDEVS 4
+#define MAX_SUBDEVPADS 10
 #define CAMERACONFIG(config, defaultdevice) config = { \
 	.DEVICECONFIG(parent, config, sv4l2_loadconfiguration), \
 	.device = defaultdevice, \
@@ -33,10 +34,10 @@ struct V4l2Config_s
 	const char *device;
 	int mode;
 	int fps;
-	int fmtbus;
 	int periodic;
 	int periodiccontrol;
 	V4l2Config_t *subdev_entries[MAX_SUBDEVS];
+	uint32_t fmtbus[MAX_SUBDEVPADS];
 };
 
 typedef struct V4L2Buffer_s V4L2Buffer_t;
