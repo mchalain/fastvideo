@@ -454,7 +454,7 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	planes = drmModeGetPlaneResources(disp->fd);
 
 	*plane_id = (uint32_t)-1;
-	drmModePlanePtr plane;
+	drmModePlanePtr plane = NULL;
 	dbg("sdrm: Plane");
 	for (int i = 0; i < planes->count_planes; ++i)
 	{
@@ -855,6 +855,7 @@ EXT_API Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf
 	if (disp == NULL)
 	{
 		close(fd);
+		free(disp);
 		return NULL;
 	}
 	warn("sdrm: create %s device on  %s", name, config->device);
