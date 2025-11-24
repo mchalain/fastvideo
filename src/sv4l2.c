@@ -277,7 +277,11 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 	if (interface)
 		memcpy(interface, cap.card, sizeof(cap.card));
 
+#ifdef DEBUG
 	uint32_t caps = cap.capabilities;
+	if (caps & (V4L2_CAP_META_CAPTURE | V4L2_CAP_META_OUTPUT))
+		dbg("sv4l2: media has Metadata capabilities");
+#endif
 	if (caps & V4L2_CAP_DEVICE_CAPS)
 	{
 		dbg("sv4l2: device capabilities available on %s %#x", cap.card, cap.capabilities);
@@ -291,9 +295,16 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 	 * We unset meta if the device may not support meta.
 	 */
 	if (!(caps & (V4L2_CAP_META_CAPTURE | V4L2_CAP_META_OUTPUT)))
-		*mode &= ~MODE_META;
-	else if (!(caps & (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_OUTPUT)))
 	{
+		if (*mode & MODE_META)
+		{
+			err("sv4l2: device Metadata not available");
+			return -1;
+		}
+	}
+	else if (!(*mode & MODE_META) && !(caps & (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_OUTPUT)))
+	{
+		warn("sv4l2: force enable Metadata");
 		*mode |= MODE_META;
 	}
 	else
@@ -303,31 +314,31 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 #endif
 
 #ifdef DEBUG
-	dbg("sv4l2 :device %s capabilities %#X", interface, cap.device_caps);
+	dbg("sv4l2: device %s capabilities %#X", interface, cap.device_caps);
 	if(caps & V4L2_CAP_VIDEO_CAPTURE)
-		dbg("sv4l2 :device %s capture (camera)", cap.card);
+		dbg("sv4l2: device %s capture (camera)", cap.card);
 	if(caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE)
-		dbg("sv4l2 :device %s capture mplane", cap.card);
+		dbg("sv4l2: device %s capture mplane", cap.card);
 	if(caps & V4L2_CAP_VIDEO_OUTPUT)
-		dbg("sv4l2 :device %s output", cap.card);
+		dbg("sv4l2: device %s output", cap.card);
 	if(caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE)
-		dbg("sv4l2 :device %s output mplane", cap.card);
+		dbg("sv4l2: device %s output mplane", cap.card);
 	if(caps & V4L2_CAP_VIDEO_OVERLAY)
-		dbg("sv4l2 :device %s overlay", cap.card);
+		dbg("sv4l2: device %s overlay", cap.card);
 	if(caps & V4L2_CAP_VIDEO_M2M)
-		dbg("sv4l2 :device %s memory to memory", cap.card);
+		dbg("sv4l2: device %s memory to memory", cap.card);
 	if(caps & V4L2_CAP_VIDEO_M2M_MPLANE)
-		dbg("sv4l2 :device %s memory to memory mplane", cap.card);
+		dbg("sv4l2: device %s memory to memory mplane", cap.card);
 	if(caps & V4L2_CAP_AUDIO)
-		dbg("sv4l2 :device %s audio", cap.card);
+		dbg("sv4l2: device %s audio", cap.card);
 	if(caps & V4L2_CAP_VBI_CAPTURE)
-		dbg("sv4l2 :device %s vbi", cap.card);
+		dbg("sv4l2: device %s vbi", cap.card);
 	if(caps & V4L2_CAP_RADIO)
-		dbg("sv4l2 :device %s radio", cap.card);
+		dbg("sv4l2: device %s radio", cap.card);
 	if(caps & V4L2_CAP_EXT_PIX_FORMAT)
-		dbg("sv4l2 :device %s Pixformat extension available", cap.card);
+		dbg("sv4l2: device %s Pixformat extension available", cap.card);
 	if(caps & V4L2_CAP_IO_MC)
-		dbg("sv4l2 :device %s media control available", cap.card);
+		dbg("sv4l2: device %s media control available", cap.card);
 #endif
 	if ((caps & V4L2_CAP_VIDEO_CAPTURE ||
 		caps & V4L2_CAP_META_CAPTURE ||
@@ -1042,7 +1053,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 	return ret;
 }
 
-int _v4l2_transform(V4L2_t *dev, struct v4l2_rect *r, int target)
+static int _v4l2_transform(V4L2_t *dev, struct v4l2_rect *r, int target)
 {
 	struct v4l2_selection sel = {0};
 	sel.type = dev->type;
