@@ -270,11 +270,6 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		dbg("segl: choose %d/%d configs", 20, num_configs);
 		num_configs = 20;
 	}
-#if 0
-	// it looks to do nothing
-	eglConfigs[0] = EGL_SURFACE_TYPE;
-	eglConfigs[1] = EGL_VG_COLORSPACE_LINEAR_BIT;
-#endif
 #ifdef DEBUG
 	eglGetConfigs(eglDisplay, eglConfigs, sizeof(eglConfigs)/ sizeof(*eglConfigs), &num_configs);
 	for (int i = 0; i < num_configs; i++)
@@ -387,8 +382,10 @@ static GLuint texture_create(EGL_t *dev, GLenum textype)
 #endif
 	glTexParameteri(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(textype, GL_TEXTURE_MAX_LEVEL_APPLE, 0);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	return dma_texture;
 }
 
@@ -417,6 +414,13 @@ static int texture_fromdma(EGL_t *dev, GLBuffer_t *buffer, int dma_fd, size_t si
 			size = dev->config->parent.width * dev->config->parent.height;
 		break;
 #endif
+		// transform bayer 16bits to Monochrome 16 bits
+		case FOURCC('B','Y','R','2'):
+		case FOURCC('B','G','1','6'):
+		case FOURCC('R','G','1','6'):
+		case FOURCC('G','R','1','6'):
+			fourcc = FOURCC('R','1','6',' ');
+		break;
 		default:
 			fourcc = dev->config->parent.fourcc;
 	}
