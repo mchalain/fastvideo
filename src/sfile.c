@@ -26,9 +26,6 @@ struct File_s
 	File_ops_t *ops;
 	device_type_e type;
 	uint32_t fourcc;
-	uint32_t width;
-	uint32_t height;
-	uint32_t stride;
 	size_t size;
 	size_t nbuffers;
 	FrameBuffer_t *buffers;
@@ -50,7 +47,7 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 	int rootfd = AT_FDCWD;
 	if (config == NULL)
 	{
-		err("config object must be set");
+		err("sfile: config object must be set");
 		return NULL;
 	}
 	if (config->rootpath != NULL)
@@ -58,7 +55,7 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 		int fd = open(config->rootpath, O_DIRECTORY);
 		if (fd < 0)
 		{
-			err("root path is \"%s\" defined but unavailable %m", config->rootpath);
+			err("sfile: root path is \"%s\" defined but unavailable %m", config->rootpath);
 			return NULL;
 		}
 		rootfd = fd;
@@ -115,13 +112,6 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 	dev->ops = ops;
 	dev->size = fsize;
 	dev->type = type;
-	dev->fourcc = config->parent.fourcc;
-	dev->width = config->parent.width;
-	dev->height = config->parent.height;
-	if (config->parent.stride)
-		dev->stride = config->parent.stride;
-	else if (fsize)
-		dev->stride = fsize / config->parent.height;
 	dev->path = filename;
 	return dev;
 }
@@ -180,15 +170,32 @@ EXT_API int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 
 EXT_API int sfile_fd(File_t *dev, int writer)
 {
+#if 0
 	return dev->ops->fd(dev);
+#else
+	if (!writer && dev->type == device_input)
+	{
+		int ret = dev->ops->fd(dev);
+		for (int i = 0; i < dev->nbuffers; i++)
+		{
+			if (dev->buffers[i].state == queued)
+			{
+				ret = -1;
+				break;
+			}
+		}
+		return ret;
+	}
+	return -1;
+#endif
 }
 
 EXT_API int sfile_start(File_t *dev)
 {
 	dev->lastbufferid = 0;
-	if (dev->type & device_input)
+	if (dev->type == device_input)
 	{
-		dbg("start buffers enqueuing");
+		dbg("sfile: start buffers enqueuing");
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
 			if (sfile_queue(dev, i, NULL, 0, 0))
@@ -228,7 +235,7 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 {
 	if (index > dev->nbuffers)
 	{
-		err("unkown %d buffer index to queue", index);
+		err("sfile: unkown %d buffer index to queue", index);
 		return -1;
 	}
 	FrameBuffer_t *buffer = &dev->buffers[index];
@@ -366,7 +373,7 @@ FastVideoDevice_ops_t sfile_ops = {
 	.duplicate = (FastVideoDevice_duplicate_t)NULL,
 	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)sfile_requestbuffer,
-	.eventfd = (FastVideoDevice_eventfd_t)NULL,
+	.eventfd = (FastVideoDevice_eventfd_t)sfile_fd,
 	.start = (FastVideoDevice_start_t)sfile_start,
 	.stop = (FastVideoDevice_stop_t)sfile_stop,
 	.dequeue = (FastVideoDevice_dequeue_t)sfile_dequeue,
