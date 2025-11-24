@@ -106,6 +106,14 @@ static int main_parseconfigdevice(json_t *jconfig, int (*cb)(void *data, const c
 		type = json_string_value(jtype);
 
 	json_t *jname = json_object_get(jconfig, "name");
+	json_t *disable = json_object_get(jconfig, "disable");
+	if (disable && json_is_true(disable))
+	{
+		if (jname && json_is_array(jname))
+			jname = json_array_get(jname, 0);
+		warn("config: device %s is disabled", json_string_value(jname));
+		return -1;
+	}
 	if (jname && json_is_array(jname))
 	{
 		int index;
@@ -136,9 +144,6 @@ int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, c
 		json_t *jdevice = NULL;
 		json_array_foreach(jconfig, index, jdevice)
 		{
-			json_t *disable = json_object_get(jdevice, "disable");
-			if (disable && json_is_true(disable))
-				continue;
 			if (!json_is_object(jdevice))
 				continue;
 			ret = main_parseconfigdevice(jdevice, cb, data);
