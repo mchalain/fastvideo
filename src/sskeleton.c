@@ -1,4 +1,5 @@
 #include <string.h>
+#include <errno.h>
 
 #include "fastvideo.h"
 #include "config.h"
@@ -12,6 +13,7 @@ struct Dev_s
 	device_type_e type;
 	FrameBuffer_t *buffers;
 	int nbuffers;
+	int currentid;
 };
 
 static FrameBuffer_t *_create_buffer(DeviceConf_t *config)
