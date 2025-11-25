@@ -17,6 +17,8 @@
 #include "segl.h"
 #include "log.h"
 
+#define segl_dbg(...)
+
 #ifndef GBM_FORMAT_XBGR16161616F
 # define GBM_FORMAT_XBGR16161616F DRM_FORMAT_XBGR16161616F
 #endif
@@ -165,12 +167,24 @@ static uint32_t find_crtc_for_connector(int fd, const drmModeRes *resources,
 	return -1;
 }
 
-static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t width, uint32_t height, drmModeModeInfo **mode, int *mode_id)
+static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t width, uint32_t height, drmModeModeInfo **mode, int *mode_id, int writeback)
 {
 	drmModeConnector *connector = NULL;
 	for (int i = 0; i < resources->count_connectors; i++)
 	{
 		connector = drmModeGetConnector(fd, resources->connectors[i]);
+		if (connector->connection != DRM_MODE_CONNECTED)
+		{
+			drmModeFreeConnector(connector);
+			connector = NULL;
+			continue;
+		}
+		if (writeback && connector->connector_type != DRM_MODE_CONNECTOR_WRITEBACK)
+		{
+			drmModeFreeConnector(connector);
+			connector = NULL;
+			continue;
+		}
 		for (int j = 0; j < connector->count_modes; j++)
 		{
 			drmModeModeInfo *current_mode = &connector->modes[j];
@@ -211,7 +225,7 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height)
 	}
 
 	/* find a connected connector: */
-	connector = find_connector(fd, resources, width, height, &drm.mode, &drm.mode_id);
+	connector = find_connector(fd, resources, width, height, &drm.mode, &drm.mode_id, 0);
 
 	if (!connector)
 	{
@@ -288,6 +302,8 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height)
 	drm.flags = (DRM_MODE_ATOMIC_NONBLOCK | DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_ALLOW_MODESET);
 #endif
 	drmModeCrtc *saved_crtc = drmModeGetCrtc(fd, drm.crtc_id);
+	drmModeFreeConnector(connector);
+	drmModeFreeResources(resources);
 	return 0;
 }
 
