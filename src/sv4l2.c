@@ -1390,6 +1390,9 @@ static uint32_t _sv4l2_getfourcc(int fd, enum v4l2_buf_type type, uint32_t fourc
 
 	switch (fourcc)
 	{
+		case FOURCC_XB24:
+			fourcc = _sv4l2_getfourcc(fd, type, FOURCC_AB24);
+		break;
 		case FOURCC_XR24:
 		case FOURCC_AR24:
 			fourcc = _sv4l2_getfourcc(fd, type, FOURCC_BGR4);
@@ -1645,7 +1648,7 @@ int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
 	int ret = 0;
 	if (flags & FB_FLAGS_MODIFIER && !dev->config->parent.modifiers)
-		err("sv4ll2: input format required not supported modifier");
+		err("sv4l2: input format required not supported modifier");
 	if (bytesused > 0)
 		dev->buffers[index].v4l2.bytesused = bytesused;
 	if (mem && dev->buffers[0].v4l2.memory == V4L2_MEMORY_USERPTR)
@@ -1957,6 +1960,9 @@ static int _v4l2_loadjsoncontrol(V4L2_t *dev, json_t *control)
 {
 	json_t *jdisable = json_object_get(control, "disable");
 	if (json_is_true(jdisable))
+		return 1;
+	json_t *jrdonly = json_object_get(control, "read-only");
+	if (json_is_true(jrdonly))
 		return 1;
 	json_t *jid = json_object_get(control, "id");
 	if (!jid || !json_is_integer(jid))
