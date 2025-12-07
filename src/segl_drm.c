@@ -393,8 +393,8 @@ static struct drm_fb * drm_fb_get_from_bo(struct gbm_bo *bo)
 static void page_flip_handler(int fd, unsigned int frame,
 		  unsigned int sec, unsigned int usec, void *data)
 {
-	int *waiting_for_flip = data;
-	*waiting_for_flip = 0;
+	struct drm_s *drm = (struct drm_s *)data;
+	drm->waiting_for_flip = 0;
 }
 
 static const EGLint g_attributes[][21] = {
@@ -742,11 +742,7 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 
 static int native_fd(EGLNativeWindowType native_win)
 {
-#if 0
 	return drm.fd;
-#else
-	return -1;
-#endif
 }
 
 static struct gbm_bo *old_bo = NULL;
@@ -805,7 +801,7 @@ static int native_flush(EGLNativeWindowType native_win)
 #else
 	drm->waiting_for_flip = 1;
 	ret = drmModePageFlip(drm->fd, drm->crtc_id, fb->fb_id,
-			DRM_MODE_PAGE_FLIP_EVENT, &drm->waiting_for_flip);
+			DRM_MODE_PAGE_FLIP_EVENT, drm);
 #endif
 	if (ret)
 	{
@@ -830,29 +826,12 @@ static int native_sync(EGLNativeWindowType native_win)
 			.version = DRM_EVENT_CONTEXT_VERSION,
 			.page_flip_handler = page_flip_handler,
 	};
-#if 0
 	drmHandleEvent(drm.fd, &evctx);
 	if (drm.waiting_for_flip)
 	{
 		errno = EAGAIN;
 		return -1;
 	}
-#else
-	fd_set fds;
-	FD_ZERO(&fds);
-	FD_SET(drm.fd, &fds);
-	while (drm.waiting_for_flip) {
-		int ret = select(drm.fd + 1, &fds, NULL, NULL, NULL);
-		if (ret < 0) {
-			err("select err: %m");
-			return ret;
-		} else if (ret == 0) {
-			warn("select timeout!");
-			return -1;
-		}
-		drmHandleEvent(drm.fd, &evctx);
-	}
-#endif
 	return 0;
 }
 
