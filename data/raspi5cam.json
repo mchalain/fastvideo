@@ -121,6 +121,17 @@
     "type": "v4l2",
     "device": "/dev/video7",
     "definition": {
+      "mode": "meta",
+      "fourcc": "RPFC",
+      "size": 632
+    },
+    "end": true
+  },
+  {
+    "name": ["config-cam"],
+    "type": "file",
+    "filename": "data/rp1_fe_config.bin",
+    "definition": {
       "fourcc": "RPFC",
       "size": 632
     },
