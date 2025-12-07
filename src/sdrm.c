@@ -107,6 +107,7 @@ typedef enum {
 	SDRM_PROPID_ROTATION,
 	SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR,
 	SDRM_PROPID_WRITEBACK_FB_ID,
+	SDRM_PROPID_WRITEBACK_PIXEL_FORMATS,
 	SDRM_PROPID_LAST
 } properties_id;
 
@@ -190,7 +191,10 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 			continue;
 		if (disp->type == device_transfer &&
 			connector->connector_type != DRM_MODE_CONNECTOR_WRITEBACK)
+		{
+			drmModeFreeConnector(connector);
 			continue;
+		}
 		if (connector->connection == DRM_MODE_CONNECTED)
 		{
 			/// if connector has not an encoder, use the freed one
