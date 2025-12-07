@@ -92,6 +92,8 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 		mode = O_WRONLY;
 		if (faccessat(rootfd, filename, F_OK, 0) < 0)
 			mode |= O_CREAT;
+		else
+			mode |= O_TRUNC;
 	}
 	else
 	{
