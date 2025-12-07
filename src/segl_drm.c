@@ -16,6 +16,7 @@
 
 #include "segl.h"
 #include "log.h"
+#include "sdmabuf.h"
 
 #define segl_dbg(...)
 
@@ -45,6 +46,18 @@ typedef enum {
 	SDRM_PROPID_LAST
 } properties_id;
 
+typedef struct EGLExportDRMWriteback_s EGLExportDRMWriteback_t;
+struct EGLExportDRMWriteback_s
+{
+	int out_fd;
+	EGLConfig_t *config;
+	int fd;
+	uint32_t connector_id;
+	GLBuffer_t *buffers[MAX_BUFFERS];
+	int nbuffers;
+	int currentid;
+};
+
 static struct drm_s {
 	uint32_t fourcc;
 	int fd;
@@ -57,6 +70,7 @@ static struct drm_s {
 #ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
 	uint32_t properties[SDRM_PROPID_LAST];
 	uint32_t flags;
+	EGLExportDRMWriteback_t *writeback;
 #endif
 } drm;
 
@@ -326,6 +340,19 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height, in
 	{
 		warn("sdrm: CRTC_ID for plane(%lu) and connector(%lu) differents", prop_plane_crtc_id, drm.properties[SDRM_PROPID_CRTC_ID]);
 	}
+	if (writeback)
+	{
+		drm.properties[SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR] = sdrm_propertyid(fd, DRM_MODE_OBJECT_CONNECTOR, drm.connector_id, "WRITEBACK_OUT_FENCE_PTR");
+		if (drm.properties[SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR] == (uint32_t)-1)
+		{
+			warn("sdrm: writeback connector's property error %m");
+		}
+		drm.properties[SDRM_PROPID_WRITEBACK_FB_ID] = sdrm_propertyid(fd, DRM_MODE_OBJECT_CONNECTOR, drm.connector_id, "WRITEBACK_FB_ID");
+		if (drm.properties[SDRM_PROPID_WRITEBACK_FB_ID] == (uint32_t)-1)
+		{
+			warn("sdrm: writeback connector's property error %m");
+		}
+	}
 	drm.properties[SDRM_PROPID_MODE_ID] = sdrm_propertyid(fd, DRM_MODE_OBJECT_CRTC, drm.crtc_id, "MODE_ID");
 	drm.properties[SDRM_PROPID_ACTIVE] = sdrm_propertyid(fd, DRM_MODE_OBJECT_CRTC, drm.crtc_id, "ACTIVE");
 	drm.properties[SDRM_PROPID_FB_ID] = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "FB_ID");
@@ -394,7 +421,10 @@ static void page_flip_handler(int fd, unsigned int frame,
 		  unsigned int sec, unsigned int usec, void *data)
 {
 	struct drm_s *drm = (struct drm_s *)data;
-	drm->waiting_for_flip = 0;
+#ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
+	if (!drm->writeback || drm->writeback->out_fd == 0)
+#endif
+		drm->waiting_for_flip = 0;
 }
 
 static const EGLint g_attributes[][21] = {
@@ -794,6 +824,17 @@ static int native_flush(EGLNativeWindowType native_win)
 	if (drm->properties[SDRM_PROPID_CRTC_H] != (uint32_t)-1 &&
 		drmModeAtomicAddProperty(req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_H], drm->mode.vdisplay) < 0)
 		goto commit_error;
+	if (drm->writeback)
+	{
+		int *out_fd = &(drm->writeback)->out_fd;
+		if (drmModeAtomicAddProperty(req, drm->writeback->connector_id, drm->properties[SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR], (uint64_t)(long)&(drm->writeback)->out_fd) < 0)
+			goto commit_error;
+		GLBuffer_t *buffer = drm->writeback->buffers[drm->writeback->currentid];
+		if (drmModeAtomicAddProperty(req, drm->writeback->connector_id, drm->properties[SDRM_PROPID_WRITEBACK_FB_ID], buffer->id) < 0)
+			goto commit_error;
+		drm->writeback->currentid++;
+		drm->writeback->currentid %= drm->writeback->nbuffers;
+	}
 
 	ret = drmModeAtomicCommit(drm->fd, req, drm->flags, drm);
 	drmModeAtomicFree(req);
@@ -850,6 +891,115 @@ EGLNative_t eglnative_drm =
 	.sync = native_sync,
 	.destroy = native_destroy,
 };
+/*****************************************************************************/
+#ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
+static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext)
+{
+	drmModeRes *resources;
+
+	resources = drmModeGetResources(drm.fd);
+	if (!resources)
+	{
+		err("segl: drmModeGetResources failed: %m");
+		return NULL;
+	}
+
+	/* find a connected connector: */
+	drmModeConnector *connector;
+	connector = find_connector(drm.fd, resources, config->parent.width, config->parent.height, NULL, NULL, 1);
+	if (!connector)
+		return NULL;
+
+	EGLExportDRMWriteback_t *ctx = calloc(1, sizeof(*ctx));
+	ctx->config = config;
+	ctx->fd = drm.fd;
+
+	ctx->connector_id = connector->connector_id;
+	drmModeFreeConnector(connector);
+	drmModeObjectSetProperty(ctx->fd, ctx->connector_id, DRM_MODE_OBJECT_CONNECTOR,
+			drm.properties[SDRM_PROPID_CRTC_ID], drm.crtc_id);
+	drmModeFreeResources(resources);
+	drm.writeback = ctx;
+	return ctx;
+}
+
+static GLuint _egl_export_fbo(void *arg)
+{
+	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
+	return 0;
+}
+
+static GL_Buffer_t *_egl_export_out(void *arg)
+{
+	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
+	return NULL;
+}
+
+static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
+{
+	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
+
+	uint32_t width = ctx->config->parent.width;
+	uint32_t height = ctx->config->parent.height;
+	uint32_t bo_handle;
+	uint64_t size;
+	ctx->buffers[buffer->id] = buffer;
+	ctx->nbuffers++;
+	drmModeCreateDumbBuffer(ctx->fd, width, height, 32, 0, &bo_handle, &buffer->pitch, &size);
+	if (size != buffer->size)
+		err("segl: drm buffer size ettot");
+	drmModeAddFB(ctx->fd, width, height, 24, 32, buffer->pitch, bo_handle, &buffer->id);
+	drmPrimeHandleToFD(ctx->fd, bo_handle, 0, &buffer->dma_fd);
+//	buffer->memory = sdmabuf_map(buffer->dma_fd, buffer->size, 1);
+	return 0;
+}
+
+static int _egl_export_flush(void *arg, GLBuffer_t *buffer)
+{
+	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
+	if (ctx->out_fd > 0)
+	{
+		close(ctx->out_fd);
+		ctx->out_fd = 0;
+	}
+	return 0;
+}
+
+static int _egl_export_releasebuffer(void *arg, GLBuffer_t *buffer)
+{
+	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
+	return 0;
+}
+
+static int _egl_export_fd(void *arg)
+{
+	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
+#if 0
+	/// This is too slow
+	return ctx->out_fd;
+#else
+	return -1;
+#endif
+}
+
+static void _egl_export_destroy(void *arg)
+{
+	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
+	free(arg);
+}
+
+EGLExport_t export_drmwriteback =
+{
+	.name = "drmwriteback",
+	.create = _egl_export_create,
+	.fbo = _egl_export_fbo,
+	.out = _egl_export_out,
+	.fd = _egl_export_fd,
+	.setbuffer = _egl_export_setbuffer,
+	.flush = _egl_export_flush,
+	.destroy = _egl_export_destroy,
+};
+#endif
 
 #include <dlfcn.h>
 
@@ -862,4 +1012,12 @@ static void __attribute__ ((constructor)) segl_init()
 	{
 		_segl_native_append(&eglnative_drm);
 	}
+#ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
+	segl_export_append_t _segl_export_append;
+	_segl_export_append = dlsym(hdl, "segl_export_append");
+	if (_segl_export_append)
+	{
+		_segl_export_append(&export_drmwriteback);
+	}
+#endif
 }
