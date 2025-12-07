@@ -56,7 +56,6 @@ static struct drm_s {
 	int waiting_for_flip;
 #ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
 	uint32_t properties[SDRM_PROPID_LAST];
-	drmModeAtomicReq *req;
 	uint32_t flags;
 #endif
 } drm;
@@ -762,48 +761,47 @@ static int native_flush(EGLNativeWindowType native_win)
 
 	int ret = 0;
 #ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
-	drm->req = drmModeAtomicAlloc();
-	if (!(drm->flags & DRM_MODE_ATOMIC_ALLOW_MODESET))
-	{
-		if (drmModeAtomicAddProperty(drm->req, drm->connector_id, drm->properties[SDRM_PROPID_CRTC_ID], drm->crtc_id) < 0)
-			goto commit_error;
-		if (drmModeAtomicAddProperty(drm->req, drm->crtc_id, drm->properties[SDRM_PROPID_MODE_ID], drm->mode_id) < 0)
-			goto commit_error;
-		if (drmModeAtomicAddProperty(drm->req, drm->crtc_id, drm->properties[SDRM_PROPID_ACTIVE], 1) < 0)
-			goto commit_error;
-	}
-	if (drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_FB_ID], fb->fb_id) < 0)
+	drmModeAtomicReq *req;
+	req = drmModeAtomicAlloc();
+	if (drmModeAtomicAddProperty(req, drm->connector_id, drm->properties[SDRM_PROPID_CRTC_ID], drm->crtc_id) < 0)
 		goto commit_error;
-	if (drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_ID], drm->crtc_id) < 0) /// <=== failed ???
+	if (drm->mode_id && drmModeAtomicAddProperty(req, drm->crtc_id, drm->properties[SDRM_PROPID_MODE_ID], drm->mode_id) < 0)
 		goto commit_error;
-	if (drm->properties[SDRM_PROPID_SRC_X] != (uint32_t)-1 &&
-		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_X], 0 << 16) < 0)
-		goto commit_error;
-	if (drm->properties[SDRM_PROPID_SRC_Y] != (uint32_t)-1 &&
-		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_Y], 0 << 16) < 0)
-		goto commit_error;
-	if (drm->properties[SDRM_PROPID_SRC_W] != (uint32_t)-1 &&
-		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_W], drm->mode->hdisplay << 16) < 0)
-		goto commit_error;
-	if (drm->properties[SDRM_PROPID_SRC_H] != (uint32_t)-1 &&
-		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_H], drm->mode->vdisplay << 16) < 0)
-		goto commit_error;
-	if (drm->properties[SDRM_PROPID_CRTC_X] != (uint32_t)-1 &&
-		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_X], 0) < 0)
-		goto commit_error;
-	if (drm->properties[SDRM_PROPID_CRTC_Y] != (uint32_t)-1 &&
-		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_Y], 0) < 0)
-		goto commit_error;
-	if (drm->properties[SDRM_PROPID_CRTC_W] != (uint32_t)-1 &&
-		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_W], drm->mode->hdisplay) < 0)
-		goto commit_error;
-	if (drm->properties[SDRM_PROPID_CRTC_H] != (uint32_t)-1 &&
-		drmModeAtomicAddProperty(drm->req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_H], drm->mode->vdisplay) < 0)
+	if (drmModeAtomicAddProperty(req, drm->crtc_id, drm->properties[SDRM_PROPID_ACTIVE], 1) < 0)
 		goto commit_error;
 
-	drmModeAtomicCommit(drm->fd, drm->req, drm->flags, &drm->waiting_for_flip);
-	drmModeAtomicFree(drm->req);
-	drm->flags &= ~DRM_MODE_ATOMIC_ALLOW_MODESET;
+	if (drmModeAtomicAddProperty(req, drm->plane_id, drm->properties[SDRM_PROPID_FB_ID], fb->fb_id) < 0)
+		goto commit_error;
+	if (drmModeAtomicAddProperty(req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_ID], drm->crtc_id) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_SRC_X] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_X], 0 << 16) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_SRC_Y] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_Y], 0 << 16) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_SRC_W] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_W], drm->mode.hdisplay << 16) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_SRC_H] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, drm->plane_id, drm->properties[SDRM_PROPID_SRC_H], drm->mode.vdisplay << 16) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_CRTC_X] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_X], 0) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_CRTC_Y] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_Y], 0) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_CRTC_W] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_W], drm->mode.hdisplay) < 0)
+		goto commit_error;
+	if (drm->properties[SDRM_PROPID_CRTC_H] != (uint32_t)-1 &&
+		drmModeAtomicAddProperty(req, drm->plane_id, drm->properties[SDRM_PROPID_CRTC_H], drm->mode.vdisplay) < 0)
+		goto commit_error;
+
+	ret = drmModeAtomicCommit(drm->fd, req, drm->flags, drm);
+	drmModeAtomicFree(req);
+	drm->flags = DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK;
 #else
 	drm->waiting_for_flip = 1;
 	ret = drmModePageFlip(drm->fd, drm->crtc_id, fb->fb_id,
@@ -811,8 +809,7 @@ static int native_flush(EGLNativeWindowType native_win)
 #endif
 	if (ret)
 	{
-		err("segl: failed to queue page flip: %m");
-		return -1;
+		goto commit_error;
 	}
 	/* release last buffer to render on again: */
 	if (old_bo)
@@ -821,7 +818,7 @@ static int native_flush(EGLNativeWindowType native_win)
 
 	return 0;
 commit_error:
-	err("segl: drm commit error");
+	err("segl: drm commit error %m");
 	return -1;
 }
 
