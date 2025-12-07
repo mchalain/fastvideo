@@ -190,6 +190,7 @@ int sv4l2_subdev_setpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, uin
 	}
 	if (fmtbus != ffs.format.code)
 		err("v4l2: subdev bus format not set! %#x", ffs.format.code);
+	dbg("sv4l2: subdev format acquired %lux%lu %#x", ffs.format.width, ffs.format.height, ffs.format.code);
 	return 0;
 }
 
@@ -213,6 +214,14 @@ uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream
 		return -1;
 	}
 	dbg("sv4l2: current subdev %lu x %lu %#X", ffs.format.width, ffs.format.height, ffs.format.code);
+#if 0
+	struct v4l2_subdev_frame_size_enum efs = {0};
+	efs.pad = stream->pad;
+	efs.which = V4L2_SUBDEV_FORMAT_TRY;
+	if (ioctl(subdev->fd, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, &efs) != 0)
+		err("sv4l2: subdev get format error %m");
+
+#endif
 	if (busformat)
 		return busformat(cbarg, &ffs);
 	return ffs.format.code;
