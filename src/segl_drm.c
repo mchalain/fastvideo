@@ -48,7 +48,7 @@ typedef enum {
 static struct drm_s {
 	uint32_t fourcc;
 	int fd;
-	drmModeModeInfo *mode;
+	drmModeModeInfo mode;
 	int mode_id;
 	uint32_t crtc_id;
 	uint32_t connector_id;
@@ -167,12 +167,13 @@ static uint32_t find_crtc_for_connector(int fd, const drmModeRes *resources,
 	return -1;
 }
 
-static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t width, uint32_t height, drmModeModeInfo **mode, int *mode_id, int writeback)
+static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t width, uint32_t height, drmModeModeInfo *mode, int *mode_id, int writeback)
 {
 	drmModeConnector *connector = NULL;
 	for (int i = 0; i < resources->count_connectors; i++)
 	{
 		connector = drmModeGetConnector(fd, resources->connectors[i]);
+		dbg("segl: drm connector %s", drmModeGetConnectorTypeName(connector->connector_type));
 		if (connector->connection != DRM_MODE_CONNECTED)
 		{
 			drmModeFreeConnector(connector);
@@ -185,24 +186,70 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 			connector = NULL;
 			continue;
 		}
-		for (int j = 0; j < connector->count_modes; j++)
+		drmModeModeInfo *current_mode = NULL;
+		int current_mode_id = -1;
+		dbg("segl: request %lux%lu", width, height);
+		for (int j = 0; current_mode == NULL && j < connector->count_modes; j++)
 		{
-			drmModeModeInfo *current_mode = &connector->modes[j];
+			current_mode = &connector->modes[j];
+
+			dbg("\tfound %lux%lu", current_mode->hdisplay, current_mode->vdisplay);
+			if (current_mode->vdisplay == height &&
+					current_mode->hdisplay == width)
+			{
+				break;
+			}
+			current_mode = NULL;
+		}
+		for (int j = 0; current_mode == NULL && j < connector->count_modes; j++)
+		{
+			current_mode = &connector->modes[j];
 
 			if (current_mode->vdisplay == height &&
 					current_mode->hdisplay >= width)
 			{
-				if (current_mode->hdisplay == width ||
-					(current_mode->type & DRM_MODE_TYPE_PREFERRED))
+				break;
+			}
+			current_mode = NULL;
+		}
+		for (int j = 0; current_mode == NULL && j < connector->count_modes; j++)
+		{
+			current_mode = &connector->modes[j];
+
+			if (current_mode->vdisplay <= (height * 6 / 5) &&
+				current_mode->vdisplay >= height &&
+				current_mode->hdisplay <= (width * 8 / 5) &&
+					current_mode->hdisplay >= width)
+			{
+				break;
+			}
+			current_mode = NULL;
+		}
+		for (int j = 0; current_mode == NULL && j < connector->count_modes; j++)
+		{
+			current_mode = &connector->modes[j];
+			if (current_mode->type & DRM_MODE_TYPE_PREFERRED)
+			{
+				break;
+			}
+			current_mode = NULL;
+		}
+		if (current_mode)
+		{
+			dbg("segl: mode select %s %lux%lu %d %#x", current_mode->name, current_mode->hdisplay, current_mode->vdisplay, current_mode->type, current_mode->flags);
+			if (mode)
+			{
+				memcpy(mode, current_mode, sizeof(*mode));
+				/* create the blob property using out->mode and save its id in the output*/
+				if (drmModeCreatePropertyBlob(fd, mode, sizeof(*mode), mode_id) != 0)
 				{
-					*mode = current_mode;
-					*mode_id = j;
-					break;
+					err("ssegl: blob property error");
 				}
 			}
-		}
-		if (*mode)
 			break;
+		}
+		else
+			err("segl: drm mode not found");
 		drmModeFreeConnector(connector);
 		connector = NULL;
 	}
@@ -233,12 +280,6 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height)
 		 * a connector..
 		 */
 		err("segl: no connected connector!");
-	}
-
-	if (!drm.mode)
-	{
-		err("segl: could not find mode!");
-		connector = drmModeGetConnector(fd, resources->connectors[0]);
 	}
 
 	/* find encoder: */
@@ -677,7 +718,7 @@ static const GLint *native_attributes(EGLNativeDisplayType display)
 static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLuint width, GLuint height, const GLchar *name)
 {
 	struct gbm_device *gbm = (struct gbm_device *)display;
-	if (drm.mode == NULL)
+	if (drm.mode_id == 0)
 		return (EGLNativeWindowType)NULL;
 
 	uint64_t modifiers[1] = {DRM_FORMAT_MOD_LINEAR};
@@ -719,22 +760,6 @@ static int native_flush(EGLNativeWindowType native_win)
 	fb = drm_fb_get_from_bo(bo);
 	struct drm_s *drm = fb->drm;
 
-	if (old_bo == NULL)
-	{
-		dbg("segl: drm modifiers %lli", gbm_bo_get_modifier(bo));
-		/* set mode: */
-		if (drm->mode)
-		{
-			int ret = drmModeSetCrtc(drm->fd, drm->crtc_id, fb->fb_id, 0, 0,
-					&drm->connector_id, 1, drm->mode);
-			if (ret) {
-				err("segl: failed to set mode: %m");
-				return -1;
-			}
-		}
-		old_bo = bo;
-		return 0;
-	}
 	int ret = 0;
 #ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
 	drm->req = drmModeAtomicAlloc();
