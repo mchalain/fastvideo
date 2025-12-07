@@ -224,7 +224,9 @@ int main(int argc, char * const argv[])
 	const char *cwd = NULL;
 	FastVideoList_t *settings = NULL;
 
+#ifdef V4L2_SUBDEV
 	fastvideodevice_ops_append(&subdev_ops);
+#endif
 
 	int opt;
 	do

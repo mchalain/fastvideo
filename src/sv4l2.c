@@ -277,8 +277,8 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 	if (interface)
 		memcpy(interface, cap.card, sizeof(cap.card));
 
-#ifdef DEBUG
 	uint32_t caps = cap.capabilities;
+#ifdef DEBUG
 	if (caps & (V4L2_CAP_META_CAPTURE | V4L2_CAP_META_OUTPUT))
 		dbg("sv4l2: media has Metadata capabilities");
 #endif

@@ -174,7 +174,9 @@ static json_t *_device_v4l2(json_t *devices, int devfd, const char *path, const 
 
 static json_t * _device_subv4l2(json_t *devices, int devfd, const char *path, const char *name, uint32_t type)
 {
-	json_t *device = json_object();
+	json_t *device = NULL;
+#ifdef V4L2_SUBDEV
+	device = json_object();
 	json_t *jname = json_array();
 	json_array_insert_new(jname, 0, json_string(name));
 	json_object_set_new(device, "name", jname);
@@ -202,6 +204,7 @@ static json_t * _device_subv4l2(json_t *devices, int devfd, const char *path, co
 		subdev_ops.destroy(subdev);
 	}
 	else
+#endif
 		close(devfd);
 	return device;
 }
