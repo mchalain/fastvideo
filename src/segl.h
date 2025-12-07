@@ -62,6 +62,7 @@ struct GLBuffer_s
 	uint32_t size;
 	uint64_t modifiers;
 	GL_Buffer_t gl;
+	FrameBuffer_state_e state;
 };
 
 typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
@@ -88,6 +89,7 @@ struct EGLConfig_s
 	const char *device;
 	EGLConfig_Program_t *programs;
 	const EGLExport_t *export;
+	int type;
 };
 
 typedef struct EGL_s EGL_t;
@@ -112,6 +114,7 @@ struct EGLExport_s
 	void *(*create)(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext);
 	GLuint (*fbo)(void *arg);
 	GL_Buffer_t * (*out)(void *arg);
+	int (*fd)(void *arg);
 	int (*setbuffer)(void *arg, GLBuffer_t *buffer);
 	int (*releasebuffer)(void *arg, GLBuffer_t *buffer);
 	int (*flush)(void *arg, GLBuffer_t *buffer);

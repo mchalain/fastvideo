@@ -220,6 +220,11 @@ static int _egl_export_releasebuffer(void *arg, GLBuffer_t *buffer)
 	return 0;
 }
 
+static int _egl_export_fd(void *arg)
+{
+	return -1;
+}
+
 static void _egl_export_destroy(void *arg)
 {
 	free(arg);
@@ -231,6 +236,7 @@ EGLExport_t export_imagemesa =
 	.create = _egl_export_create,
 	.fbo = _egl_export_fbo,
 	.out = _egl_export_out,
+	.fd = _egl_export_fd,
 	.setbuffer = _egl_export_setbuffer,
 	.flush = _egl_export_flush,
 	.destroy = _egl_export_destroy,

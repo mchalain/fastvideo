@@ -83,6 +83,13 @@ enum
 	FB_FLAGS_MODIFIER = 0x00000001,
 };
 
+typedef enum {
+	invalid,
+	dequeued,
+	ready,
+	queued,
+} FrameBuffer_state_e;
+
 typedef struct FrameBuffer_s FrameBuffer_t;
 struct FrameBuffer_s
 {
@@ -103,12 +110,7 @@ struct FrameBuffer_s
 		uint32_t height;
 	};
 	int flags;
-	enum {
-		invalid,
-		dequeued,
-		ready,
-		queued,
-	} state;
+	FrameBuffer_state_e state;
 	void *private;
 	FrameBuffer_t *next;
 };

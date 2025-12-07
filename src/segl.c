@@ -17,6 +17,11 @@
 
 #define segl_dbg(...)
 
+EXT_API int segl_start(EGL_t *dev);
+EXT_API int segl_stop(EGL_t *dev);
+EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flags);
+EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags);
+
 const EGLNative_t * _natives[5] = {0};
 
 void segl_native_append(EGLNative_t *native)
@@ -210,6 +215,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		err("segl: %s bad device type", config->parent.name);
 		return NULL;
 	}
+	config->type = type;
 	EGLNativeDisplayType ndisplay = EGL_DEFAULT_DISPLAY;
 
 	uint32_t width = config->parent.width;
@@ -734,7 +740,16 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 EXT_API int segl_start(EGL_t *dev)
 {
 	if (dev->type == device_input)
+	{
+		dbg("segl: %s start buffers enqueuing", dev->config->parent.name);
+		for (int i = 0; i < dev->nbuffers; i++)
+		{
+			if (segl_queue(dev, i, NULL, 0, 0))
+				return -1;
+		}
+		dev->curbufferid = 0;
 		return 0;
+	}
 	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
 
 	// initialize the first program with the output framebuffer
@@ -762,15 +777,17 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 	uint32_t width = dev->config->parent.width;
 	uint32_t height = dev->config->parent.height;
 
-	if (dev->type == device_input)
-	{
-		dev->curbufferid = -1;
-		return 0;
-	}
 	if ((int)id > dev->nbuffers)
 	{
 		err("segl: unknown buffer id %d", id);
 		return -1;
+	}
+	GLBuffer_t *buffer = &dev->buffers[id];
+
+	if (dev->type == device_input)
+	{
+		buffer->state = queued;
+		return 0;
 	}
 	if (dev->curbufferid != -1)
 	{
@@ -778,7 +795,6 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 		return -1;
 	}
 
-	GLBuffer_t *buffer = &dev->buffers[id];
 #if 0
 	if (buffer->dma_fd == 0)
 	{
@@ -800,8 +816,11 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 		dev->curbufferid = id;
 		if (dev->dup)
 		{
-			dev->dup->curbufferid = dev->curbufferid;
-			dev->dup->curbufferid %= dev->dup->nbuffers;
+			buffer = &dev->dup->buffers[id];
+			if (buffer->state == queued)
+			{
+				buffer->state = ready;
+			}
 		}
 	}
 	return ret;
@@ -811,7 +830,6 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 {
 	errno = 0;
 	int id = dev->curbufferid;
-	dev->curbufferid = -1;
 	if (dev->type == device_input)
 	{
 		if (id == -1)
@@ -820,16 +838,27 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 			return id;
 		}
 		GLBuffer_t *buffer = &dev->buffers[id];
+		if (!buffer)
+			return -1;
+		if (buffer->state != ready)
+		{
+			errno = EAGAIN;
+			return -1;
+		}
 		dev->export->flush(dev->export_ctx, buffer);
 		if (mem)
 			*mem = buffer->memory;
 
-		if (flags && dev->buffers[id].modifiers)
+		if (flags && buffer->modifiers)
 			*flags |= FB_FLAGS_MODIFIER;
 		if (bytesused)
-			*bytesused = dev->buffers[id].size;
+			*bytesused = buffer->size;
+		buffer->state != dequeued;
+		dev->curbufferid++;
+		dev->curbufferid %= dev->nbuffers;
 		return id;
 	}
+	dev->curbufferid = -1;
 	glUseProgram(0);
 	glBindTexture(dev->buffers[0].gl.textype, 0);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -844,6 +873,10 @@ EXT_API int segl_fd(EGL_t *dev, int writer)
 {
 	if (writer && dev->curbufferid == -1)
 		return 0;
+	if (writer)
+		return -1;
+	if (dev->type == device_input)
+		return dev->export->fd(dev->export_ctx);
 	return dev->native->fd(dev->native_window);
 }
 
