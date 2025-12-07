@@ -274,7 +274,7 @@ struct Dev_s
 {
 	device_type_e type;
 	MPEG_TSConf_t *config;
-	Proto_t *proto;
+	const Proto_t *proto;
 	void *protoctx;
 	uint32_t frames;
 	FrameBuffer_t buffers[MAX_BUFFERS];
@@ -331,6 +331,15 @@ static void _destroy_buffer(FrameBuffer_t *buffer)
 	free(buffer->mem);
 }
 
+const Proto_t * _protos[5] = {0};
+void smpegts_proto_append(const Proto_t *proto)
+{
+	int i = 0;
+	for (; _protos[i] && i < sizeof(_protos) / sizeof(*_protos); i++);
+	if (i < sizeof(_protos)/sizeof(*_protos))
+		_protos[i] = proto;
+}
+
 #ifdef HAVE_JANSSON
 int mpegts_loadjsonconfiguration(void *arg, void *entry);
 #endif
@@ -347,7 +356,7 @@ DeviceConf_t *mpegts_createconfig(void)
 	config->port = 5014;
 	config->pid = 0x41;
 	config->maxclients = 5;
-	config->proto = &proto_udp;
+	config->proto = _protos[0];
 #ifdef HAVE_JANSSON
 	config->parent.ops.loadconfiguration = mpegts_loadjsonconfiguration;
 #endif
@@ -803,8 +812,8 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	if (type != device_output)
 		return NULL;
 
-	Proto_t *proto = &proto_udp;
-	if (config)
+	const Proto_t *proto = &proto_udp;
+	if (config && config->proto)
 		proto = config->proto;
 	void *protoctx = proto->create(config);
 	if (protoctx == NULL)
@@ -1090,13 +1099,19 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 		config->maxframes = value;
 	}
 	json_t *proto = json_object_get(jconfig, "proto");
+	if (proto == NULL)
+		proto = json_object_get(jconfig, "protocol");
 	if (proto && json_is_string(proto))
 	{
 		const char *value = json_string_value(proto);
-		if (!strcasecmp(value, proto_unix.name))
-			config->proto = &proto_unix;
-		if (!strcasecmp(value, proto_file.name))
-			config->proto = &proto_file;
+		for (int i = 0; i < (sizeof(_protos)/sizeof(*_protos)); i++)
+		{
+			if (_protos[i] && !strcasecmp(value, _protos[i]->name))
+			{
+				config->proto = _protos[i];
+				break;
+			}
+		}
 	}
 library_end:
 	return 0;

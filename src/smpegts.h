@@ -17,7 +17,7 @@ struct MPEG_TSConf_s
 	int periodic;
 	int maxclients;
 	uint32_t maxframes;
-	Proto_t *proto;
+	const Proto_t *proto;
 };
 
 struct Proto_s
@@ -33,7 +33,6 @@ struct Proto_s
 	void (*destroy)(void *arg);
 };
 
+typedef void (*smpegts_proto_append_t)(const Proto_t *proto);
 extern Proto_t proto_udp;
-extern Proto_t proto_unix;
-extern Proto_t proto_file;
 #endif

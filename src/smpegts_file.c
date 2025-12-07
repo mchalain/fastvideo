@@ -127,3 +127,16 @@ Proto_t proto_file =
 	.flush = proto_flush,
 	.destroy = proto_destroy,
 };
+
+#include <dlfcn.h>
+
+static void __attribute__ ((constructor)) smpegts_init()
+{
+	smpegts_proto_append_t _smpegts_proto_append;
+	void *hdl = dlopen(NULL, RTLD_NOW);
+	_smpegts_proto_append = dlsym(hdl, "smpegts_proto_append");
+	if (_smpegts_proto_append)
+	{
+		_smpegts_proto_append(&proto_file);
+	}
+}
