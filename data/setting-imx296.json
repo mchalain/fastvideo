@@ -34,7 +34,7 @@
       },{
         "name": "Analogue Gain",
         "id": 10356995,
-        "value": 239
+        "value": 839
       },{
         "name": "Pixel Rate",
         "id": 10422530,
@@ -47,7 +47,7 @@
       }
     ]
   },{
-    "name": ["isp-in","bcm2835-isp0-output0"],
+    "name": ["bcm2835-isp0-output0"],
     "controls": [
       {
         "name": "Red Balance",
