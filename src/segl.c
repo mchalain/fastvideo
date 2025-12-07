@@ -711,7 +711,9 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	dup->type = device_input;
 	dev->dup = dup;
 	dbg("segl: duplicate %.4s %lux%lu", &dup->config->parent.fourcc, width, height);
-	dup->export = dup->config->export;
+	dup->export = _exports[0];
+	if (dup->config->export)
+		dup->export = dup->config->export;
 	dup->export_ctx = dup->export->create(dup->config, dev->egldisplay, dev->eglcontext);
 	if (!dup->export_ctx)
 	{
@@ -719,6 +721,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		free(dup);
 		return NULL;
 	}
+	warn("segl: export frames with %s", dup->export->name);
 
 	dup->nbuffers = 0;
 	const FourccFormat_t *fformat = fourcc_getformat(dup->config->parent.fourcc);
@@ -905,7 +908,7 @@ DeviceConf_t * segl_createconfig()
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = segl_loadjsonconfiguration;
 #endif
-	devconfig->export = _exports[0];
+	devconfig->export = NULL;
 	return (DeviceConf_t *)devconfig;
 }
 
