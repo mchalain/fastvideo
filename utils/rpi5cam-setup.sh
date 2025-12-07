@@ -38,6 +38,8 @@ CONFNAME=rp1-cfe-fe_config
 CONFENTITY=$(media-ctl -d $CAMMEDIA -p | grep -e "- entity .*: $CONFNAME" | sed 's/- entity \(.*\): .* (.*)/\1/')
 STATSNAME=rp1-cfe-fe_stats
 STATSENTITY=$(media-ctl -d $CAMMEDIA -p | grep -e "- entity .*: $STATSNAME" | sed 's/- entity \(.*\): .* (.*)/\1/')
+EMBNAME=rp1-cfe-embedded
+EMBENTITY=$(media-ctl -d $CAMMEDIA -p | grep -e "- entity .*: $EMBNAME" | sed 's/- entity \(.*\): .* (.*)/\1/')
 
 SENSOR=$(media-ctl -d $CAMMEDIA -e "$SENSORNAME")
 SENSORPADIMG=0
@@ -47,6 +49,7 @@ CSI=$(media-ctl -d $CAMMEDIA -e "$CSINAME")
 CSIPADSENSOR=0
 CSIPADCH=4
 CSIPADCONF=1
+CSIPADMETA=5
 FE=$(media-ctl -d $CAMMEDIA -e "$FENAME")
 FEPADIN=0
 FEPADCONF=1
@@ -55,6 +58,7 @@ FEPADSTATS=4
 IMAGE=$(media-ctl -d $CAMMEDIA -e "$IMGNAME")
 CONFIG=$(media-ctl -d $CAMMEDIA -e "$CONFNAME")
 CHANNEL=$(media-ctl -d $CAMMEDIA -e "$CHNAME")
+EMBEDDED=$(media-ctl -d $CAMMEDIA -e "$EMBNAME")
 
 media-ctl -d $CAMMEDIA -r
 # retrieve sensor informations
@@ -66,13 +70,6 @@ read -p "current $framesize change (y/N)?" CHOICE
 if [ "$CHOICE" = y ]; then
   read -p "new framesize : " framesize
 fi
-read -p "set $SENSORNAME ($SENSORENTITY) with $fmt_input/$framesize continue (Y/n)?" CHOICE
-if [ "$CHOICE" = n ]; then
-  exit
-fi
-
-# set the link between SENSOR and CSI entity
-media-ctl -d $CAMMEDIA --set-v4l2 "$CSIENTITY:$CSIPADSENSOR[fmt:$fmt_input/$framesize field:none colorspace:raw]"
 
 # the output format must be Bayer 16bits for PiSP backend
 list_fmt_output=$(v4l2-ctl -d $FE --list-subdev-mbus-codes $FEPADOUT | grep -E '0x.*[0-9,a-f]')
@@ -81,39 +78,44 @@ fmt_output=$(v4l2-ctl -d $FE --get-subdev-fmt $FEPADOUT | grep Mediabus | sed 's
 fmt_bayer=$(echo $fmt_input | sed 's/^\([SBGR]\{5\}\).*/\1/')
 fmt_depth=$(echo $fmt_output | sed 's/^\([SBGR]\{5\}\)\([0-9]\{2\}\).*/\2/')
 fmt_output=${fmt_bayer}${fmt_depth}_1X${fmt_depth}
-media-ctl -d $CAMMEDIA --set-v4l2 "$FEENTITY:$FEPADIN[fmt:$fmt_output/$framesize field:none]"
 
 read -p "current fmt $fmt_output. Change it (y/N): " CHOICE
 if [ "$CHOICE" = y ]; then
   echo $list_fmt_output
   read -p "set new fmt: " fmt_output
 fi
+
+media-ctl -d $CAMMEDIA --set-v4l2 "$FEENTITY:$FEPADIN[fmt:$fmt_output/$framesize field:none]"
+
+fmt_bayer=$(echo $fmt_output | sed 's/^\([SBGR]\{5\}\).*/\1/')
+fmt_depth=$(echo $fmt_input | sed 's/^\([SBGR]\{5\}\)\([0-9]\{2\}\).*/\2/')
+fmt_input=${fmt_bayer}${fmt_depth}_1X${fmt_depth}
+read -p "set $SENSORNAME ($SENSORENTITY) with $fmt_input/$framesize continue (Y/n)?" CHOICE
+if [ "$CHOICE" = n ]; then
+  exit
+fi
+
+# set the link between SENSOR and CSI entity
+media-ctl -d $CAMMEDIA --set-v4l2 "$CSIENTITY:$CSIPADSENSOR[fmt:$fmt_input/$framesize field:none colorspace:raw]"
+
 OUTCSI=$FEENTITY
 OUTIMAGE=$IMAGE
-if [ "$fmt_input" = "$fmt_output" ]; then
+read -p "disable the pisp_fe (y/N)" CHOICE
+if [ "$CHOICE" = y ]; then
 OUTCSI=$CHENTITY
 OUTIMAGE=$CHANNEL
 fi
+
 echo "fmt image "$fmt_output
 media-ctl -d $CAMMEDIA --set-v4l2 "$CSIENTITY:$CSIPADCH[fmt:$fmt_output/$framesize field:none colorspace:raw]"
-media-ctl -d $CAMMEDIA --set-v4l2 "$OUTCSI:0[fmt:$fmt_output/$framesize field:none colorspace:raw]"
 
 if [ "$OUTCSI" = "$FEENTITY" ]; then
- # set the bayer encoder
+ # set the image analyzer
+ media-ctl -d $CAMMEDIA --set-v4l2 "$OUTCSI:0[fmt:$fmt_output/$framesize field:none colorspace:raw]"
  media-ctl -d $CAMMEDIA --set-v4l2 "$FEENTITY:$FEPADOUT[fmt:$fmt_output/$framesize field:none]"
 fi
 
 media-ctl -d $CAMMEDIA --link "$CSIENTITY:$CSIPADCH->$OUTCSI:0[1]"
-
-if [ "$OUTCSI" = "$FEENTITY" ]; then
- # set the image output
- media-ctl -d $CAMMEDIA --link "$FEENTITY:$FEPADOUT->$IMGENTITY:0[1]"
- # set the configuration device. this must be enabled otherwise Kernel Panic :-(
- media-ctl -d $CAMMEDIA --link "$CONFENTITY:0->$FEENTITY:$FEPADCONF[1]"
-
- # set the stats device but disable to no be forced to stream with data
- media-ctl -d $CAMMEDIA --link "$FEENTITY:$FEPADSTATS->$STATSENTITY:0[0]"
-fi
 
 media-ctl -d $CAMMEDIA --link "$SENSORENTITY:$SENSORPADIMG->$CSIENTITY:$CSIPADSENSOR[1]"
 # set the link between SENSOR and CSI for the configuration if it exists
@@ -121,9 +123,11 @@ media-ctl -d $CAMMEDIA --get-v4l2 $SENSORENTITY:$SENSORPADCONF | grep "not found
 if [ $? -ne 0 ]; then
   media-ctl -d $CAMMEDIA --link "$SENSORENTITY:$SENSORPADCONF->$CSIENTITY:$CSIPADCONF[1]"
 fi
+
 fmt_code=$(v4l2-ctl -d $CSI --get-subdev-fmt $CSIPADCH | grep Mediabus | sed 's/[^ ].*Mediabus Code.*[ ]: \(0x.*[0-9,a-f]\) (MEDIA_BUS_FMT_\(.*\))/\1/')
+fmt_codein=$(v4l2-ctl -d $CSI --get-subdev-fmt $CSIPADSENSOR | grep Mediabus | sed 's/[^ ].*Mediabus Code.*[ ]: \(0x.*[0-9,a-f]\) (MEDIA_BUS_FMT_\(.*\))/\1/')
 FOURCC=$(v4l2-ctl -d $OUTIMAGE --list-formats $fmt_code | grep "\[0\]" | sed "s/.*\[0\]: '\(.*\)' .*/\1/")
-echo "subdev format code $fmt_code $fmt_output => output fourcc $FOURCC"
+echo "subdev format code $fmt_code/$fmt_codein $fmt_output => output fourcc $FOURCC"
 read -p "Change fourcc ? [y/N]" CHOICE
 if [ "$CHOICE" = "y" ]; then
   I=0
@@ -150,6 +154,37 @@ while [ $? -ne 0 ]; do
   fi
   v4l2-ctl -d $OUTIMAGE -v width=$WIDTH,height=$HEIGHT,pixelformat=$FOURCC
 done
+
+if [ "$OUTCSI" = "$FEENTITY" ]; then
+ # set the image output
+ media-ctl -d $CAMMEDIA --link "$FEENTITY:$FEPADOUT->$IMGENTITY:0[1]"
+ # set the configuration device. this must be enabled otherwise Kernel Panic :-(
+ media-ctl -d $CAMMEDIA --link "$CONFENTITY:0->$FEENTITY:$FEPADCONF[1]"
+
+ # set the stats device but disable to no be forced to stream with data
+ media-ctl -d $CAMMEDIA --link "$FEENTITY:$FEPADSTATS->$STATSENTITY:0[0]"
+
+ enable=0
+ read -p "enable the embedded stream (y/N)" CHOICE
+ if [ "$CHOICE" = y ]; then
+  enable=1
+fi
+ media-ctl -d $CAMMEDIA --link "$CSIENTITY:$CSIPADMETA->$EMBENTITY:0[$enable]"
+
+ enable=1
+ read -p "disable the config stream (y/N)" CHOICE
+ if [ "$CHOICE" = y ]; then
+  enable=0
+ fi
+ media-ctl -d $CAMMEDIA --link "$CONFENTITY:0->$FEENTITY:$FEPADCONF[$enable]"
+
+ enable=0
+ read -p "enable the stats stream (y/N)" CHOICE
+ if [ "$CHOICE" = y ]; then
+  enable=1
+ fi
+ media-ctl -d $CAMMEDIA --link "$FEENTITY:$FEPADSTATS->$STATSENTITY:0[$enable]"
+fi
 
 echo "0: media topology"
 echo "1: Image device configuration"
