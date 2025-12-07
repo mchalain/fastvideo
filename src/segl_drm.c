@@ -126,8 +126,28 @@ static uint64_t sdrm_properties(int fd,  uint32_t type, uint32_t id, const char 
 }
 #endif
 
-static uint32_t find_crtc_for_encoder(const drmModeRes *resources,
-				      const drmModeEncoder *encoder) {
+static uint32_t find_plane_for_crtc(int fd, int crtc_index, uint32_t crtc_id)
+{
+	uint32_t plane_id;
+	drmModePlaneResPtr planes;
+
+	planes = drmModeGetPlaneResources(fd);
+	for (int i = 0; i < planes->count_planes; ++i)
+	{
+		drmModePlanePtr plane;
+		plane = drmModeGetPlane(fd, planes->planes[i]);
+		if (plane->possible_crtcs & (1 << crtc_index))
+		{
+			plane_id = plane->plane_id;
+		}
+		drmModeFreePlane(plane);
+	}
+	drmModeFreePlaneResources(planes);
+	return plane_id;
+}
+
+static uint32_t find_crtc_for_encoder(int fd, const drmModeRes *resources,
+				      const drmModeEncoder *encoder, uint32_t *plane_id) {
 	int i;
 
 	for (i = 0; i < resources->count_crtcs; i++) {
@@ -137,6 +157,8 @@ static uint32_t find_crtc_for_encoder(const drmModeRes *resources,
 		const uint32_t crtc_mask = 1 << i;
 		const uint32_t crtc_id = resources->crtcs[i];
 		if (encoder->possible_crtcs & crtc_mask) {
+			if (plane_id)
+				*plane_id = find_plane_for_crtc(fd, i, crtc_id);
 			return crtc_id;
 		}
 	}
@@ -146,7 +168,7 @@ static uint32_t find_crtc_for_encoder(const drmModeRes *resources,
 }
 
 static uint32_t find_crtc_for_connector(int fd, const drmModeRes *resources,
-					const drmModeConnector *connector) {
+					const drmModeConnector *connector, uint32_t *plane_id) {
 	int i;
 
 	for (i = 0; i < connector->count_encoders; i++) {
@@ -154,7 +176,7 @@ static uint32_t find_crtc_for_connector(int fd, const drmModeRes *resources,
 		drmModeEncoder *encoder = drmModeGetEncoder(fd, encoder_id);
 
 		if (encoder) {
-			const uint32_t crtc_id = find_crtc_for_encoder(resources, encoder);
+			const uint32_t crtc_id = find_crtc_for_encoder(fd, resources, encoder, plane_id);
 
 			drmModeFreeEncoder(encoder);
 			if (crtc_id != 0) {
@@ -256,7 +278,7 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 	return connector;
 }
 
-static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height)
+static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height, int writeback)
 {
 	drmModeRes *resources;
 	drmModeConnector *connector = NULL;
@@ -272,7 +294,7 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height)
 	}
 
 	/* find a connected connector: */
-	connector = find_connector(fd, resources, width, height, &drm.mode, &drm.mode_id, 0);
+	connector = find_connector(fd, resources, width, height, &drm.mode, &drm.mode_id, writeback);
 
 	if (!connector)
 	{
@@ -283,46 +305,24 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height)
 	}
 
 	/* find encoder: */
-	for (int i = 0; i < resources->count_encoders; i++)
-	{
-		encoder = drmModeGetEncoder(fd, resources->encoders[i]);
-		if (encoder->encoder_id == connector->encoder_id)
-			break;
-		drmModeFreeEncoder(encoder);
-		encoder = NULL;
+	uint32_t plane_id = 0;
+	uint32_t crtc_id = find_crtc_for_connector(fd, resources, connector, &plane_id);
+	if (crtc_id == 0) {
+		err("segl: no crtc found!");
+		return -1;
 	}
 
-	if (encoder) {
-		drm.crtc_id = encoder->crtc_id;
-	} else {
-		uint32_t crtc_id = find_crtc_for_connector(fd, resources, connector);
-		if (crtc_id == 0) {
-			err("segl: no crtc found!");
-			return -1;
-		}
-
-		drm.crtc_id = crtc_id;
-	}
+	drm.crtc_id = crtc_id;
+	drm.plane_id = plane_id;
 	dbg("segl: drm CRTC_ID %d", drm.crtc_id);
 
 	drm.connector_id = connector->connector_id;
 
 #ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
-	drmModePlaneResPtr planes;
-
-	planes = drmModeGetPlaneResources(fd);
-	for (int i = 0; i < planes->count_planes; ++i)
-	{
-		drmModePlanePtr plane;
-		plane = drmModeGetPlane(fd, planes->planes[i]);
-		if (plane->crtc_id == drm.crtc_id)
-			drm.plane_id = plane->plane_id;
-		drmModeFreePlane(plane);
-	}
-	drmModeFreePlaneResources(planes);
-
 	drm.properties[SDRM_PROPID_CRTC_ID] = sdrm_propertyid(fd, DRM_MODE_OBJECT_CONNECTOR, drm.connector_id, "CRTC_ID");
 	uint32_t prop_plane_crtc_id = sdrm_propertyid(fd, DRM_MODE_OBJECT_PLANE, drm.plane_id, "CRTC_ID");
+	if (drmModeObjectSetProperty(fd, prop_plane_crtc_id, DRM_MODE_OBJECT_PLANE, prop_plane_crtc_id, drm.plane_id) < 0)
+		warn("segl: set CRTC to plane error");
 	if (prop_plane_crtc_id != drm.properties[SDRM_PROPID_CRTC_ID])
 	{
 		warn("sdrm: CRTC_ID for plane(%lu) and connector(%lu) differents", prop_plane_crtc_id, drm.properties[SDRM_PROPID_CRTC_ID]);
@@ -342,7 +342,7 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height)
 
 	drm.flags = (DRM_MODE_ATOMIC_NONBLOCK | DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_ALLOW_MODESET);
 #endif
-	drmModeCrtc *saved_crtc = drmModeGetCrtc(fd, drm.crtc_id);
+
 	drmModeFreeConnector(connector);
 	drmModeFreeResources(resources);
 	return 0;
@@ -691,7 +691,7 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 		fourcc = defaultfourcc;
 	dbg("segl: screen format %.4s", &fourcc);
 
-	if (init_drm(fd, fourcc, config->parent.width, config->parent.height))
+	if (init_drm(fd, fourcc, config->parent.width, config->parent.height, (config->type == device_transfer)))
 	{
 #if 0
 		return EGL_CAST(EGLNativeDisplayType, EGL_UNKNOWN);
