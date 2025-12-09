@@ -248,6 +248,28 @@ This module is by default a simple serving plate between 2 others modules. But s
 | dryrun       | boolean          | controls     | trash the stream                         |
 | tee          | boolean          | controls     | enable the branch description            |
 
+## file
+
+This module allows to push data into or fromto, file or fifo.
+
+
+| entries      | types            | parent       | comment                                  |
+|:--------     |:----------------:|:-------------|:-----------------------------------------|
+| type         | string           | root         | must be "passthrough"                    |
+| name        | string &#124; array | root       | give one or several name to the module   |
+| path         | string           | root         | directory where the file is used         |
+| filename     | string           | root         | filename                                 |
+| mode        | string &#124; array | root       | "regular" or "fifo"                      |
+
+### The *json* structure
+
+```json
+  {
+    "name": "file",
+    "type": "file",
+  };
+```
+
 # Applications
 
 ## Fastvideo

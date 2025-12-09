@@ -18,27 +18,21 @@
 #include "config.h"
 #include "log.h"
 
-typedef struct File_s File_t;
-struct File_s
-{
-	const char *path;
-	void *ctx;
-	File_ops_t *ops;
-	device_type_e type;
-	uint32_t fourcc;
-	size_t size;
-	size_t nbuffers;
-	FrameBuffer_t *buffers;
-	int lastbufferid;
-};
 EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int flags);
 
 EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
 {
+	if (type != device_input && type != device_output)
+	{
+		err("sfile: support only input or output devices");
+		return NULL;
+	}
 	const char *start = strchr(filename, ':');
 	if (start)
 		filename = start + 1;
-	File_ops_t *ops = &_passthrough_ops;
+	File_ops_t *ops = &_regular_ops;
+	if (config->type == File_Fifo_e)
+		ops = &_fifo_ops;
 	if (type == device_transfer)
 	{
 		err("sfile: %s bad device type", config->parent.name);
@@ -63,58 +57,21 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 
 	if (config->filename != NULL)
 		filename = config->filename;
-	size_t fsize = 0;
-	int mode = 0;
-	if (type == device_input)
-	{
-		mode = O_RDONLY;
-		if (faccessat(rootfd, filename, R_OK, 0) < 0)
-		{
-			err("file \"%s\" not accessible", filename);
-			close(rootfd);
-			return NULL;
-		}
-		struct stat sb;
-		if (fstatat(rootfd, filename, &sb, 0) < 0)
-		{
-			err("statistic access error: %m");
-			close(rootfd);
-			return NULL;
-		}
-		fsize = sb.st_size;
-		for (int i = 0; i < sb.st_blocks; i++)
-		{
-
-		}
-	}
-	else if (device_output)
-	{
-		mode = O_WRONLY;
-		if (faccessat(rootfd, filename, F_OK, 0) < 0)
-			mode |= O_CREAT;
-		else
-			mode |= O_TRUNC;
-	}
-	else
-	{
-		if (rootfd != AT_FDCWD)
-			close(rootfd);
-		return NULL;
-	}
-
-	void *ctx = ops->open(rootfd, filename, mode);
+	void *ctx = NULL;
+	ctx = ops->open(rootfd, filename, type);
 	if (ctx == NULL)
 	{
-		err("file \"%s\" opening error %m", filename);
+		err("sfile: \"%s\" opening error %m", filename);
 		return NULL;
 	}
 	close(rootfd);
 	File_t *dev = calloc(1, sizeof(*dev));
+	dev->config = config;
 	dev->ctx = ctx;
 	dev->ops = ops;
-	dev->size = fsize;
 	dev->type = type;
 	dev->path = filename;
+	warn("sfile: %s opened for %.4s", config->filename, &config->parent.fourcc);
 	return dev;
 }
 
@@ -338,6 +295,31 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 	{
 		const char *value = json_string_value(path);
 		config->rootpath = value;
+	}
+	json_t *modes = json_object_get(jconfig, "mode");
+	if (modes && json_is_string(modes))
+	{
+		json_t *mode;
+		int index;
+		json_array_foreach(modes, index, mode)
+		{
+			if (mode && json_is_string(mode))
+			{
+				const char *value = json_string_value(mode);
+				if (! strcasecmp(value, "fifo"))
+					config->type = File_Fifo_e;
+				if (! strcasecmp(value, "socket"))
+					config->type = File_Socket_e;
+			}
+		}
+	}
+	if (modes && json_is_string(modes))
+	{
+		const char *value = json_string_value(modes);
+		if (! strcasecmp(value, "fifo"))
+			config->type = File_Fifo_e;
+		if (! strcasecmp(value, "socket"))
+			config->type = File_Socket_e;
 	}
 library_end:
 	return 0;
