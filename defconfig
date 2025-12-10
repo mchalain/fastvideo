@@ -3,7 +3,7 @@ DRM=y
 DVB=n
 IMAGEMESA=y
 
-FASTSETTING_DEFAULT_SERVER="/tmp/fastsetting_socket"
+FASTSETTING_DEFAULT_SERVER="/tmp/camera/control"
 
 V4L2_SUBDEV=y
 V4L2_HAS_META=y
