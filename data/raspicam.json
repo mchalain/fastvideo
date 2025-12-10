@@ -111,30 +111,31 @@
         "value": 1000
       }
     ],
-    "id": 6,
-    "media": "media4"
-  },{
+    "end": true
+  },
+  {
     "name": ["isp1-out","bcm2835-isp0-capture1"],
     "type": "v4l2",
     "device": "/dev/video21",
     "definition": {
       "fourcc": "NV12",
       "width": 1920,
-      "height": 1080
+      "height": 1080,
+      "end": true
     },
-    "id": 12,
-    "media": "media4"
-  },{
+    "end": true
+  },
+  {
     "name": ["isp1-out2","bcm2835-isp0-capture2"],
     "type": "v4l2",
     "device": "/dev/video22",
     "definition": {
       "fourcc": "YUYV",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "end": true
     },
-    "id": 18,
-    "media": "media4"
+    "end": true
   },
   {
     "name": ["isp1-meta"],
@@ -148,7 +149,8 @@
       "end": true
     },
     "end": true
-  },{
+  },
+  {
     "name": ["dec-h264","bcm2835-codec-decode-source"],
     "type": "v4l2",
     "device": "/dev/video10",
@@ -173,16 +175,15 @@
         "value": 4
       }
     ],
-    "id": 1,
-    "media": "media2"
-  },{
+    "end": true
+  },
+  {
     "name": ["enc-h264","bcm2835-codec-encode-source"],
     "type": "v4l2",
     "device": "/dev/video11",
-    "transfer": {
-      "width":1920,
-      "height":1080,
-      "end":true
+    "definition": {
+      "fps":30,
+      "end": true
     },
     "transformation": [
     ],
@@ -244,9 +245,9 @@
       "periodiccontrol": 10029541,
       "end": true
     },
-    "id": 15,
-    "media": "media2"
-  },{
+    "end": true
+  },
+  {
     "name": ["debayer","bcm2835-codec-isp-source"],
     "type": "v4l2",
     "device": "/dev/video12",
@@ -265,9 +266,9 @@
         "value": false
       }
     ],
-    "id": 29,
-    "media": "media2"
-  },{
+    "end": true
+  },
+  {
     "name": [
       "crop",
       "bcm2835-codec-image_fx-source"
@@ -285,9 +286,9 @@
         "height": 480
       }
     ],
-    "id": 43,
-    "media": "media2"
-  },{
+    "end": true
+  },
+  {
     "name": ["enc-jpeg","bcm2835-codec-encode_image-sour"],
     "type": "v4l2",
     "device": "/dev/video31",
@@ -302,8 +303,7 @@
         "value": 80
       }
     ],
-    "id": 57,
-    "media": "media2"
+    "end": true
   },
   {
     "name": ["dec-hevc","rpivid-source"],
@@ -312,7 +312,8 @@
     "definition": {
       "fourcc": "S265",
       "width": 1920,
-      "height": 1088
+      "height": 1088,
+      "end": true
     },
     "controls": [
       {
@@ -327,17 +328,11 @@
         "value_show": "No Start Code"
       }
     ],
-    "id": 1,
-    "media": "media0"
+    "end": true
   },{
     "name": ["isp-in","bcm2835-isp0-output0"],
     "type": "v4l2",
     "device": "/dev/video13",
-    "definition": {
-      "width":1920,
-      "height":1080,
-      "end":true
-    },
     "transformation": [
     ],
     "controls": [
@@ -446,8 +441,7 @@
         "value": 1000
       }
     ],
-    "id": 6,
-    "media": "media3"
+    "end": true
   },
   {
     "name": ["isp-out","bcm2835-isp0-capture1"],
@@ -456,10 +450,10 @@
     "definition": {
       "fourcc": "XB24",
       "width": 1920,
-      "height": 1080
+      "height": 1080,
+      "end": true
     },
-    "id": 12,
-    "media": "media3"
+    "end": true
   },
   {
     "name": ["isp-out2","bcm2835-isp0-capture2"],
@@ -468,20 +462,27 @@
     "definition": {
       "fourcc": "YUYV",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "end": true
     },
-    "id": 18,
-    "media": "media3"
+    "end": true
   },
   {
     "name": ["isp-meta"],
     "type": "v4l2",
     "device": "/dev/video16",
-    "media": "media1",
     "definition":{
       "fourcc": "BSTA",
       "end": true
     },
+    "end": true
+  },
+  {
+    "name": ["rpivc4_alg"],
+    "type": "file",
+    "path": "/tmp",
+    "filename": "statistics",
+    "mode": "fifo",
     "end": true
   },
   {
@@ -503,7 +504,8 @@
         "definition": {
           "fourcc": "pBAA",
           "width": 2304,
-          "height": 1296
+          "height": 1296,
+          "end": true
         },
         "end": true
       },
@@ -522,7 +524,8 @@
         "definition": {
           "fourcc": "pBAA",
           "width":1456,
-          "height":1088
+          "height":1088,
+          "end": true
         },
         "end": true
       },{
@@ -533,7 +536,8 @@
         "definition": {
           "fourcc": "pBCC",
           "width": 2028,
-          "height": 1080
+          "height": 1080,
+          "end": true
         },
         "end": true
       },{
@@ -571,20 +575,6 @@
     "definition": {
       "fourcc": "XR24",
       "transfer": "XR24",
-      "end": true
-    },
-    "end":true
-  },
-  {
-    "name":["offscreen"],
-    "type":"gpu",
-    "native":"offscreen",
-    "device":"/dev/dri/renderD128",
-    "definition": {
-      "width": 1920,
-      "height": 1080,
-      "transfer": "XR24",
-      "transfer_modifiers": 1,
       "end": true
     },
     "end":true

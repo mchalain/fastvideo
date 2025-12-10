@@ -14,3 +14,9 @@ unixclient_LDFLAGS+=-L$(builddir)src
 
 data-y+=rpi3cam-setup.sh
 data-y+=rpi5cam-setup.sh
+
+bin-y+=rpivc4_alg
+rpivc4_alg_SOURCES=rpivc4_alg.c
+rpivc4_alg_SOURCES+=$(srcdir)src/daemonize.c
+rpivc4_alg_CFLAGS+=-I$(srcdir)src
+rpivc4_alg_LDFLAGS+=-L$(builddir)src

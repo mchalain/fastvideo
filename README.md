@@ -9,6 +9,9 @@ The main feature is the use of dma_fd to transfer video from one device to anoth
  - [fastconfig](#fastconfig)   : it generates a json file with all hardware available on the host;
  - [fastsetting](#fastsetting) : open an unix socket to receive json objects that control the devices;
 
+
+Fastvideo uses an external server to manage AWB, AEC and AF Algorithms. Fastvideo extracts the data from the v4l2 meta capture device and push them into a server via a named pipe. As this server is hardware dependent their are stored into *utils* directory.
+
 # Features
 
 | Modules            |         | source | sync | transfer | control | dmafd | hw memory | soft memory | comment                      |
@@ -464,3 +467,12 @@ This camera uses a imx296 camera sensor. The following command lines should star
 $ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx296 -o isp-in -i isp-out -o gpu &
 $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx296.json
 ```
+### 3A Algorithms
+
+A 3AAlgo server is available into *utils* directory and named **rpivc4_alg**. It receives data from a fastvideo fifo and sends control to fastsetting socket.
+
+```bash
+$ rpivc4_alg -D
+$ fastvideo -j /etc/fastvideo/raspicam.json -i isp-meta -o statistics
+```
+
