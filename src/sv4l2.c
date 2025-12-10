@@ -1537,8 +1537,13 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	dup->mode &= ~MODE_OUTPUT;
 	dup->type = -1;
 	*pconfig = dup->config = malloc(sizeof(*dev->config));
-	memmove(dup->config, *pconfig, sizeof(*dev->config));
-	memmove(&dup->config->parent, &dev->config->transfer, sizeof(dup->config->parent));
+	memmove(dup->config, dev->config, sizeof(*dev->config));
+	if (!dev->config->transfer.width)
+		dup->config->parent.width = dev->config->parent.width;
+	if (!dev->config->transfer.height)
+		dup->config->parent.height = dev->config->parent.height;
+	if (!dev->config->transfer.fourcc)
+		dup->config->parent.fourcc = dev->config->parent.fourcc;
 	if ((dup->mode & MODE_CAPTURE) && dup->config->periodic)
 	{
 		dup->periodicfunc = _v4l2_periodiccontrol;
@@ -1551,7 +1556,7 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	}
 
 	sv4l2_getpixformat(dup, NULL, NULL);
-	dbg("sv4l2: %s(dup) %dx%d, %.4s", dup->name, dup->width, dup->height, (char*)&dup->fourcc);
+	warn("sv4l2: %s output  %dx%d, %.4s", dup->name, dup->width, dup->height, (char*)&dup->fourcc);
 
 	return dup;
 }
