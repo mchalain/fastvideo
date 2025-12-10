@@ -4,7 +4,6 @@ fastvideo_SOURCES+=sdmabuf.c
 fastvideo_SOURCES+=spassthrough.c
 fastvideo_SOURCES+=sv4l2.c
 fastvideo_SOURCES-$(V4L2_SUBDEV)+=sv4l2_subdev.c
-fastvideo_SOURCES+=sv4l2_meta.c
 fastvideo_SOURCES+=client.c
 fastvideo_SOURCES+=sfile.c
 fastvideo_SOURCES+=sfile_regular.c

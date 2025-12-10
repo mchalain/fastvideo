@@ -20,7 +20,6 @@ Fastvideo uses an external server to manage AWB, AEC and AF Algorithms. Fastvide
 |                    | m2m     |        |      |  X       | X       | X     | X         |             | isp, en/decoder ...          |
 |                    | output  |        | X    |          | X       | X     | X         |             | isp ...                      |
 | [subv4l](#subv4l)  |         |        |      |          | X       |       |           |             | only control v4l2 media      |
-| [v4l2_meta](#v4l2_meta)|     | X      |      |          |         | X     | X         |             | metadata stream from a media |
 | [screen](#drm)     |         |        | X    |  X       | X       | X     | X         |             | hdmi, writeback              |
 | [gpu](#egl)        | drm     |        | X    |  X       |         | X     | X         | X           | output pixels or Mesa        |
 |                    | x11     |        | X    |  X       |         | X     | X         | X           |                              |
@@ -99,23 +98,6 @@ The modules description may be into the root object of json's file or into the "
      "height": 1080,
      "fps": 30
  },
-```
-The entries are the same as v4l2 modules.
-
-## v4l2_meta
-
-This modules open a special v4l2 device with metadata.
-
-As the metadata and the data stream may come from the same device the module's name is different.
-
-### The *json* structure
-
-```json
-  {
-    "name": "video-control",
-    "type": "v4l2_meta",
-    "device": "/dev/video0"
-  },
 ```
 The entries are the same as v4l2 modules.
 

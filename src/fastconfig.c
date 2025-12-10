@@ -15,7 +15,6 @@
 #include "log.h"
 #include "sv4l2.h"
 #include "sv4l2_subdev.h"
-#include "sv4l2_meta.h"
 #ifdef HAVE_LIBDRM
 #include "sdrm.h"
 #endif
@@ -450,17 +449,6 @@ int _passthrough_device(void *arg, int fd, const char *path, const char *name)
 	return 0;
 }
 
-int _v4l2_meta_device(void *arg, int fd, const char *path, const char *name)
-{
-	json_t *devices = (json_t *)arg;
-	json_t *metadevice = json_object();
-	void *dev = sv4l2_meta_ops.create(path, device_output, NULL);
-	sv4l2_meta_ops.capabilities(dev, metadevice, all_capabilities_format);
-	sv4l2_meta_ops.destroy(dev);
-	_devices_append(devices, metadevice);
-	return 0;
-}
-
 int main(int argc, char *const argv[])
 {
 	const char *media = NULL;
@@ -546,7 +534,6 @@ int main(int argc, char *const argv[])
 	}
 #endif
 	_passthrough_device(devices, 0, "passthrough", "passthrough");
-	_v4l2_meta_device(devices, 0, "metadevice", "metadevice");
 	json_dump_file(devices, output, JSON_INDENT(2));
 	json_decref(devices);
 	return 0;
