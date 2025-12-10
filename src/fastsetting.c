@@ -271,8 +271,7 @@ int main(int argc, char * const argv[])
 			err("log file error %m");
 	}
 
-	if (cwd != NULL && chdir(cwd) != 0)
-		err("main: working directory %m");
+	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, cwd);
 
 	FastVideoList_t *devices = NULL;
 	config_parseconfigfile(configfile, _createdevices, &devices);
@@ -325,7 +324,6 @@ int main(int argc, char * const argv[])
 		warn("fastsetting server runs on %s", serverpath);
 		server_attach_receive(server, _server_control, devices);
 
-		daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
 		server_run(server);
 		killdaemon(pidfile);
 		server_destroy(server);

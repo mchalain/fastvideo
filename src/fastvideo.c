@@ -537,7 +537,7 @@ int main(int argc, char * const argv[])
 		warn("pipe %s => %s ready", input->config->name, output->config->name);
 	}
 
-	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
+	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, NULL);
 
 	if ((mode & MODE_INITIALIZE) == 0)
 		main_loop(pipes);
