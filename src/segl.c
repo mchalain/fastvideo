@@ -222,6 +222,8 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	uint32_t height = config->parent.height;
 
 	const EGLNative_t * native = config->native;
+	if (native == NULL)
+		return NULL;
 	warn("segl: native %s", native->name);
 	ndisplay = native->display(config);
 	if (EGL_CAST(EGLint,ndisplay) == EGL_UNKNOWN)
@@ -943,18 +945,9 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 				break;
 			}
 		}
-	}
-	json_t *export = json_object_get(jconfig, "export");
-	if (export && json_is_string(export))
-	{
-		const char *value = json_string_value(export);
-		for (int i = 0; i < sizeof(_exports) / sizeof(*_exports) && _exports[i]; i++)
+		if (config->native == NULL)
 		{
-			if (!strcmp(_exports[i]->name, value))
-			{
-				config->export = _exports[i];
-				break;
-			}
+			err("segl: naive %s not found", value);
 		}
 	}
 	json_t *device = json_object_get(jconfig, "device");
@@ -975,6 +968,21 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 		config->transfer.fourcc = config->parent.fourcc;
 	if (config->transfer.modifiers == 0)
 		config->transfer.modifiers = config->parent.modifiers;
+	json_t *export = json_object_get(jconfig, "export");
+	if (!export)
+		export = json_object_get(transfer, "export");
+	if (export && json_is_string(export))
+	{
+		const char *value = json_string_value(export);
+		for (int i = 0; i < sizeof(_exports) / sizeof(*_exports) && _exports[i]; i++)
+		{
+			if (!strcmp(_exports[i]->name, value))
+			{
+				config->export = _exports[i];
+				break;
+			}
+		}
+	}
 
 	return 0;
 }
