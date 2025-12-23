@@ -403,35 +403,11 @@ static int texture_fromdma(EGL_t *dev, GLBuffer_t *buffer, int dma_fd, size_t si
 	GLuint textype = GL_TEXTURE_EXTERNAL_OES;
 	texture = texture_create(dev, textype);
 
-	uint32_t stride = size / dev->config->parent.height;
+	uint32_t stride = dev->config->parent.stride;
+	if (stride == 0)
+		stride = size / dev->config->parent.height;
 	uint32_t fourcc;
-	switch (dev->config->parent.fourcc)
-	{
-		/**
-		 * change multi-planar format to mono-planar grey format
-		 */
-#if 0
-		case FOURCC('I','4','2','0'):
-		case FOURCC('N','V','2','1'):
-		case FOURCC('N','V','1','2'):
-		case FOURCC('Y','V','1','2'):
-		case FOURCC('Y','V','1','6'):
-			fourcc = FOURCC('G','R','E','Y');
-			fourcc = FOURCC('R','8',' ',' ');
-			stride = dev->config->parent.width;
-			size = dev->config->parent.width * dev->config->parent.height;
-		break;
-#endif
-		// transform bayer 16bits to Monochrome 16 bits
-		case FOURCC('B','Y','R','2'):
-		case FOURCC('B','G','1','6'):
-		case FOURCC('R','G','1','6'):
-		case FOURCC('G','R','1','6'):
-			fourcc = FOURCC('R','1','6',' ');
-		break;
-		default:
-			fourcc = dev->config->parent.fourcc;
-	}
+	fourcc = dev->config->parent.fourcc;
 	EGLImageKHR image;
 	GLint attrib_list[] = {
 		EGL_IMAGE_PRESERVED_KHR, EGL_TRUE,
