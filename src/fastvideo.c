@@ -127,6 +127,10 @@ int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 	{
 		inconfig->height = outconfig->height = 480;
 	}
+	if (inconfig->stride)
+		outconfig->stride = inconfig->stride;
+	else if (outconfig->stride)
+		inconfig->stride = outconfig->stride;
 	if (inconfig->modifiers && !outconfig->modifiers)
 		outconfig->modifiers = inconfig->modifiers;
 	else if (outconfig->modifiers && !inconfig->modifiers)
