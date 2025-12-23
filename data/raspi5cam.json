@@ -156,14 +156,14 @@
     "end": true
   },
   {
-    "name": ["raw","raw-imx708","raw-imx296","raw-imx477","rp1-cfe-fe_ch0"],
+    "name": ["raw","raw-ov9281","raw-imx708","raw-imx296","raw-imx477","rp1-cfe-fe_ch0"],
     "type": "v4l2",
     "device": "/dev/video0",
     "subdevices": [
       {
-        "name": ["raw-imx296","raw-imx708","raw-imx477","csi2"],
+        "name": ["raw-ov9281","raw-imx296","raw-imx708","raw-imx477","csi2"],
         "type": "subv4l",
-        "disable": false,
+        "disable": true,
         "device": "/dev/v4l-subdev0",
         "end": true
       },
@@ -214,6 +214,19 @@
           "height": 1080,
           "end": true
         }
+      },
+      {
+        "name": ["raw-ov9281","ov9281 4-0060"],
+        "type": "subv4l",
+        "disable": false,
+        "device": "/dev/v4l-subdev2",
+        "definition": {
+          "fourcc": "Y16 ",
+          "fmtbus": "0x200a",
+          "width": 1280,
+          "height":  720,
+          "end": true
+        }
       }
     ],
     "end": true
@@ -226,21 +239,21 @@
       {
         "name": ["cam-imx296","cam-imx708","pisp-fe"],
         "type": "subv4l",
-        "disable": false,
+        "disable": true,
         "device": "/dev/v4l-subdev1",
         "end": true
       },
       {
         "name": ["cam-imx296","cam-imx708","csi2"],
         "type": "subv4l",
-        "disable": false,
+        "disable": true,
         "device": "/dev/v4l-subdev0",
         "end": true
       },
       {
         "name": ["cam-imx708","imx708_wide_noir"],
         "type": "subv4l",
-        "disable": false,
+        "disable": true,
         "device": "/dev/v4l-subdev2",
         "definition": {
           "fourcc": "PC1B",
@@ -254,7 +267,7 @@
       {
         "name": ["cam-imx708","dw9807 10-000c"],
         "type": "subv4l",
-        "disable": false,
+        "disable": true,
         "device": "/dev/v4l-subdev3",
         "definition": {
           "mode" : "control"
@@ -264,7 +277,7 @@
       {
         "name": ["cam-imx296","imx296 6-001a"],
         "type": "subv4l",
-        "disable": false,
+        "disable": true,
         "device": "/dev/v4l-subdev2",
         "definition": {
           "fourcc": "PC1B",
@@ -278,7 +291,7 @@
       {
         "name": ["cam-imx477","imx477 6-001a"],
         "type": "subv4l",
-        "disable": false,
+        "disable": true,
         "device": "/dev/v4l-subdev2",
         "definition": {
           "fourcc": "PC1R",
@@ -292,12 +305,32 @@
     ]
   },
   {
+    "name": "Y16toR16",
+    "type": "passthrough",
+    "transfer": {
+      "fourcc": "R16 "
+    },
+    "end": true
+  },
+  {
     "name": "dryrun",
     "type": "passthrough",
     "controls": [{
       "dryrun": true,
       "end": true
     }],
+    "end": true
+  },
+  {
+    "name": ["screen"],
+    "type": "screen",
+    "device": "/dev/dri/card0",
+    "end": true
+  },
+  {
+    "name": ["offscreen"],
+    "type": "gpu",
+    "native": ["offscreen"],
     "end": true
   },
   {
