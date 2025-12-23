@@ -75,11 +75,11 @@ fi
 list_fmt_output=$(v4l2-ctl -d $FE --list-subdev-mbus-codes $FEPADOUT | grep -E '0x.*[0-9,a-f]')
 fmt_output=$(v4l2-ctl -d $FE --get-subdev-fmt $FEPADOUT | grep Mediabus | sed 's/[^ ].*Mediabus Code.*[ ]: 0x.*[0-9,a-f] (MEDIA_BUS_FMT_\(.*\))/\1/')
 
-fmt_bayer=$(echo $fmt_input | sed 's/^\([SBGR]\{5\}\).*/\1/')
-fmt_depth=$(echo $fmt_output | sed 's/^\([SBGR]\{5\}\)\([0-9]\{2\}\).*/\2/')
+fmt_bayer=$(echo $fmt_output | sed 's/^\([SBGRY]\+\)[0-9]*_.*/\1/')
+fmt_depth=$(echo $fmt_output | sed 's/^\([SBGRY]\+\)\([0-9]*\)_.*/\2/')
 fmt_output=${fmt_bayer}${fmt_depth}_1X${fmt_depth}
 
-read -p "current fmt $fmt_output. Change it (y/N): " CHOICE
+read -p "current fmt $fmt_output of $FENAME. Change it (y/N): " CHOICE
 if [ "$CHOICE" = y ]; then
   echo $list_fmt_output
   read -p "set new fmt: " fmt_output
@@ -87,12 +87,12 @@ fi
 
 media-ctl -d $CAMMEDIA --set-v4l2 "$FEENTITY:$FEPADIN[fmt:$fmt_output/$framesize field:none]"
 
-fmt_bayer=$(echo $fmt_output | sed 's/^\([SBGR]\{5\}\).*/\1/')
-fmt_depth=$(echo $fmt_input | sed 's/^\([SBGR]\{5\}\)\([0-9]\{2\}\).*/\2/')
+fmt_bayer=$(echo $fmt_input | sed 's/^\([SBGRY]\+\)[0-9]*_.*/\1/')
+fmt_depth=$(echo $fmt_input | sed 's/^\([SBGRY]\+\)\([0-9]*\)_.*/\2/')
 fmt_input=${fmt_bayer}${fmt_depth}_1X${fmt_depth}
-read -p "set $SENSORNAME ($SENSORENTITY) with $fmt_input/$framesize continue (Y/n)?" CHOICE
-if [ "$CHOICE" = n ]; then
-  exit
+read -p "current fmt $fmt_input of $SENSORNAME ($SENSORENTITY). Change it (y/N)?" CHOICE
+if [ "$CHOICE" = y ]; then
+  read -p "set new fmt: " fmt_input
 fi
 
 # set the link between SENSOR and CSI entity
