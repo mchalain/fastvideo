@@ -60,6 +60,8 @@ struct EGLExportDRMWriteback_s
 
 static struct drm_s {
 	uint32_t fourcc;
+	uint32_t width;
+	uint32_t height;
 	int fd;
 	drmModeModeInfo mode;
 	int mode_id;
@@ -202,7 +204,7 @@ static uint32_t find_crtc_for_connector(int fd, const drmModeRes *resources,
 	return -1;
 }
 
-static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t width, uint32_t height, drmModeModeInfo *mode, int *mode_id, int writeback)
+static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t *width, uint32_t *height, drmModeModeInfo *mode, int *mode_id, int writeback)
 {
 	drmModeConnector *connector = NULL;
 	for (int i = 0; i < resources->count_connectors; i++)
@@ -228,9 +230,9 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 		{
 			current_mode = &connector->modes[j];
 
-			dbg("\tfound %lux%lu", current_mode->hdisplay, current_mode->vdisplay);
-			if (current_mode->vdisplay == height &&
-					current_mode->hdisplay == width)
+			dbg("\tfound %lux%lu %dHz %#x", current_mode->hdisplay, current_mode->vdisplay, current_mode->vrefresh, current_mode->type);
+			if (current_mode->vdisplay == *height &&
+					current_mode->hdisplay == *width)
 			{
 				break;
 			}
@@ -240,8 +242,8 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 		{
 			current_mode = &connector->modes[j];
 
-			if (current_mode->vdisplay == height &&
-					current_mode->hdisplay >= width)
+			if (current_mode->hdisplay == *width &&
+					current_mode->vdisplay >= *height)
 			{
 				break;
 			}
@@ -251,10 +253,10 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 		{
 			current_mode = &connector->modes[j];
 
-			if (current_mode->vdisplay <= (height * 6 / 5) &&
-				current_mode->vdisplay >= height &&
-				current_mode->hdisplay <= (width * 8 / 5) &&
-					current_mode->hdisplay >= width)
+			if (current_mode->vdisplay <= (*height * 6 / 5) &&
+				current_mode->vdisplay >= *height &&
+				current_mode->hdisplay <= (*width * 8 / 5) &&
+					current_mode->hdisplay >= *width)
 			{
 				break;
 			}
@@ -271,6 +273,8 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 		}
 		if (current_mode)
 		{
+			*width = current_mode->hdisplay;
+			*height = current_mode->vdisplay;
 			dbg("segl: mode select %s %lux%lu %d %#x", current_mode->name, current_mode->hdisplay, current_mode->vdisplay, current_mode->type, current_mode->flags);
 			if (mode)
 			{
@@ -306,15 +310,18 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height, in
 		return -1;
 	}
 
+	drm.width = width;
+	drm.height = height;
 	/* find a connected connector: */
-	connector = find_connector(fd, resources, width, height, &drm.mode, &drm.mode_id, writeback);
+	connector = find_connector(fd, resources, &drm.width, &drm.height, &drm.mode, &drm.mode_id, writeback);
 
 	if (!connector)
 	{
 		/* we could be fancy and listen for hotplug events and wait for
 		 * a connector..
 		 */
-		err("segl: no connected connector!");
+		err("segl: no connected %s connector!", writeback?"writeback":"");
+		return -1;
 	}
 
 	/* find encoder: */
@@ -698,9 +705,9 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	dbg("segl: open (%s) %s", device, gbm_device_get_backend_name(gbm));
 
 	uint32_t defaultfourcc = 0;
-	uint32_t requestfourcc = config->parent.fourcc;
-	if (requestfourcc == FOURCC_NV12)
-		requestfourcc = FOURCC_R8;
+	/// The screen format doesn't depend on the texture format
+	//uint32_t requestfourcc = config->parent.fourcc;
+	uint32_t requestfourcc = FOURCC_XR24;
 	uint32_t fourcc = 0;
 	dbg("segl: screen formats (search %.4s):", &requestfourcc);
 	for (int i = 0; i < sizeof(g_formats)/sizeof(*g_formats); i++)
@@ -749,6 +756,9 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 	struct gbm_device *gbm = (struct gbm_device *)display;
 	if (drm.mode_id == 0)
 		return (EGLNativeWindowType)NULL;
+
+	width = drm.width;
+	height = drm.height;
 
 	uint64_t modifiers[1] = {DRM_FORMAT_MOD_LINEAR};
 	int modifiers_length = 1;
@@ -906,7 +916,7 @@ static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLC
 
 	/* find a connected connector: */
 	drmModeConnector *connector;
-	connector = find_connector(drm.fd, resources, config->parent.width, config->parent.height, NULL, NULL, 1);
+	connector = find_connector(drm.fd, resources, &config->parent.width, &config->parent.height, NULL, NULL, 1);
 	if (!connector)
 		return NULL;
 
