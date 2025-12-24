@@ -464,14 +464,14 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	{
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
 		int type = (int)sdrm_properties(disp, DRM_MODE_OBJECT_PLANE, plane->plane_id, "type", (uint64_t)-1);
-		dbg("  [%d] %u: %si %#x %d", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
+		dbg("  [%d] %u: %s %#x %d", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
 		if (*plane_id == (uint32_t)-1 && plane->possible_crtcs & (1 << disp->crtcindex) && type == disp->plane_type)
 		{
 			for (int j = 0; j < plane->count_formats; ++j)
 			{
 				uint32_t fourcc = plane->formats[j];
-				warn("\tformat %.4s", (char *)&fourcc);
-				if ((!disp->fourcc || plane->formats[j] == disp->fourcc) && plane->possible_crtcs & (1 << disp->crtcindex))
+				warn("\tformat %.4s %.4s", (char *)&fourcc, &disp->fourcc);
+				if ((!disp->fourcc || fourcc == disp->fourcc) && plane->possible_crtcs & (1 << disp->crtcindex))
 				{
 					ret = 0;
 					disp->fourcc = plane->formats[j];
@@ -497,9 +497,9 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	return ret;
 }
 
-static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, FrameBuffer_t *buffer)
+static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
+			uint32_t stride, uint32_t fourcc, FrameBuffer_t *buffer)
 {
-	uint32_t stride;
 	uint64_t size;
 	int bpp = 32;
 	switch (fourcc)
@@ -524,11 +524,17 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 	switch (fourcc)
 	{
 		case FOURCC_YUYV:
-			buffer->strides[1] = buffer->strides[0] / 2;
-			buffer->offsets[1] = buffer->strides[0] * height;
-			buffer->strides[2] = buffer->strides[1];
-			buffer->offsets[2] = buffer->offsets[1] + buffer->strides[1] * height;
-			buffer->nplanes = 3;
+			if (stride && stride < buffer->strides[0])
+				buffer->strides[0] = stride;
+			else
+			{
+				buffer->strides[0] /= 2;
+				buffer->strides[1] = buffer->strides[0] / 2;
+				buffer->offsets[1] = buffer->strides[0] * height;
+				buffer->strides[2] = buffer->strides[1];
+				buffer->offsets[2] = buffer->offsets[1] + buffer->strides[1] * height;
+				buffer->nplanes = 3;
+			}
 		break;
 		case FOURCC_NV12:
 			buffer->strides[1] = buffer->strides[0];
@@ -833,7 +839,7 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 	for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 	{
 		if (sdrm_buffer_generic(disp,  disp->mode.hdisplay, disp->mode.vdisplay,
-				disp->fourcc, &disp->buffers[i]))
+				config->parent.stride, disp->fourcc, &disp->buffers[i]))
 		{
 			err("sdrm: buffer allocation error %m");
 			free(disp);
@@ -907,7 +913,7 @@ EXT_API Display_t *sdrm_duplicate(Display_t *dev, DisplayConf_t **pconfig)
 	for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 	{
 		if (sdrm_buffer_generic(disp,  disp->mode.hdisplay, disp->mode.vdisplay,
-				disp->fourcc, &disp->buffers[i]))
+				disp->config->parent.stride, disp->fourcc, &disp->buffers[i]))
 		{
 			err("sdrm: buffer allocation error %m");
 			free(disp);
