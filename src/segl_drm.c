@@ -734,6 +734,9 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 #endif
 	}
 
+	config->transfer.width = drm.width;
+	config->transfer.height = drm.height;
+	config->transfer.fourcc = drm.fourcc;
 	return (EGLNativeDisplayType)gbm;
 }
 
