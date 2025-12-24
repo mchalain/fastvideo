@@ -224,7 +224,6 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	const EGLNative_t * native = config->native;
 	if (native == NULL)
 		return NULL;
-	warn("segl: native %s", native->name);
 	ndisplay = native->display(config);
 	if (EGL_CAST(EGLint,ndisplay) == EGL_UNKNOWN)
 		return NULL;
@@ -373,6 +372,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	dev->native_display = ndisplay;
 	dev->curbufferid = -1;
 	dev->type = type;
+	warn("segl: create device %s %lux%lu %.4s", native->name, width, height, &dev->config->parent.fourcc);
 	return dev;
 }
 
@@ -668,8 +668,6 @@ EXT_API int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 {
 	EGL_t *dup = NULL;
-	uint32_t width = dev->config->parent.width;
-	uint32_t height = dev->config->parent.height;
 	if (dev->type != device_transfer)
 	{
 		err("segl: device may not support duplication");
@@ -683,12 +681,16 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	*pconfig = malloc(sizeof(*(dup->config)));
 	memcpy(*pconfig, dev->config, sizeof(*(dup->config)));
 	memmove(&(*pconfig)->parent, &dev->config->transfer, sizeof((*pconfig)->parent));
-	(*pconfig)->parent.width = width;
-	(*pconfig)->parent.height = height;
+	if ((*pconfig)->parent.width == 0)
+		(*pconfig)->parent.width = dev->config->parent.width;
+	if ((*pconfig)->parent.height == 0)
+		(*pconfig)->parent.height = dev->config->parent.height;
 	dup->config = *pconfig;
+	uint32_t width = dup->config->parent.width;
+	uint32_t height = dup->config->parent.height;
+	uint32_t fourcc = dup->config->parent.fourcc;
 	dup->type = device_input;
 	dev->dup = dup;
-	dbg("segl: duplicate %.4s %lux%lu", &dup->config->parent.fourcc, width, height);
 	dup->export = _exports[0];
 	if (dup->config->export)
 		dup->export = dup->config->export;
@@ -699,10 +701,10 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		free(dup);
 		return NULL;
 	}
-	warn("segl: export frames with %s", dup->export->name);
+	warn("segl: create device export %lux%lu %.4s with %s", width, height, &fourcc, dup->export->name);
 
 	dup->nbuffers = 0;
-	const FourccFormat_t *fformat = fourcc_getformat(dup->config->parent.fourcc);
+	const FourccFormat_t *fformat = fourcc_getformat(fourcc);
 	size_t size = width;
 	size *= height;
 	size *= fformat->stride_factor[0];

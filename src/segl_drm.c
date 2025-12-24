@@ -225,7 +225,7 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 		}
 		drmModeModeInfo *current_mode = NULL;
 		int current_mode_id = -1;
-		dbg("segl: request %lux%lu", width, height);
+		dbg("segl: drm request %lux%lu connector", *width, *height);
 		for (int j = 0; current_mode == NULL && j < connector->count_modes; j++)
 		{
 			current_mode = &connector->modes[j];
@@ -916,7 +916,7 @@ static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLC
 
 	/* find a connected connector: */
 	drmModeConnector *connector;
-	connector = find_connector(drm.fd, resources, &config->parent.width, &config->parent.height, NULL, NULL, 1);
+	connector = find_connector(drm.fd, resources, &drm.width, &drm.height, NULL, NULL, 1);
 	if (!connector)
 		return NULL;
 
@@ -956,8 +956,8 @@ static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 	ctx->buffers[buffer->id] = buffer;
 	ctx->nbuffers++;
 	drmModeCreateDumbBuffer(ctx->fd, width, height, 32, 0, &bo_handle, &buffer->pitch, &size);
-	if (size != buffer->size)
-		err("segl: drm buffer size ettot");
+	if (buffer->size && size != buffer->size)
+		err("segl: drm buffer size error (%lu for %lu", size, buffer->size);
 	drmModeAddFB(ctx->fd, width, height, 24, 32, buffer->pitch, bo_handle, &buffer->id);
 	drmPrimeHandleToFD(ctx->fd, bo_handle, 0, &buffer->dma_fd);
 //	buffer->memory = sdmabuf_map(buffer->dma_fd, buffer->size, 1);
