@@ -209,9 +209,9 @@
         "device": "/dev/v4l-subdev2",
         "definition": {
           "fourcc": "RG16",
-          "fmtbus": "0x300a",
+          "fmtbus": "0x3012",
           "width": 2028,
-          "height": 1080,
+          "height": 1520,
           "end": true
         }
       },
