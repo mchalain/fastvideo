@@ -71,22 +71,6 @@ if [ "$CHOICE" = y ]; then
   read -p "new framesize : " framesize
 fi
 
-# the output format must be Bayer 16bits for PiSP backend
-list_fmt_output=$(v4l2-ctl -d $FE --list-subdev-mbus-codes $FEPADOUT | grep -E '0x.*[0-9,a-f]')
-fmt_output=$(v4l2-ctl -d $FE --get-subdev-fmt $FEPADOUT | grep Mediabus | sed 's/[^ ].*Mediabus Code.*[ ]: 0x.*[0-9,a-f] (MEDIA_BUS_FMT_\(.*\))/\1/')
-
-fmt_bayer=$(echo $fmt_output | sed 's/^\([SBGRY]\+\)[0-9]*_.*/\1/')
-fmt_depth=$(echo $fmt_output | sed 's/^\([SBGRY]\+\)\([0-9]*\)_.*/\2/')
-fmt_output=${fmt_bayer}${fmt_depth}_1X${fmt_depth}
-
-read -p "current fmt $fmt_output of $FENAME. Change it (y/N): " CHOICE
-if [ "$CHOICE" = y ]; then
-  echo $list_fmt_output
-  read -p "set new fmt: " fmt_output
-fi
-
-media-ctl -d $CAMMEDIA --set-v4l2 "$FEENTITY:$FEPADIN[fmt:$fmt_output/$framesize field:none]"
-
 fmt_bayer=$(echo $fmt_input | sed 's/^\([SBGRY]\+\)[0-9]*_.*/\1/')
 fmt_depth=$(echo $fmt_input | sed 's/^\([SBGRY]\+\)\([0-9]*\)_.*/\2/')
 fmt_input=${fmt_bayer}${fmt_depth}_1X${fmt_depth}
@@ -97,6 +81,21 @@ fi
 
 # set the link between SENSOR and CSI entity
 media-ctl -d $CAMMEDIA --set-v4l2 "$CSIENTITY:$CSIPADSENSOR[fmt:$fmt_input/$framesize field:none colorspace:raw]"
+
+# the output format must be Bayer 16bits for PiSP backend
+list_fmt_output=$(v4l2-ctl -d $FE --list-subdev-mbus-codes $FEPADOUT | grep -E '0x.*[0-9,a-f]')
+fmt_output=$(v4l2-ctl -d $FE --get-subdev-fmt $FEPADOUT | grep Mediabus | sed 's/[^ ].*Mediabus Code.*[ ]: 0x.*[0-9,a-f] (MEDIA_BUS_FMT_\(.*\))/\1/')
+
+fmt_bayer=$(echo $fmt_output | sed 's/^\([SBGRY]\+\)[0-9]*_.*/\1/')
+fmt_depth=$(echo $fmt_output | sed 's/^\([SBGRY]\+\)\([0-9]*\)_.*/\2/')
+fmt_output=${fmt_bayer}${fmt_depth}_1X${fmt_depth}
+
+read -p "current fmt $fmt_output of $FENAME. Change it (y/N): " CHOICE
+if [ "$CHOICE" = y ]; then
+  read -p "set new fmt: " fmt_output
+fi
+
+media-ctl -d $CAMMEDIA --set-v4l2 "$FEENTITY:$FEPADIN[fmt:$fmt_output/$framesize field:none]"
 
 OUTCSI=$FEENTITY
 OUTIMAGE=$IMAGE
