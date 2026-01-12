@@ -1477,7 +1477,7 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 	{
 		if (config->subdev_entries[i])
 		{
-			dev->subdevs[i] = subdev_ops.create(config->subdev_entries[i]->parent.name, device_control, (DeviceConf_t *)config->subdev_entries[i]);
+			dev->subdevs[i] = subdev_ops.create(config->subdev_entries[i]->parent.name, dtype, (DeviceConf_t *)config->subdev_entries[i]);
 		}
 	}
 #endif

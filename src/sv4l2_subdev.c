@@ -341,7 +341,7 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 	if (config->parent.height) subdev->height = config->parent.height;
 	if (config->parent.fourcc) subdev->fourcc = config->parent.fourcc;
 
-	if (config->fmtbus)
+	if (config->fmtbus && type != device_control)
 	{
 		for (int i = 0; i < (sizeof(config->fmtbus)/sizeof(*config->fmtbus)); i++)
 		{
