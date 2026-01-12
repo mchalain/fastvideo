@@ -586,8 +586,11 @@
     "native":["x11","wayland","drm"],
     "device":"/dev/dri/card0",
     "definition": {
+      "end": true
+    },
+    "transfer": {
       "fourcc": "XR24",
-      "transfer": "XR24",
+      "export": "drmwriteback",
       "end": true
     },
     "end":true
@@ -596,9 +599,16 @@
     "name": "dvb-e",
     "type": "mpegts",
     "protocol": "udp",
-    "port": 5024,
-    "host": "192.168.176.12",
-    "periodic": 60,
+    "port": 1024,
+    "host": "192.168.3.20",
+    "periodic": 30,
+    "end": true
+  },
+  {
+    "name": "webstream",
+    "type": "mpegts",
+    "protocol": "unix",
+    "host": "/srv/www/webstream/camera.ts",
     "end": true
   },
   {
