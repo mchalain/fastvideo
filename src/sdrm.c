@@ -507,8 +507,10 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 		case FOURCC_RG16:
 		case FOURCC_RGBP:
 		case FOURCC_YUYV:
+		case FOURCC_Y16:
 			bpp = 16;
 		break;
+		case FOURCC_GREY:
 		case FOURCC_NV12:
 			bpp = 8;
 		break;
