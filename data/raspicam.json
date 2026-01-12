@@ -492,7 +492,7 @@
     "end": true
   },
   {
-    "name": ["unicam-image","cam-imx477","cam-imx296","cam-imx708","cam-tc358743","cam-ov5647"],
+    "name": ["unicam-image","cam-imx477","cam-imx296","cam-imx708","cam-tc358743","cam-ov5647","cam-ov9281"],
     "type": "v4l2",
     "device": "/dev/video0",
     "subdevices": [
@@ -508,6 +508,20 @@
           "end": true
         },
         "end": true
+      },
+      {
+        "name": ["cam-ov9281","ov9281 4-0060"],
+        "type": "subv4l",
+        "disable": false,
+        "device": "/dev/v4l-subdev0",
+        "definition": {
+          "fourcc": "Y10 ",
+          "fmtbus": "0x200a",
+          "width": 1280,
+          "height":  720,
+          "fps": 120,
+          "end": true
+        }
       },
       {
         "name": ["cam-imx708","unicam-image","imx708_wide_noir"],
