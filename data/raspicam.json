@@ -492,10 +492,23 @@
     "end": true
   },
   {
-    "name": ["unicam-image","cam-imx477","cam-imx296","cam-imx708","cam-ov5647"],
+    "name": ["unicam-image","cam-imx477","cam-imx296","cam-imx708","cam-tc358743","cam-ov5647"],
     "type": "v4l2",
     "device": "/dev/video0",
     "subdevices": [
+      {
+        "name": ["cam-tc358743","unicam-image","tc358743 10-000f"],
+        "disable": false,
+        "type": "subv4l",
+        "device": "/dev/v4l-subdev0",
+        "definition": {
+          "fourcc": "YUYV",
+          "width": 1920,
+          "height": 1080,
+          "end": true
+        },
+        "end": true
+      },
       {
         "name": ["cam-imx708","unicam-image","imx708_wide_noir"],
         "disable": false,
