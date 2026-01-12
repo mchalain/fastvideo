@@ -576,7 +576,7 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 
 static void _egl_releasebuffer(EGL_t *dev, int id)
 {
-	if (dev->export_ctx)
+	if (dev->export_ctx && dev->export->releasebuffer)
 		dev->export->releasebuffer(dev->export_ctx, &dev->buffers[id]);
 	dev->buffers[id].memory = NULL;
 }
@@ -892,6 +892,20 @@ DeviceConf_t * segl_createconfig()
 	return (DeviceConf_t *)devconfig;
 }
 
+static const EGLNative_t *_segl_get_native(const char *name)
+{
+	const EGLNative_t *native = NULL;
+	for (int i = 0; i < sizeof(_natives) / sizeof(*_natives) && _natives[i]; i++)
+	{
+		if (!strcmp(_natives[i]->name, name))
+		{
+			native = _natives[i];
+			break;
+		}
+	}
+	return native;
+}
+
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 
@@ -915,14 +929,7 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	if (native && json_is_string(native))
 	{
 		const char *value = json_string_value(native);
-		for (int i = 0; i < sizeof(_natives) / sizeof(*_natives) && _natives[i]; i++)
-		{
-			if (!strcmp(_natives[i]->name, value))
-			{
-				config->native = _natives[i];
-				break;
-			}
-		}
+		config->native = _segl_get_native(value);
 		if (config->native == NULL)
 		{
 			err("segl: naive %s not found", value);
@@ -957,6 +964,8 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 			if (!strcmp(_exports[i]->name, value))
 			{
 				config->export = _exports[i];
+				if (_exports[i]->native)
+					config->native = _segl_get_native(_exports[i]->native);
 				break;
 			}
 		}

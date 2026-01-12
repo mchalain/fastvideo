@@ -1004,6 +1004,7 @@ static void _egl_export_destroy(void *arg)
 EGLExport_t export_drmwriteback =
 {
 	.name = "drmwriteback",
+	.native = "drm",
 	.create = _egl_export_create,
 	.fbo = _egl_export_fbo,
 	.out = _egl_export_out,
