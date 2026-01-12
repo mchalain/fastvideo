@@ -353,7 +353,7 @@ DeviceConf_t *mpegts_createconfig(void)
 	MPEG_TSConf_t *config = calloc(1, sizeof(*config));
 	config->parent.fourcc = FOURCC_H264;
 	config->host = default_addr;
-	config->port = 5014;
+	config->port = 1024;
 	config->pid = 0x41;
 	config->maxclients = 5;
 	config->proto = _protos[0];
@@ -1040,9 +1040,8 @@ EXT_API int mpegts_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags
 
 EXT_API int mpegts_start(Dev_t *dev)
 {
-	dev->proto->connect(dev->protoctx);
 	dev->currentid = -1;
-	return 0;
+	return dev->proto->connect(dev->protoctx);
 }
 
 EXT_API int mpegts_stop(Dev_t *dev)
