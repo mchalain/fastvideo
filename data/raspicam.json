@@ -614,7 +614,7 @@
     "type": "mpegts",
     "protocol": "udp",
     "port": 1024,
-    "host": "192.168.3.20",
+    "host": "239.0.0.14",
     "periodic": 30,
     "end": true
   },
