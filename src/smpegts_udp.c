@@ -218,8 +218,6 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 	{
 		ret = sendto(proto->serverfd, buf, len, flags,
 					(struct sockaddr *)&proto->dest_addr, proto->dest_size);
-		if (ret == -1 && errno == EAGAIN)
-			warn("smpegts: client not found");
 	}
 	if (ret < 0)
 	{

@@ -959,7 +959,7 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 	if (id < 0 || id > dev->nbuffers)
 		return -1;
 	FrameBuffer_t *buffer = &dev->buffers[id];
-	if (dev->currentid != -1)
+	if (buffer->state != dequeued && buffer->state != invalid)
 	{
 		errno = EAGAIN;
 		return -1;
@@ -984,7 +984,6 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 		buffer->mem = mem;
 	}
 
-	dev->currentid = id;
 	buffer->state = queued;
 	if (_client_pushdata(dev, id) < 0)
 	{
@@ -995,15 +994,23 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 
 EXT_API int mpegts_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags)
 {
-	int id = dev->currentid;
+	int id = 0;
+	for (int i = 0; i < dev->nbuffers; i++)
+	{
+		id = dev->currentid + i;
+		id %= dev->currentid;
+		if (dev->buffers[id].state == ready)
+			break;
+		id = -1;
+	}
 	if (id == -1)
 	{
 		errno = EAGAIN;
 		return -1;
 	}
 	FrameBuffer_t *buffer = NULL;
-	buffer = &dev->buffers[dev->currentid];
-	dev->currentid = -1;
+	buffer = &dev->buffers[id];
+	dev->currentid = id;
 
 	if (buffer->state == ready)
 	{
@@ -1040,7 +1047,7 @@ EXT_API int mpegts_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags
 
 EXT_API int mpegts_start(Dev_t *dev)
 {
-	dev->currentid = -1;
+	dev->currentid = 0;
 	return dev->proto->connect(dev->protoctx);
 }
 
