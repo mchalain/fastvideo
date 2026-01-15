@@ -9,23 +9,61 @@
 
 #include "log.h"
 #include "daemonize.h"
+#include "unixsocket.h"
 
 #define MODE_DAEMONIZE 0x01
 #define MODE_KILLDAEMON 0x02
 
-static void *_control_open(int atfd, const char *name)
+static int _client_receive(void *arg, client_t *clt, const char *buffer, size_t length)
 {
-	return NULL;
+	return 0;
 }
 
-static int _control_gain(void * arg, int gain)
+static void *_control_open(int atfd, const char *name)
 {
-	dbg("awb gain %d", (uint32_t)gain);
+	void * client = NULL;
+	client = client_create(name);
+	if (client == NULL)
+	{
+		err("fastsetting not found");
+		return NULL;
+	}
+	client_attach_receive(client, _client_receive, NULL);
+	char request[1024] = {0};
+	size_t length = snprintf(request, sizeof(request) - 1, "\
+	{\"cmd\":\"loadsetting\", \
+	 \"data\":{ \
+	  \"name\":\"unicam-image\", \
+	  \"controls\":[ \
+	   {\"id\":9963794,\"value\":false} \
+	  ] \
+	 } \
+	}");
+	int ret = client_request(client, (void*)request, length);
+	return client;
+}
+
+static int _control_gain(void * client, int gain)
+{
+	char request[1024] = {0};
+	size_t length = snprintf(request, sizeof(request) - 1,
+"{ \
+ \"cmd\":\"loadsetting\",\
+ \"data\":{ \
+  \"name\":\"unicam-image\", \
+  \"controls\":[ \
+   {\"id\":10356995,\"value\":%d} \
+  ] \
+ } \
+}"
+	, gain);
+	int ret = client_request(client, (void*)request, length);
 	return 0;
 }
 
 static void _control_close(void * arg)
 {
+	client_destroy(arg);
 }
 
 #define GAIN_AWB_REGION_MAIN 7
@@ -37,27 +75,35 @@ static int _algo_awb(struct bcm2835_isp_stats_region *stats, int nbregions, void
 	gain_counter++;
 	if (gain_counter >= GAIN_AWB_PERIOD)
 	{
-		static int analog_gain = 852;
-		static uint64_t previous = 0;
+		static int32_t previous = 0;
 		static int recompute = 1;
 
 		struct bcm2835_isp_stats_region *region = &stats[GAIN_AWB_REGION_MAIN];
 		if (region->counted == 0)
 			return 0;
-		uint64_t gain = (region->r_sum + region->g_sum + region->b_sum) / region->counted;
+		int32_t gain = (region->r_sum + region->g_sum + region->b_sum) / region->counted;
 		gain /= GAIN_RATIO;
+		if (region->counted < 100)
+			gain *= 2;
 		if (previous == 0)
 			previous = gain;
 		if (recompute && (previous != gain))
 		{
-			analog_gain += gain - previous;
-			if (analog_gain > 1023)
-				analog_gain = 1023;
-			if (analog_gain < 13)
-				analog_gain = 13;
+			if ((previous - gain) > 10)
+			{
+				gain += (previous - gain) / 2;
+				gain_counter = GAIN_AWB_PERIOD;
+			}
+			if ((gain - previous) > 10)
+			{
+				gain -= (gain - previous) / 2;
+				gain_counter = GAIN_AWB_PERIOD;
+			}
 			previous = gain;
+			if (gain > (1023 - 13))
+				gain = (1023 - 13);
 			recompute = 0;
-			_control_gain(controlfd, gain);
+			_control_gain(controlfd, 1023 - gain);
 		}
 		if (previous != gain)
 		{
@@ -83,11 +129,16 @@ static void *_fifo_open(int atfd, const char *name, int access)
 	}
 	mode = O_RDONLY;
 	if (faccessat(atfd, name, R_OK, 0) < 0)
-		fd = mkfifoat(atfd, name , access);
-	else
-		fd = openat(atfd, name, mode, access);
+		mkfifoat(atfd, name , access);
+
+	warn("waiting access to %s", name);
+	fd = openat(atfd, name, mode, access);
 	if (fd <= 0)
+	{
+		err("fifo: opening %s error: %m", name);
 		return NULL;
+	}
+	warn("fifo: %s opened", name);
 	return (void*)(long)fd;
 }
 
@@ -130,6 +181,8 @@ void help(void)
 	fprintf(stderr, "  -P <file>   set the daemonized pid into file\n");
 	fprintf(stderr, "  -U <user>   set the owner of the daemonized process\n");
 	fprintf(stderr, "  -C <file>   set the configuration file\n");
+	fprintf(stderr, "  -s <fifo>   set the statistic fifo path\n");
+	fprintf(stderr, "  -c <fifo>   set the control fifo path\n");
 }
 
 int main(int argc, char *const argv[])
@@ -139,14 +192,14 @@ int main(int argc, char *const argv[])
 	const char *pidfile= NULL;
 	const char *owner= NULL;
 	const char *configfile = NULL;
-	const char *statistics = "/tmp/camera/statistics";
-	const char *control = "/tmp/camera/control";
+	const char *statistics = "/tmp/statistics";
+	const char *control = FASTSETTING_DEFAULT_SERVER;
 	int mode = 0;
 
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "hL:W:DKP:U:C:s:");
+		opt = getopt(argc, argv, "hL:W:DKP:U:C:s:c:");
 		switch (opt)
 		{
 			case 'h':

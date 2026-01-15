@@ -455,6 +455,16 @@ A 3AAlgo server is available into *utils* directory and named **rpivc4_alg**. It
 
 ```bash
 $ rpivc4_alg -D
-$ fastvideo -j /etc/fastvideo/raspicam.json -i isp-meta -o statistics
+$ fastvideo -j /etc/fastvideo/raspicam.json -i isp-meta -o rpivc4_alg -D
 ```
+
+The full system should be:
+```
+ camera image --> fastvideo1 --> isp-in --> isp-out --> fastvideo1 --> gpu
+ if embedded : camera embedded --> fastvideo1 --> dryrun
+ camera statistics --> fastvideo2 --> fifo rpivc4_alg
+ fastsetting <--> socket unix
+ fifo rpivc4_alg --> rpivc4_alg <--> socket setting
+```
+**NOTE:** Currently trpivc4\_alg contains only a simple/bad AE algorithm, prefer to use AE from camera if available.
 
