@@ -578,9 +578,8 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 		nullpacket[3] %= 0x0f;
 		mtu -= ret;
 	}
-	length += ret;
 #else
-	if (ret > 0 mtu > dev->packetlen)
+	if (ret > 0 && mtu > dev->packetlen)
 	{
 		length += ret;
 		dev->proto->flush(dev->protoctx);

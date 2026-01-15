@@ -76,11 +76,11 @@ static void *proto_create(MPEG_TSConf_t *config)
 	ifr.ifr_addr.sa_family = family;
 	if (ioctl(sock, SIOCGIFMTU, &ifr) != -1)
 		mtu = ifr.ifr_mtu;
-	warn("smpegts: unix to %s", config->host);
 
 	Proto_UNIX_t *proto = calloc(1, sizeof(*proto));
 	proto->config = config;
 	proto->mtu = mtu - IP_HEADER_LENGTH - TCP_HEADER_LENGTH; /// maxsize of tcp/ip header
+	warn("smpegts: unix to %s (mtu %lu)", config->host, proto->mtu);
 	proto->serverfd = sock;
 	for (int i = 0 ; i < config->maxclients; i++)
 	{

@@ -247,14 +247,11 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 		ret = send(proto->clientfd, buf, len, 0);
 	if (ret < 0)
 	{
-		char host[NI_MAXHOST];
-		getnameinfo((struct sockaddr *)&proto->dest_addr, proto->dest_size,
-			host, NI_MAXHOST,
-			NULL, 0, NI_NUMERICHOST);
-		err("mpegts: sending on %s error %m", host);
+		err("mpegts: sending on tcp error %m");
 	}
 
-	errno = 0;
+	if (errno == EAGAIN)
+		errno = 0;
 	return ret;
 }
 
