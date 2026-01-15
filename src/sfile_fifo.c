@@ -27,13 +27,15 @@ static void *_fifo_open(int atfd, const char *name, device_type_e type)
 	{
 		mkfifoat(atfd, name , 0644);
 	}
-	warn("sfile: start the fifo client");
+	warn("sfile: wait fifo %s connection", name);
 	fd = openat(atfd, name, mode, 0644);
 	if (fd <= 0)
 	{
+		err("sfile: fifo %s error: %m", name);
 		unlinkat(atfd, name, 0);
 		return NULL;
 	}
+	warn("\tdone", name);
 	return (void *)(long)fd;
 }
 
