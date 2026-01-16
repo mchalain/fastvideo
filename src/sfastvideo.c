@@ -221,9 +221,9 @@ void fastvideolist_destroy(FastVideoList_t *list, void(*destroy)(void *))
 
 static FastVideoList_t *g_FastVideoDevice_ops = NULL;
 
-void fastvideodevice_ops_append(FastVideoDevice_ops_t *ops)
+void fastvideodevice_ops_append(const FastVideoDevice_ops_t *ops)
 {
-	g_FastVideoDevice_ops = fastvideolist_append(g_FastVideoDevice_ops, ops);
+	g_FastVideoDevice_ops = fastvideolist_append(g_FastVideoDevice_ops, (void *)ops);
 }
 
 FastVideoDevice_ops_t *fastvideodevice_ops_next(FastVideoDevice_ops_t *ops)

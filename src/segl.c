@@ -1023,7 +1023,7 @@ int segl_capabilities(EGL_t *dev, json_t *capabilities, int all)
 
 #endif //HAVE_JANSSON
 
-FastVideoDevice_ops_t segl_ops = {
+const FastVideoDevice_ops_t segl_ops = {
 	.name = "gpu",
 	.createconfig = segl_createconfig,
 	.create = (FastVideoDevice_create_t)segl_create,

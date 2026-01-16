@@ -62,7 +62,7 @@ struct Passthrough_s
 	{
 		DeviceConf_t *config;
 		void *dev;
-		FastVideoDevice_ops_t *ops;
+		const FastVideoDevice_ops_t *ops;
 	} branch;
 	size_t (*copy)(void *, const char *const , char *, size_t);
 	void *convert_ctx;
@@ -196,7 +196,7 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 	dup->config->mode &= ~MODE_COPY;
 	if (dev->config->branch.type != 0)
 	{
-		FastVideoDevice_ops_t *opss[] = {
+		const FastVideoDevice_ops_t *opss[] = {
 			&sfile_ops,
 			NULL,
 		};

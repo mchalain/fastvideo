@@ -74,5 +74,5 @@ struct File_ops_s
 extern File_ops_t _regular_ops;
 extern File_ops_t _fifo_ops;
 
-extern FastVideoDevice_ops_t sfile_ops;
+extern const FastVideoDevice_ops_t sfile_ops;
 #endif

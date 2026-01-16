@@ -1133,7 +1133,7 @@ library_end:
 }
 #endif
 
-FastVideoDevice_ops_t smpegts_ops = {
+const FastVideoDevice_ops_t smpegts_ops = {
 	.name = "mpegts",
 	.createconfig = mpegts_createconfig,
 	.create = (FastVideoDevice_create_t)mpegts_create,

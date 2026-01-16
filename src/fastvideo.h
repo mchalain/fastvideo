@@ -51,8 +51,8 @@ struct FastVideoDevice_ops_s
 	FastVideoDevice_destroy_t destroy;
 };
 
-typedef void (*fastvideodevice_ops_append_t)(FastVideoDevice_ops_t *ops);
-void fastvideodevice_ops_append(FastVideoDevice_ops_t *ops);
+typedef void (*fastvideodevice_ops_append_t)(const FastVideoDevice_ops_t *ops);
+void fastvideodevice_ops_append(const FastVideoDevice_ops_t *ops);
 FastVideoDevice_ops_t *fastvideodevice_ops_next(FastVideoDevice_ops_t *ops);
 
 typedef struct FastVideoList_s FastVideoList_t;

@@ -537,7 +537,7 @@ int sv4l2_subdev_capabilities(V4L2_t *subdev, json_t *capabilities, int all)
 
 #endif
 
-FastVideoDevice_ops_t subdev_ops = {
+const FastVideoDevice_ops_t subdev_ops = {
 	.name = "subv4l",
 	.createconfig = sv4l2_subdev_createconfig,
 	.create = (FastVideoDevice_create_t)sv4l2_subdev_create,

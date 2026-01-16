@@ -244,7 +244,7 @@ EXT_API void skeleton_destroy(Dev_t *dev)
 	free(dev);
 }
 
-FastVideoDevice_ops_t sskeleton_ops = {
+const FastVideoDevice_ops_t sskeleton_ops = {
 	.name = "skeleton",
 	.createconfig = skeleton_createconfig,
 	.create = (FastVideoDevice_create_t)skeleton_create,

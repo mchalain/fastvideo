@@ -1585,7 +1585,7 @@ DeviceConf_t * sdrm_createconfig()
 	return (DeviceConf_t *)devconfig;
 }
 
-FastVideoDevice_ops_t sdrm_ops = {
+const FastVideoDevice_ops_t sdrm_ops = {
 	.name = "screen",
 	.createconfig = sdrm_createconfig,
 	.create = (FastVideoDevice_create_t)sdrm_create,

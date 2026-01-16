@@ -25,5 +25,5 @@ struct MPEG_TSConf_s
 	const Proto_t *proto;
 };
 
-extern Proto_t proto_udp;
+extern const Proto_t proto_udp;
 #endif

@@ -294,7 +294,7 @@ int sdvb_loadjsonconfiguration(void *arg, void *entry)
 }
 #endif
 
-FastVideoDevice_ops_t sdvb_ops = {
+const FastVideoDevice_ops_t sdvb_ops = {
 	.name = "dvb",
 	.createconfig = sdvb_createconfig,
 	.create = (FastVideoDevice_create_t)sdvb_create,

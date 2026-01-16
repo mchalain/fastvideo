@@ -368,7 +368,7 @@ DeviceConf_t * sfile_createconfig()
 	return (DeviceConf_t *)devconfig;
 }
 
-FastVideoDevice_ops_t sfile_ops = {
+const FastVideoDevice_ops_t sfile_ops = {
 	.name = "file",
 	.createconfig = sfile_createconfig,
 	.create = (FastVideoDevice_create_t)sfile_create,
