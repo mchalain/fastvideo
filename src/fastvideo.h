@@ -134,6 +134,7 @@ struct Proto_s
 	size_t (*mtu)(void *arg);
 	int (*fd)(void *arg);
 	ssize_t (*send)(void *arg, const void *buf, size_t len, int flags);
+	ssize_t (*recv)(void *arg, void *buf, size_t len, int flags);
 	void (*flush)(void *arg);
 	void (*destroy)(void *arg);
 };

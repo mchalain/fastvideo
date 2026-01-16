@@ -255,6 +255,24 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 	return ret;
 }
 
+static ssize_t proto_recv(void *arg, void *buf, size_t len, int flags)
+{
+	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
+	ssize_t ret = -1;
+	if (proto->clientfd == -1)
+	{
+		warn("no client connected");
+		return -1;
+	}
+	ret = recv(proto->clientfd, buf, len, 0);
+	if (ret < 0 && errno != EAGAIN)
+	{
+		err("mpegts: recving on tcp error %m");
+	}
+
+	return ret;
+}
+
 static void proto_flush(void *arg)
 {
 	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
@@ -310,6 +328,7 @@ Proto_t proto_tcpclient =
 	.mtu = proto_mtu,
 	.fd = proto_fd,
 	.send = proto_send,
+	.recv = proto_recv,
 	.flush = proto_flush,
 	.destroy = proto_destroy,
 };

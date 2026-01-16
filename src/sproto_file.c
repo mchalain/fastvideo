@@ -70,9 +70,20 @@ static int proto_connect(void *arg)
 static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
-	ssize_t ret = 0;
+	ssize_t ret = -1;
 
-	ret = write(proto->fd[proto->currentfd], buf, len);
+	if(proto->currentfd >= 0)
+		ret = write(proto->fd[proto->currentfd], buf, len);
+	return ret;
+}
+
+static ssize_t proto_recv(void *arg, void *buf, size_t len, int flags)
+{
+	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
+	ssize_t ret = -1;
+
+	if(proto->currentfd >= 0)
+		ret = read(proto->fd[proto->currentfd], buf, len);
 	return ret;
 }
 
@@ -123,6 +134,7 @@ Proto_t proto_file =
 	.mtu = proto_mtu,
 	.fd = proto_fd,
 	.send = proto_send,
+	.recv = proto_recv,
 	.flush = proto_flush,
 	.destroy = proto_destroy,
 };

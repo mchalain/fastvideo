@@ -114,6 +114,8 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 		if (status == -1)
 			err("smpegts: udp broadcast error %m");
 	}
+	else
+		status = 0;
 	return status;
 }
 
@@ -232,6 +234,32 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 	return ret;
 }
 
+static ssize_t proto_recv(void *arg, void *buf, size_t len, int flags)
+{
+	Proto_UDP_t *proto = (Proto_UDP_t *)arg;
+	ssize_t ret = -1;
+	errno = EAGAIN;
+	if (len == 0)
+		return 0;
+	socklen_t dest_size = proto->dest_size;
+	while (ret == -1 && errno == EAGAIN)
+	{
+		ret =recvfrom(proto->serverfd, buf, len, flags,
+					(struct sockaddr *)&proto->dest_addr, &dest_size);
+	}
+	if (ret < 0)
+	{
+		char host[NI_MAXHOST];
+		getnameinfo((struct sockaddr *)&proto->dest_addr, dest_size,
+			host, NI_MAXHOST,
+			NULL, 0, NI_NUMERICHOST);
+		err("mpegts: receiving on %s error %m", host);
+	}
+
+	errno = 0;
+	return ret;
+}
+
 static void proto_flush(void *arg)
 {
 	Proto_UDP_t *proto = (Proto_UDP_t *)arg;
@@ -283,6 +311,7 @@ Proto_t proto_udp =
 	.mtu = proto_mtu,
 	.fd = proto_fd,
 	.send = proto_send,
+	.recv = proto_recv,
 	.flush = proto_flush,
 	.destroy = proto_destroy,
 };

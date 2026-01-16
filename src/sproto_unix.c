@@ -194,6 +194,17 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 	return ret;
 }
 
+static ssize_t proto_recv(void *arg, void *buf, size_t len, int flags)
+{
+	Proto_UNIX_t *proto = (Proto_UNIX_t *)arg;
+	ssize_t ret = 0;
+	/// Only one client may send data
+	fastvideolist_first(proto->clients);
+	Client_t *clt = fastvideolist_next(proto->clients);
+	ret = recv(clt->fd, buf, len, 0);
+	return ret;
+}
+
 static void proto_flush(void *arg)
 {
 #ifdef UNIX_PACKETIZER
@@ -259,6 +270,7 @@ Proto_t proto_unix =
 	.mtu = proto_mtu,
 	.fd = proto_fd,
 	.send = proto_send,
+	.recv = proto_recv,
 	.flush = proto_flush,
 	.destroy = proto_destroy,
 };
