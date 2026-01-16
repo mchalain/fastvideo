@@ -39,16 +39,16 @@ static void *_fifo_open(int atfd, const char *name, device_type_e type)
 	return (void *)(long)fd;
 }
 
-static int _fifo_fd(File_t *dev)
+static int _fifo_fd(void *arg)
 {
-	int fd = (long)dev->ctx;
+	int fd = (long)arg;
 	return fd;
 }
 
-static ssize_t _fifo_write(File_t *dev, void *mem, size_t size)
+static ssize_t _fifo_write(void *arg, void *mem, size_t size)
 {
 	ssize_t ret = 0;
-	int fd = (long)dev->ctx;
+	int fd = (long)arg;
 	if (fd > 0)
 	{
 		ret = write(fd, mem, size);
@@ -56,17 +56,17 @@ static ssize_t _fifo_write(File_t *dev, void *mem, size_t size)
 	return ret;
 }
 
-static ssize_t _fifo_read(File_t *dev, void *mem, size_t size)
+static ssize_t _fifo_read(void *arg, void *mem, size_t size)
 {
-	int fd = (long)dev->ctx;
+	int fd = (long)arg;
 	if (fd > 0)
 		return read(fd, mem, size);
 	return 0;
 }
 
-static void _fifo_close(File_t *dev)
+static void _fifo_close(void *arg)
 {
-	int fd = (long)dev->ctx;
+	int fd = (long)arg;
 	fsync(fd);
 	if (fd > 0)
 		close(fd);

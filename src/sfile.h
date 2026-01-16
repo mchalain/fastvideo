@@ -21,6 +21,10 @@ struct FileConfig_s
 		File_Fifo_e,
 		File_Socket_e,
 	} type;
+	enum {
+		File_None_e = 0,
+		File_TIFF_e,
+	} header;
 	enum
 	{
 		File_Input_e = 0x01,
@@ -40,6 +44,8 @@ struct File_s
 	size_t nbuffers;
 	FrameBuffer_t *buffers;
 	int lastbufferid;
+	char header[128];
+	size_t headerlen;
 };
 
 #ifdef HAVE_JANSSON
@@ -51,10 +57,10 @@ int sfile_loadjsonconfiguration(void *arg, void *entry);
 #endif
 
 typedef void *(*File_ops_open_t)(int atfd, const char *name, device_type_e mode);
-typedef int (*File_ops_fd_t)(File_t *dev);
-typedef ssize_t (*File_ops_read_t)(File_t *dev, void *mem, size_t size);
-typedef ssize_t (*File_ops_write_t)(File_t *dev, void *mem, size_t size);
-typedef void (*File_ops_close_t)(File_t *dev);
+typedef int (*File_ops_fd_t)(void *arg);
+typedef ssize_t (*File_ops_read_t)(void *arg, void *mem, size_t size);
+typedef ssize_t (*File_ops_write_t)(void *arg, void *mem, size_t size);
+typedef void (*File_ops_close_t)(void *arg);
 
 struct File_ops_s
 {

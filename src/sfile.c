@@ -71,6 +71,14 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 	dev->ops = ops;
 	dev->type = type;
 	dev->path = filename;
+	switch (config->header)
+	{
+		case File_TIFF_e:
+			/// add TIFF header for other fourcc
+			dev->headerlen = snprintf(dev->header, sizeof(dev->header),
+				"P7 WIDTH %.4d HEIGHT %.4d DEPTH %.1d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR",
+				config->parent.width, config->parent.height, config->parent.stride / config->parent.width);
+	}
 	warn("sfile: %s opened for %.4s", config->filename, &config->parent.fourcc);
 	return dev;
 }
@@ -134,7 +142,7 @@ EXT_API int sfile_fd(File_t *dev, int writer)
 #else
 	if (!writer && dev->type == device_input)
 	{
-		int ret = dev->ops->fd(dev);
+		int ret = dev->ops->fd(dev->ctx);
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
 			if (dev->buffers[i].state == queued)
@@ -215,7 +223,11 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 		}
 		if (mem == NULL)
 			mem = buffer->mem;
-		ssize_t ret = dev->ops->write(dev, mem, bytesused);
+		ssize_t ret = 0;
+		if (dev->headerlen)
+			ret = dev->ops->write(dev->ctx, dev->header, dev->headerlen);
+		if (ret >= 0)
+			ret = dev->ops->write(dev->ctx, mem, bytesused);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
@@ -239,7 +251,7 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
 			buffer->mem = mmap(NULL, buffer->size, PROT_WRITE, MAP_SHARED, buffer->dma_buf, 0 );
 		}
-		ssize_t ret = dev->ops->read(dev, buffer->mem, bytesused);
+		ssize_t ret = dev->ops->read(dev->ctx, buffer->mem, bytesused);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
@@ -260,7 +272,7 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 
 EXT_API void sfile_destroy(File_t *dev)
 {
-	dev->ops->close(dev);
+	dev->ops->close(dev->ctx);
 	if (dev->nbuffers > 0)
 		free(dev->buffers);
 	free(dev);
@@ -296,8 +308,12 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 		const char *value = json_string_value(path);
 		config->rootpath = value;
 	}
-	json_t *modes = json_object_get(jconfig, "mode");
-	if (modes && json_is_string(modes))
+	json_t *modes = json_object_get(jconfig, "protocol");
+	if (modes == NULL)
+		modes = json_object_get(jconfig, "proto");
+	if (modes == NULL)
+		modes = json_object_get(jconfig, "modes");
+	if (modes && json_is_array(modes))
 	{
 		json_t *mode;
 		int index;
@@ -306,19 +322,21 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 			if (mode && json_is_string(mode))
 			{
 				const char *value = json_string_value(mode);
-				if (! strcasecmp(value, "fifo"))
+				if (! strncasecmp(value, "fifo", 4))
 					config->type = File_Fifo_e;
-				if (! strcasecmp(value, "socket"))
+				if (! strncasecmp(value, "socket", 6))
 					config->type = File_Socket_e;
+				if (! strncasecmp(value, "tiff", 6))
+					config->header = File_TIFF_e;
 			}
 		}
 	}
 	if (modes && json_is_string(modes))
 	{
 		const char *value = json_string_value(modes);
-		if (! strcasecmp(value, "fifo"))
+		if (! strncasecmp(value, "fifo", 4))
 			config->type = File_Fifo_e;
-		if (! strcasecmp(value, "socket"))
+		if (! strncasecmp(value, "socket", 6))
 			config->type = File_Socket_e;
 	}
 library_end:

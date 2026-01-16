@@ -18,7 +18,7 @@ static void *_regular_open(int atfd, const char *name, device_type_e type)
 			return NULL;
 		}
 	}
-	else if (device_output)
+	else if (type == device_output)
 	{
 		mode = O_WRONLY;
 		if (faccessat(atfd, name, F_OK, 0) < 0)
@@ -26,54 +26,42 @@ static void *_regular_open(int atfd, const char *name, device_type_e type)
 		else
 			mode |= O_TRUNC;
 	}
+	else
+		return NULL;
 	fd = openat(atfd, name, mode, 0644);
 	if (fd <= 0)
 		return NULL;
 	return (void *)(long)fd;
 }
 
-static int _regular_fd(File_t *dev)
+static int _regular_fd(void *arg)
 {
-	int fd = (long)dev->ctx;
+	int fd = (long)arg;
 	return fd;
 }
 
-static ssize_t _regular_write(File_t *dev, void *mem, size_t size)
+static ssize_t _regular_write(void *arg, void *mem, size_t size)
 {
 	ssize_t ret = 0;
-	int fd = (long)dev->ctx;
+	int fd = (long)arg;
 	if (fd > 0)
 	{
-		switch (dev->fourcc)
-		{
-			case FOURCC('A','B', '2', '4'):
-			case FOURCC('R','G', 'B', 'A'):
-				dprintf(fd, "P7 WIDTH %d HEIGHT %d DEPTH %d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR", dev->config->parent.width, dev->config->parent.height, dev->config->parent.stride / dev->config->parent.width);
-				ret = write(fd, mem, size);
-			break;
-			case FOURCC('J','P','E','G'):
-			case FOURCC('M','J','P','G'):
-			case FOURCC('Y','U','Y','V'):
-			default:
-				ret = write(fd, mem, size);
-			break;
-			break;
-		}
+		ret = write(fd, mem, size);
 	}
 	return ret;
 }
 
-static ssize_t _regular_read(File_t *dev, void *mem, size_t size)
+static ssize_t _regular_read(void *arg, void *mem, size_t size)
 {
-	int fd = (long)dev->ctx;
+	int fd = (long)arg;
 	if (fd > 0)
 		return read(fd, mem, size);
 	return 0;
 }
 
-static void _regular_close(File_t *dev)
+static void _regular_close(void *arg)
 {
-	int fd = (long)dev->ctx;
+	int fd = (long)arg;
 	fsync(fd);
 	if (fd > 0)
 		close(fd);
