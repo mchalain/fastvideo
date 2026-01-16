@@ -7,6 +7,7 @@
 #include <sys/ioctl.h>
 #include <linux/dma-buf.h>
 #include <time.h>
+#include <stdlib.h>
 
 #include <arpa/inet.h>
 
@@ -329,15 +330,6 @@ static FrameBuffer_t *_create_buffer(DeviceConf_t *config)
 static void _destroy_buffer(FrameBuffer_t *buffer)
 {
 	free(buffer->mem);
-}
-
-const Proto_t * _protos[5] = {0};
-void smpegts_proto_append(const Proto_t *proto)
-{
-	int i = 0;
-	for (; _protos[i] && i < sizeof(_protos) / sizeof(*_protos); i++);
-	if (i < sizeof(_protos)/sizeof(*_protos))
-		_protos[i] = proto;
 }
 
 #ifdef HAVE_JANSSON
@@ -814,7 +806,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	const Proto_t *proto = &proto_udp;
 	if (config && config->proto)
 		proto = config->proto;
-	void *protoctx = proto->create(config);
+	void *protoctx = proto->create(&config->protoconf);
 	if (protoctx == NULL)
 		return NULL;
 

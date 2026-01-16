@@ -117,7 +117,7 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 	return status;
 }
 
-static void *proto_create(MPEG_TSConf_t *config)
+static void *proto_create(Proto_Config_t *config)
 {
 	int sock = 0;
 	size_t mtu = 1500;
@@ -291,11 +291,11 @@ Proto_t proto_udp =
 
 static void __attribute__ ((constructor)) smpegts_init()
 {
-	smpegts_proto_append_t _smpegts_proto_append;
+	fastvideo_proto_append_t _fastvideo_proto_append;
 	void *hdl = dlopen(NULL, RTLD_NOW);
-	_smpegts_proto_append = dlsym(hdl, "smpegts_proto_append");
-	if (_smpegts_proto_append)
+	_fastvideo_proto_append = dlsym(hdl, "fastvideo_proto_append");
+	if (_fastvideo_proto_append)
 	{
-		_smpegts_proto_append(&proto_udp);
+		_fastvideo_proto_append(&proto_udp);
 	}
 }

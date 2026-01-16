@@ -233,3 +233,13 @@ FastVideoDevice_ops_t *fastvideodevice_ops_next(FastVideoDevice_ops_t *ops)
 	ops = fastvideolist_next(g_FastVideoDevice_ops);
 	return ops;
 }
+
+const Proto_t * _protos[5] = {0};
+void fastvideo_proto_append(const Proto_t *proto)
+{
+	int i = 0;
+	for (; _protos[i] && i < sizeof(_protos) / sizeof(*_protos); i++);
+	if (i < sizeof(_protos)/sizeof(*_protos))
+		_protos[i] = proto;
+}
+

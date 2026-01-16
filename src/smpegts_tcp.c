@@ -32,7 +32,7 @@ struct Proto_TCP_s
 	size_t mtu;
 };
 
-static socklen_t _proto_interface(MPEG_TSConf_t *config, struct sockaddr_storage *address)
+static socklen_t _proto_interface(Proto_Config_t *config, struct sockaddr_storage *address)
 {
 	struct sockaddr* saddr = NULL;
 	socklen_t saddrlen = 0;
@@ -85,7 +85,7 @@ static socklen_t _proto_interface(MPEG_TSConf_t *config, struct sockaddr_storage
 	return saddrlen;
 }
 
-static socklen_t _proto_address(MPEG_TSConf_t *config, struct sockaddr_storage *address)
+static socklen_t _proto_address(Proto_Config_t *config, struct sockaddr_storage *address)
 {
 	int sock = 0;
 	size_t mtu = 1500;
@@ -143,7 +143,7 @@ static int _proto_bindserver(int sock, struct sockaddr *saddr, socklen_t saddrle
 	return status;
 }
 
-static void *_proto_create(MPEG_TSConf_t *config, int (*_bind)(int sock, struct sockaddr *, socklen_t))
+static void *_proto_create(Proto_Config_t *config, int (*_bind)(int sock, struct sockaddr *, socklen_t))
 {
 	int sock = -1;
 	struct sockaddr_storage address = {0};
@@ -197,12 +197,12 @@ static void *_proto_create(MPEG_TSConf_t *config, int (*_bind)(int sock, struct 
 	return proto;
 }
 
-static void *proto_create_server(MPEG_TSConf_t *config)
+static void *proto_create_server(Proto_Config_t *config)
 {
 	return _proto_create(config, _proto_bindserver);
 }
 
-static void *proto_create_client(MPEG_TSConf_t *config)
+static void *proto_create_client(Proto_Config_t *config)
 {
 	return _proto_create(config, _proto_bindclient);
 }
@@ -318,12 +318,12 @@ Proto_t proto_tcpclient =
 
 static void __attribute__ ((constructor)) smpegts_init()
 {
-	smpegts_proto_append_t _smpegts_proto_append;
+	fastvideo_proto_append_t _fastvideo_proto_append;
 	void *hdl = dlopen(NULL, RTLD_NOW);
-	_smpegts_proto_append = dlsym(hdl, "smpegts_proto_append");
-	if (_smpegts_proto_append)
+	_fastvideo_proto_append = dlsym(hdl, "fastvideo_proto_append");
+	if (_fastvideo_proto_append)
 	{
-		_smpegts_proto_append(&proto_tcpserver);
-		_smpegts_proto_append(&proto_tcpclient);
+		_fastvideo_proto_append(&proto_tcpserver);
+		_fastvideo_proto_append(&proto_tcpclient);
 	}
 }

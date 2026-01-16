@@ -115,4 +115,29 @@ struct FrameBuffer_s
 	FrameBuffer_t *next;
 };
 
+typedef struct Proto_Config_s Proto_Config_t;
+struct Proto_Config_s
+{
+	DeviceConf_t parent;
+	const char *host;
+	int port;
+	int maxclients;
+};
+
+typedef struct Proto_s Proto_t;
+struct Proto_s
+{
+	const char *name;
+	void *(*create)(Proto_Config_t *config);
+	int (*connect)(void *arg);
+	void (*close)(void *arg);
+	size_t (*mtu)(void *arg);
+	int (*fd)(void *arg);
+	ssize_t (*send)(void *arg, const void *buf, size_t len, int flags);
+	void (*flush)(void *arg);
+	void (*destroy)(void *arg);
+};
+
+typedef void (*fastvideo_proto_append_t)(const Proto_t *proto);
+extern const Proto_t *_protos[5];
 #endif

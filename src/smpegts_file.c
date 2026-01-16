@@ -14,7 +14,7 @@
 typedef struct Proto_FILE_s Proto_FILE_t;
 struct Proto_FILE_s
 {
-	MPEG_TSConf_t *config;
+	Proto_Config_t *config;
 	int rootfd;
 	int fd[2];
 	int currentfd;
@@ -23,7 +23,7 @@ struct Proto_FILE_s
 	size_t mtu;
 };
 
-static void *proto_create(MPEG_TSConf_t *config)
+static void *proto_create(Proto_Config_t *config)
 {
 	int rootfd;
 	size_t mtu = 188 * 10;
@@ -46,7 +46,7 @@ static void *proto_create(MPEG_TSConf_t *config)
 static int proto_connect(void *arg)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
-	MPEG_TSConf_t *config = proto->config;
+	Proto_Config_t *config = proto->config;
 
 	int newfd = proto->currentfd + 1;
 	newfd %= 2;
@@ -97,7 +97,6 @@ static size_t proto_mtu(void *arg)
 static void proto_close(void *arg)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
-	MPEG_TSConf_t *config = proto->config;
 
 	if (proto->fd[proto->currentfd])
 	{
@@ -132,11 +131,11 @@ Proto_t proto_file =
 
 static void __attribute__ ((constructor)) smpegts_init()
 {
-	smpegts_proto_append_t _smpegts_proto_append;
+	fastvideo_proto_append_t _fastvideo_proto_append;
 	void *hdl = dlopen(NULL, RTLD_NOW);
-	_smpegts_proto_append = dlsym(hdl, "smpegts_proto_append");
-	if (_smpegts_proto_append)
+	_fastvideo_proto_append = dlsym(hdl, "fastvideo_proto_append");
+	if (_fastvideo_proto_append)
 	{
-		_smpegts_proto_append(&proto_file);
+		_fastvideo_proto_append(&proto_file);
 	}
 }
