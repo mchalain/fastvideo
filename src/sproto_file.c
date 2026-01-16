@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -28,31 +29,60 @@ static void *proto_create(Proto_Config_t *config)
 {
 	int rootfd;
 	size_t mtu = 188 * 10;
-
-	rootfd = open(config->host, O_DIRECTORY);
+	char *host = strndup(config->host, 1024);
+	char *filename = NULL;
+	struct stat fs;
+	if (stat(host, &fs) < 0 || (fs.st_mode & S_IFMT) == S_IFREG)
+	{
+		filename = strrchr(host, '/');
+		if (filename)
+		{
+			host[filename - host] = '\0';
+			filename++;
+		}
+		else
+		{
+			err("sproto: host must contain at least a directory");
+			free(host);
+			return NULL;
+		}
+	}
+	rootfd = open(host, O_DIRECTORY);
 	if (rootfd < 0)
 	{
-		mkdir(config->host, 0777);
-		rootfd = open(config->host, O_DIRECTORY);
+		mkdir(host, 0777);
+		rootfd = open(host, O_DIRECTORY);
 	}
 	if (rootfd < 0)
+	{
+		free(host);
 		return NULL;
+	}
 	Proto_FILE_t *proto = calloc(1, sizeof(*proto));
 	proto->config = config;
 	proto->mtu = mtu;
 	proto->rootfd = rootfd;
 	if (config->maxclients > (sizeof(proto->fd) / sizeof(*proto->fd)))
 		config->maxclients = (sizeof(proto->fd) / sizeof(*proto->fd));
-	proto->maxfiles = config->maxclients;
-	if (config->maxclients < 2)
+	if (filename)
 	{
-		for (int i = 0; i < 1024; i++)
+		snprintf(proto->filename, sizeof(proto->filename) - 1, filename);
+		proto->maxfiles = 1;
+	}
+	else
+	{
+		proto->maxfiles = config->maxclients;
+		if (config->maxclients < 2)
 		{
-			snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.ts", i);
-			if (faccessat(rootfd, proto->filename, F_OK, 0) < 0)
-				break;
+			for (int i = 0; i < 1024; i++)
+			{
+				snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.ts", i);
+				if (faccessat(rootfd, proto->filename, F_OK, 0) < 0)
+					break;
+			}
 		}
 	}
+	free(host);
 	return proto;
 }
 
