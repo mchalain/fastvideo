@@ -887,6 +887,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	dumpfd = open("/tmp/dump.h264", O_RDWR | O_CREAT);
 	err("dumpfd %d %m", dumpfd);
 #endif
+	warn("smpegts: stream %s out to %s", dev->proto->name , config->host);
 	return dev;
 }
 
@@ -940,9 +941,20 @@ EXT_API int mpegts_requestbuffer(Dev_t *dev, enum buf_type_e t, ...)
 
 EXT_API int mpegts_fd(Dev_t *dev, int writer)
 {
-	if (writer && dev->currentid == -1)
-		return 0;
-	return dev->proto->fd(dev->protoctx);
+	if (!writer && dev->type == device_input)
+	{
+		int ret = dev->proto->fd(dev->protoctx);
+		for (int i = 0; i < dev->nbuffers; i++)
+		{
+			if (dev->buffers[i].state == queued)
+			{
+				ret = -1;
+				break;
+			}
+		}
+		return ret;
+	}
+	return -1;
 }
 
 EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
@@ -1094,6 +1106,12 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 	{
 		uint32_t value = json_integer_value(maxframes);
 		config->maxframes = value;
+	}
+	json_t *maxclients = json_object_get(jconfig, "maxclients");
+	if (maxclients && json_is_integer(maxclients))
+	{
+		uint32_t value = json_integer_value(maxclients);
+		config->maxclients = value;
 	}
 	json_t *proto = json_object_get(jconfig, "proto");
 	if (proto == NULL)
