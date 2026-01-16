@@ -16,7 +16,8 @@ struct Proto_FILE_s
 {
 	Proto_Config_t *config;
 	int rootfd;
-	int fd[2];
+	int fd[15];
+	int maxfiles;
 	int currentfd;
 	char filename[64];
 	int fileid;
@@ -40,6 +41,18 @@ static void *proto_create(Proto_Config_t *config)
 	proto->config = config;
 	proto->mtu = mtu;
 	proto->rootfd = rootfd;
+	if (config->maxclients > (sizeof(proto->fd) / sizeof(*proto->fd)))
+		config->maxclients = (sizeof(proto->fd) / sizeof(*proto->fd));
+	proto->maxfiles = config->maxclients;
+	if (config->maxclients < 2)
+	{
+		for (int i = 0; i < 1024; i++)
+		{
+			snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.ts", i);
+			if (faccessat(rootfd, proto->filename, F_OK, 0) < 0)
+				break;
+		}
+	}
 	return proto;
 }
 
@@ -49,21 +62,27 @@ static int proto_connect(void *arg)
 	Proto_Config_t *config = proto->config;
 
 	int newfd = proto->currentfd + 1;
-	newfd %= 2;
+	newfd %= proto->maxfiles;
 	if (proto->fd[newfd] > 0)
 	{
 		close(proto->fd[newfd]);
 	}
-	snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.ts", proto->fileid);
+	if (proto->maxfiles > 1)
+		snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.ts", proto->fileid);
+	if (faccessat(proto->rootfd, proto->filename, F_OK, 0) == 0)
+	{
+		unlinkat(proto->rootfd, proto->filename, 0);
+	}
 #ifdef O_TMPFILE
 	proto->fd[newfd] = open(config->host, O_TMPFILE | O_RDWR, 0644);
 #else
-	proto->fd[newfd] = openat(proto->rootfd, proto->filename, O_CREAT | O_WRONLY, 0644);
+	proto->fd[newfd] = openat(proto->rootfd, proto->filename, O_CREAT | O_RDWR, 0644);
 #endif
 	if (proto->fd[newfd] < 0)
 		return -1;
 	proto->currentfd = newfd;
 	proto->fileid++;
+	proto->fileid %= proto->maxfiles;
 	return 0;
 }
 
