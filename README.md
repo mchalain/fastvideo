@@ -419,7 +419,7 @@ By default the output is the GPU rendering into X11 window. The native rendering
 This camera uses a ov5647 camera sensor. The following command lines should start a stream
 
 ```bash
-$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-ov5647 -o isp-in -i isp-out -o gpu &
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-ov5647 -o isp-in -i isp-out -o gpu -D
 $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-ov5647.json
 ```
 
@@ -428,7 +428,7 @@ $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-ov5647.j
 The camera uses a imx708 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
 
 ```bash
-$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx708 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu &
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx708 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu -D
 $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx708.json
 ```
 
@@ -437,7 +437,7 @@ $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx708.j
 The camera uses a imx477 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
 
 ```bash
-$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx477 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu &
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx477 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu -D
 $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx477.json
 ```
 
@@ -446,7 +446,7 @@ $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx477.j
 This camera uses a imx296 camera sensor. The following command lines should start a stream
 
 ```bash
-$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx296 -o isp-in -i isp-out -o gpu &
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx296 -o isp-in -i isp-out -o gpu -D
 $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx296.json
 ```
 ### 3A Algorithms
@@ -458,6 +458,8 @@ $ rpivc4_alg -D
 $ fastvideo -j /etc/fastvideo/raspicam.json -i isp-meta -o rpivc4_alg -D
 ```
 
+**NOTE:** As the rpivc4_alg uses a fifo file, the both process are synchronized. and each must be restarted at the same time.
+
 The full system should be:
 ```
  camera image --> fastvideo1 --> isp-in --> isp-out --> fastvideo1 --> gpu
@@ -466,5 +468,22 @@ The full system should be:
  fastsetting <--> socket unix
  fifo rpivc4_alg --> rpivc4_alg <--> socket setting
 ```
-**NOTE:** Currently trpivc4\_alg contains only a simple/bad AE algorithm, prefer to use AE from camera if available.
 
+**NOTE:** Currently rpivc4\_alg contains only a simple/bad AE algorithm, prefer to use AE from camera if available.
+
+## Raspberry Pi 5
+
+The Raspberry Pi 5 uses a new ISP chip (rp1). This chip needs a stream of data for initiliazing and running.
+The fastvideo application is ready to set the rp1 but the data generator is missing.
+
+Fastvideo may use the camera in raw mode. The video stream is Bayer images, and the output needs to be monochrome.
+A Bayer image displayed as monochrome is blurred. A solution is to use a monochrone camera.
+
+### Camera ov9281
+
+The ov9281 is a global shutter monochrome camera. The output is Y10 1920x1080 at 120 fps.
+
+```shell
+$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-ov9281 -o gpu -D
+$ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-ov9281.json
+```
