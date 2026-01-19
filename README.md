@@ -194,9 +194,9 @@ This module generates a MPEG2-ts stream. The sync input must be a h264 stream.
 
 | entries      | types            | parent       | comment                                  |
 |:--------     |:----------------:|:-------------|:-----------------------------------------|
-| type         | string           | root         | must be "mpegts"                            |
+| type         | string           | root         | must be "mpegts"                         |
 | name        | string &#124; array | root       | give one or several name to the module   |
-| proto        | string           | root         | may be "udp", "unix", "file"             |
+| proto        | string           | root      | may be "udp", "unix", "file", "fifo", "tcp" |
 | host         | string           | root         | the destination address or socket's path |
 | port         | integer          | root         | the port number for "udp" protocol       |
 | periodic     | integer          | root         | the number of frames between each I-frame|
@@ -236,15 +236,13 @@ This module is by default a simple serving plate between 2 others modules. But s
 ## file
 
 This module allows to push data into or fromto, file or fifo.
+If the path is a directory a "stream\_XXX" file is generated.
 
+This module accept argument into the application options:
 
-| entries      | types            | parent       | comment                                  |
-|:--------     |:----------------:|:-------------|:-----------------------------------------|
-| type         | string           | root         | must be "passthrough"                    |
-| name        | string &#124; array | root       | give one or several name to the module   |
-| path         | string           | root         | directory where the file is used         |
-| filename     | string           | root         | filename                                 |
-| mode        | string &#124; array | root       | "regular" or "fifo"                      |
+```shell
+$ fastvideo -j fastconfig.json -i cam -o file:./test.mjpeg
+```
 
 ### The *json* structure
 
@@ -254,6 +252,13 @@ This module allows to push data into or fromto, file or fifo.
     "type": "file",
   };
 ```
+
+| entries      | types            | parent       | comment                                  |
+|:--------     |:----------------:|:-------------|:-----------------------------------------|
+| type         | string           | root         | must be "passthrough"                    |
+| name        | string &#124; array | root       | give one or several name to the module   |
+| path         | string           | root         | directory or file to use                 |
+| mode        | string &#124; array | root       | "file","fifo","tcp","udp","unix"         |
 
 # Applications
 
@@ -408,6 +413,14 @@ As the V4L2 system may be a succession of link between devices and subdevices, t
 This part of configuration may be refactored.
 
 # testing
+## PC with webcam
+
+The configuration for Webcam is available into "uvc-desktop.json" file.
+
+```shell
+$ fastvideo -j /etc/fastvideo/uvc-desktop.json -i uvc -o gpu -D
+```
+
 ## Raspberry Pi 3/4
 
 The project offers configuration files to use with Raspberry Pi and Broadcom ISP, the [main file](data/raspicam.json) contains default configuration for camera, isp, gpu, screen. Several camera modules are supported and needs settings file.
