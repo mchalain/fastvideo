@@ -22,6 +22,8 @@ EXT_API int segl_stop(EGL_t *dev);
 EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flags);
 EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags);
 
+static const EGLNative_t *_segl_get_native(const char *name);
+
 const EGLNative_t * _natives[5] = {0};
 
 void segl_native_append(EGLNative_t *native)
@@ -222,6 +224,9 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	uint32_t height = config->parent.height;
 
 	const EGLNative_t * native = config->native;
+	if (type == device_transfer && config->export->native)
+		config->native = _segl_get_native(config->export->native);
+
 	if (native == NULL)
 		return NULL;
 	ndisplay = native->display(config);
@@ -964,8 +969,6 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 			if (!strcmp(_exports[i]->name, value))
 			{
 				config->export = _exports[i];
-				if (_exports[i]->native)
-					config->native = _segl_get_native(_exports[i]->native);
 				break;
 			}
 		}
