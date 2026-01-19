@@ -13,14 +13,16 @@ typedef struct File_ops_s File_ops_t;
 typedef struct FileConfig_s FileConfig_t;
 struct FileConfig_s
 {
-	DeviceConf_t parent;
-	const char *rootpath;
-	const char *filename;
-	enum {
-		File_Regular_e = 0,
-		File_Fifo_e,
-		File_Socket_e,
-	} type;
+	union {
+		struct {
+			DeviceConf_t parent;
+			const char *filename;
+			int port;
+			int maxclients;
+		};
+		Proto_Config_t protoconf;
+	};
+	const Proto_t *proto;
 	enum {
 		File_None_e = 0,
 		File_TIFF_e,
@@ -38,7 +40,7 @@ struct File_s
 	FileConfig_t *config;
 	const char *path;
 	void *ctx;
-	File_ops_t *ops;
+	const Proto_t *ops;
 	device_type_e type;
 	uint32_t fourcc;
 	size_t nbuffers;

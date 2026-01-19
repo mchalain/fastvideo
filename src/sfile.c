@@ -18,6 +18,8 @@
 #include "config.h"
 #include "log.h"
 
+extern const Proto_t proto_file;
+
 EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int flags);
 
 EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
@@ -27,44 +29,13 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 		err("sfile: support only input or output devices");
 		return NULL;
 	}
-	const char *start = strchr(filename, ':');
-	if (start)
-		filename = start + 1;
-	File_ops_t *ops = &_regular_ops;
-	if (config->type == File_Fifo_e)
-		ops = &_fifo_ops;
-	if (type == device_transfer)
-	{
-		err("sfile: %s bad device type", config->parent.name);
-		return NULL;
-	}
-	int rootfd = AT_FDCWD;
-	if (config == NULL)
-	{
-		err("sfile: config object must be set");
-		return NULL;
-	}
-	if (config->rootpath != NULL)
-	{
-		int fd = open(config->rootpath, O_DIRECTORY);
-		if (fd < 0)
-		{
-			err("sfile: root path is \"%s\" defined but unavailable %m", config->rootpath);
-			return NULL;
-		}
-		rootfd = fd;
-	}
-
-	if (config->filename != NULL)
-		filename = config->filename;
-	void *ctx = NULL;
-	ctx = ops->open(rootfd, filename, type);
+	const Proto_t *ops = &proto_file;
+	if (config && config->proto)
+		ops = config->proto;
+	void *ctx = ops->create(&config->protoconf);
 	if (ctx == NULL)
-	{
-		err("sfile: \"%s\" opening error %m", filename);
 		return NULL;
-	}
-	close(rootfd);
+
 	File_t *dev = calloc(1, sizeof(*dev));
 	dev->config = config;
 	dev->ctx = ctx;
@@ -169,11 +140,12 @@ EXT_API int sfile_start(File_t *dev)
 				return -1;
 		}
 	}
-	return 0;
+	return dev->ops->connect(dev->ctx);
 }
 
 EXT_API int sfile_stop(File_t *dev)
 {
+	dev->ops->close(dev->ctx);
 	return 0;
 }
 
@@ -225,9 +197,9 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 			mem = buffer->mem;
 		ssize_t ret = 0;
 		if (dev->headerlen)
-			ret = dev->ops->write(dev->ctx, dev->header, dev->headerlen);
+			ret = dev->ops->send(dev->ctx, dev->header, dev->headerlen, Proto_More);
 		if (ret >= 0)
-			ret = dev->ops->write(dev->ctx, mem, bytesused);
+			ret = dev->ops->send(dev->ctx, mem, bytesused, 0);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
@@ -251,7 +223,7 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
 			buffer->mem = mmap(NULL, buffer->size, PROT_WRITE, MAP_SHARED, buffer->dma_buf, 0 );
 		}
-		ssize_t ret = dev->ops->read(dev->ctx, buffer->mem, bytesused);
+		ssize_t ret = dev->ops->send(dev->ctx, buffer->mem, bytesused, 0);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
@@ -272,7 +244,7 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 
 EXT_API void sfile_destroy(File_t *dev)
 {
-	dev->ops->close(dev->ctx);
+	dev->ops->destroy(dev->ctx);
 	if (dev->nbuffers > 0)
 		free(dev->buffers);
 	free(dev);
@@ -285,34 +257,17 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 	json_t *jconfig = entry;
 
 	FileConfig_t *config = (FileConfig_t *)arg;
-	if (config->parent.name != NULL)
-	{
-		const char *filepath = strchr(config->parent.name, ':');
-		if (filepath)
-		{
-			filepath++;
-			/// the filepath may be an URL
-			if (filepath[0] == '/' && filepath[1] == '/') filepath += 2;
-			config->filename = filepath;
-		}
-	}
-	json_t *filename = json_object_get(jconfig, "filename");
-	if (filename && json_is_string(filename))
-	{
-		const char *value = json_string_value(filename);
-		config->filename = value;
-	}
 	json_t *path = json_object_get(jconfig, "path");
 	if (path && json_is_string(path))
 	{
 		const char *value = json_string_value(path);
-		config->rootpath = value;
+		config->filename = value;
 	}
 	json_t *modes = json_object_get(jconfig, "protocol");
 	if (modes == NULL)
 		modes = json_object_get(jconfig, "proto");
 	if (modes == NULL)
-		modes = json_object_get(jconfig, "modes");
+		modes = json_object_get(jconfig, "mode");
 	if (modes && json_is_array(modes))
 	{
 		json_t *mode;
@@ -322,10 +277,14 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 			if (mode && json_is_string(mode))
 			{
 				const char *value = json_string_value(mode);
-				if (! strncasecmp(value, "fifo", 4))
-					config->type = File_Fifo_e;
-				if (! strncasecmp(value, "socket", 6))
-					config->type = File_Socket_e;
+				for (int i = 0; i < (sizeof(_protos)/sizeof(*_protos)); i++)
+				{
+					if (_protos[i] && !strcasecmp(value, _protos[i]->name))
+					{
+						config->proto = _protos[i];
+						break;
+					}
+				}
 				if (! strncasecmp(value, "tiff", 6))
 					config->header = File_TIFF_e;
 			}
@@ -334,10 +293,14 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 	if (modes && json_is_string(modes))
 	{
 		const char *value = json_string_value(modes);
-		if (! strncasecmp(value, "fifo", 4))
-			config->type = File_Fifo_e;
-		if (! strncasecmp(value, "socket", 6))
-			config->type = File_Socket_e;
+		for (int i = 0; i < (sizeof(_protos)/sizeof(*_protos)); i++)
+		{
+			if (_protos[i] && !strcasecmp(value, _protos[i]->name))
+			{
+				config->proto = _protos[i];
+				break;
+			}
+		}
 	}
 library_end:
 	return 0;
