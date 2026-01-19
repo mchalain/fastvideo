@@ -319,7 +319,7 @@ Proto_t proto_tcpserver =
 	.destroy = proto_destroy,
 };
 
-Proto_t proto_tcpclient =
+const Proto_t proto_tcpclient =
 {
 	.name = "tcpclient",
 	.create = proto_create_client,

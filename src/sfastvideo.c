@@ -234,7 +234,7 @@ FastVideoDevice_ops_t *fastvideodevice_ops_next(FastVideoDevice_ops_t *ops)
 	return ops;
 }
 
-const Proto_t * _protos[5] = {0};
+const Proto_t * _protos[10] = {0};
 void fastvideo_proto_append(const Proto_t *proto)
 {
 	int i = 0;

@@ -305,7 +305,7 @@ static void proto_destroy(void *arg)
 	free(proto);
 }
 
-Proto_t proto_udp =
+const Proto_t proto_udp =
 {
 	.name = "udp",
 	.create = proto_create,

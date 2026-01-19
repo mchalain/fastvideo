@@ -29,10 +29,12 @@ static void *proto_create(Proto_Config_t *config)
 {
 	int rootfd;
 	size_t mtu = 188 * 10;
+	if (config->host == NULL)
+		return NULL;
 	char *host = strndup(config->host, 1024);
 	char *filename = NULL;
 	struct stat fs;
-	if (stat(host, &fs) < 0 || (fs.st_mode & S_IFMT) == S_IFREG)
+	if (stat(host, &fs) < 0 || (fs.st_mode & S_IFMT) != S_IFDIR)
 	{
 		filename = strrchr(host, '/');
 		if (filename)
@@ -55,6 +57,7 @@ static void *proto_create(Proto_Config_t *config)
 	}
 	if (rootfd < 0)
 	{
+		err("sfile: directory %s not found", host);
 		free(host);
 		return NULL;
 	}
@@ -86,7 +89,30 @@ static void *proto_create(Proto_Config_t *config)
 	return proto;
 }
 
-static int proto_connect(void *arg)
+static int proto_connect_fifo(void *arg)
+{
+	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
+	Proto_Config_t *config = proto->config;
+	if (faccessat(proto->rootfd, proto->filename, F_OK, 0) < 0)
+	{
+		mkfifoat(proto->rootfd, proto->filename, 0644);
+	}
+	struct stat sb;
+	if (fstatat(proto->rootfd, proto->filename, &sb, 0) &&
+		(sb.st_mode & S_IFMT != S_IFIFO))
+	{
+		err("sfproto: file %s is not a named pipe", proto->filename);
+		return -1;
+	}
+	warn("sfile: wait fifo %s", proto->filename);
+	proto->fd[0] = openat(proto->rootfd, proto->filename, O_TRUNC | O_RDWR, 0644);
+	if (proto->fd[0] < 0)
+		return -1;
+	proto->currentfd = 0;
+	return 0;
+}
+
+static int proto_connect_reg(void *arg)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
 	Proto_Config_t *config = proto->config;
@@ -174,11 +200,25 @@ static void proto_destroy(void *arg)
 	free(proto);
 }
 
-Proto_t proto_file =
+const Proto_t proto_file =
 {
 	.name = "file",
 	.create = proto_create,
-	.connect = proto_connect,
+	.connect = proto_connect_reg,
+	.close = proto_close,
+	.mtu = proto_mtu,
+	.fd = proto_fd,
+	.send = proto_send,
+	.recv = proto_recv,
+	.flush = proto_flush,
+	.destroy = proto_destroy,
+};
+
+const Proto_t proto_fifo =
+{
+	.name = "fifo",
+	.create = proto_create,
+	.connect = proto_connect_fifo,
 	.close = proto_close,
 	.mtu = proto_mtu,
 	.fd = proto_fd,
@@ -198,5 +238,6 @@ static void __attribute__ ((constructor)) smpegts_init()
 	if (_fastvideo_proto_append)
 	{
 		_fastvideo_proto_append(&proto_file);
+		_fastvideo_proto_append(&proto_fifo);
 	}
 }

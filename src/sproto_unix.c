@@ -265,7 +265,7 @@ static void proto_destroy(void *arg)
 	free(proto);
 }
 
-Proto_t proto_unix =
+const Proto_t proto_unix =
 {
 	.name = "unix",
 	.create = proto_create,

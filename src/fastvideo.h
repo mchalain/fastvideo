@@ -147,5 +147,5 @@ struct Proto_s
 };
 
 typedef void (*fastvideo_proto_append_t)(const Proto_t *proto);
-extern const Proto_t *_protos[5];
+extern const Proto_t *_protos[10];
 #endif
