@@ -340,7 +340,7 @@ static const char default_addr[] = "FF02::1:FF00:56";
 #else
 static const char default_addr[] = "239.0.0.14";
 #endif
-DeviceConf_t *mpegts_createconfig(void)
+DeviceConf_t *mpegts_createconfig(const char *name)
 {
 	MPEG_TSConf_t *config = calloc(1, sizeof(*config));
 	config->parent.fourcc = FOURCC_H264;

@@ -358,10 +358,20 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 }
 #endif
 
-DeviceConf_t * sfile_createconfig()
+DeviceConf_t * sfile_createconfig(const char *name)
 {
 	FileConfig_t *devconfig = NULL;
+
+	/// this is possible if name variable exits when "create" is called
 	devconfig = calloc(1, sizeof(FileConfig_t));
+	const char *filepath = strchr(name, ':');
+	if (filepath)
+	{
+		filepath++;
+		/// the filepath may be an URL
+		if (filepath[0] == '/' && filepath[1] == '/') filepath += 2;
+		devconfig->filename = filepath;
+	}
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sfile_loadjsonconfiguration;
 #endif

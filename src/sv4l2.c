@@ -1701,7 +1701,7 @@ void sv4l2_destroy(V4L2_t *dev)
 	free(dev);
 }
 
-DeviceConf_t * sv4l2_createconfig()
+DeviceConf_t * sv4l2_createconfig(const char *name)
 {
 	V4l2Config_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(V4l2Config_t));
@@ -2212,7 +2212,7 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevices, const char *na
 					if (subdev_id >= (sizeof(config->subdev_entries) / sizeof(*config->subdev_entries)))
 						break;
 
-					config->subdev_entries[subdev_id] = (V4l2Config_t *)subdev_ops.createconfig();
+					config->subdev_entries[subdev_id] = (V4l2Config_t *)subdev_ops.createconfig(name);
 					config->subdev_entries[subdev_id]->parent.entry = subdevice;
 					config->subdev_entries[subdev_id]->parent.ops.loadconfiguration(config->subdev_entries[subdev_id], subdevice);
 					if (jlastname && json_is_string(jlastname))

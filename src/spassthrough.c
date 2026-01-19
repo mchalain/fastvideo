@@ -84,7 +84,7 @@ Convert_t *spassthrough_convert_next(Convert_t *convert)
 
 EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry);
 
-DeviceConf_t * spassthrough_createconfig(void)
+DeviceConf_t * spassthrough_createconfig(const char *name)
 {
 	Passthrough_config_t *config = calloc(1, sizeof(*config));
 	config->parent.name = spassthrough;
@@ -207,7 +207,7 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 		}
 		DeviceConf_t *devconfig = NULL;
 		if (dev->branch.ops)
-			dev->branch.ops->createconfig();
+			dev->branch.ops->createconfig("");
 		if (devconfig)
 		{
 			devconfig->name = dev->config->branch.name;

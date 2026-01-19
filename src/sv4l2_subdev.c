@@ -366,7 +366,7 @@ void sv4l2_subdev_destroy(V4L2_t *subdev)
 	free(subdev);
 }
 
-DeviceConf_t * sv4l2_subdev_createconfig()
+DeviceConf_t * sv4l2_subdev_createconfig(const char *name)
 {
 	V4l2Config_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(V4l2Config_t));

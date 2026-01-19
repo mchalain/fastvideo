@@ -1575,7 +1575,7 @@ void sdrm_destroy(Display_t *disp)
 	free(disp);
 }
 
-DeviceConf_t * sdrm_createconfig()
+DeviceConf_t * sdrm_createconfig(const char *name)
 {
 	DisplayConf_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(DisplayConf_t));

@@ -30,7 +30,7 @@ static void _destroy_buffer(FrameBuffer_t *buffer)
 	free(buffer->mem);
 }
 
-EXT_API DeviceConf_t * skeleton_createconfig(void)
+EXT_API DeviceConf_t * skeleton_createconfig(const char *name)
 {
 	DeviceConf_t *devconfig = (void *)(long) -1;
 	return devconfig;

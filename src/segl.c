@@ -881,7 +881,7 @@ EXT_API void segl_destroy(EGL_t *dev)
 	free(dev);
 }
 
-DeviceConf_t * segl_createconfig()
+DeviceConf_t * segl_createconfig(const char *name)
 {
 	EGLConfig_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(EGLConfig_t));

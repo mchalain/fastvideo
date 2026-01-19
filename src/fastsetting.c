@@ -36,7 +36,7 @@ int _createdevices(void *data, const char *name, const char *type, void *config)
 		if (! strcmp(ops->name, type))
 		{
 			DeviceConf_t *devconfig = NULL;
-			devconfig = config_create(name, ops, config);
+			devconfig = config_create(name, name, ops, config);
 			if (devconfig)
 			{
 				devconfig->ops.loadconfiguration(devconfig, config);

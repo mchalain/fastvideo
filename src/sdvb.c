@@ -244,7 +244,7 @@ EXT_API void sdvb_destroy(DVB_t *dev)
 	free(dev);
 }
 
-DeviceConf_t * sdvb_createconfig()
+DeviceConf_t * sdvb_createconfig(const char *name)
 {
 	DVBConfig_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(DVBConfig_t));

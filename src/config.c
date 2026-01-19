@@ -223,10 +223,10 @@ int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data,
 	return ret;
 }
 
-DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *entry)
+DeviceConf_t *config_create(const char *name, const char *optarg, FastVideoDevice_ops_t *ops, void *entry)
 {
 	DeviceConf_t *devconfig = NULL;
-	devconfig = ops->createconfig();
+	devconfig = ops->createconfig(optarg);
 	if (devconfig)
 	{
 		devconfig->name = name;
