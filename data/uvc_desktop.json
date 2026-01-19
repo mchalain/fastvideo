@@ -25,25 +25,14 @@
 	"type":"file",
 	"end":true
 },{
-	"name":"x11",
+	"name":"gpu",
 	"type":"gpu",
-	"native":"x11",
-	"end":true
-},{
-	"name":"wayland",
-	"type":"gpu",
-	"native":"wayland",
-	"transfer" : "RGBA",
-	"end":true
-},{
-	"name":"drm",
-	"type":"gpu",
-	"native":"drm",
-	"end":true
-},{
-	"name":"offscreen",
-	"type":"gpu",
-	"native":"offscreen",
+	"native":["x11","wayland","drm","offscreen"],
+	"transfer": {
+		"fourcc": "XB24",
+		"export": "imagemesa",
+		"end":true
+	},
 	"end":true
 },{
 	"name":"convert",
@@ -56,17 +45,15 @@
 	"copy": true,
 	"end":true
 },{
-	"name":"dryrun",
-	"type":"passthrough",
-	"controls":["dryrun"],
-	"end":true
-},{
 	"name":"passthrough",
 	"type":"passthrough",
 	"end":true
 },{
 	"name":"dryrun",
 	"type":"passthrough",
-	"dryrun": true,
+	"controls": {
+		"dryrun": true,
+		"end": true
+	},
 	"end":true
 }]
