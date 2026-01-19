@@ -224,7 +224,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	uint32_t height = config->parent.height;
 
 	const EGLNative_t * native = config->native;
-	if (type == device_transfer && config->export->native)
+	if (type == device_transfer && config->export && config->export->native)
 		config->native = _segl_get_native(config->export->native);
 
 	if (native == NULL)
