@@ -25,6 +25,7 @@
 typedef struct Proto_TCP_s Proto_TCP_t;
 struct Proto_TCP_s
 {
+	int sock;
 	int serverfd;
 	int clientfd;
 	struct sockaddr_storage dest_addr;
@@ -189,30 +190,39 @@ static void *_proto_create(Proto_Config_t *config, int (*_bind)(int sock, struct
 		mtu = ifr.ifr_mtu;
 	warn("smpegts: tcp to %s:%d", config->host, config->port);
 
+	int flags;
+	flags = fcntl(sock, F_GETFL, 0);
+	fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+
 	Proto_TCP_t *proto = calloc(1, sizeof(*proto));
 	proto->mtu = mtu - IP_HEADER_LENGTH - UDP_HEADER_LENGTH; /// size of udp/ip header
-	proto->serverfd = sock;
-	proto->clientfd = -1;
+	proto->sock = sock;
 
 	return proto;
 }
 
 static void *proto_create_server(Proto_Config_t *config)
 {
-	return _proto_create(config, _proto_bindserver);
+	Proto_TCP_t *proto = _proto_create(config, _proto_bindserver);
+	proto->serverfd = proto->sock;
+	proto->clientfd = -1;
+	return proto;
 }
 
 static void *proto_create_client(Proto_Config_t *config)
 {
-	return _proto_create(config, _proto_bindclient);
+	Proto_TCP_t *proto = _proto_create(config, _proto_bindserver);
+	proto->clientfd = proto->sock;
+	proto->serverfd = -1;
+	return proto;
 }
 
 static int proto_connect_client(void *arg)
 {
 	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
 	int flags;
-	flags = fcntl(proto->serverfd, F_GETFL, 0);
-	fcntl(proto->serverfd, F_SETFL, flags | O_NONBLOCK);
+	flags = fcntl(proto->clientfd, F_GETFL, 0);
+	fcntl(proto->clientfd, F_SETFL, flags | O_NONBLOCK);
 	return 0;
 }
 
@@ -224,10 +234,6 @@ static int proto_connect_server(void *arg)
 
 	/// this is currently a blocked socket
 	proto->clientfd = accept(proto->serverfd, NULL, 0);
-	int flags;
-	flags = fcntl(proto->serverfd, F_GETFL, 0);
-	fcntl(proto->serverfd, F_SETFL, flags | O_NONBLOCK);
-
 	return 0;
 }
 
@@ -236,11 +242,16 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
 	ssize_t ret = -1;
 	errno = EAGAIN;
-	if (proto->clientfd == -1)
+	if (proto->clientfd == -1 && proto->serverfd > 0)
+		proto_connect_server(arg);
+	else if (proto->clientfd == -1)
 	{
 		warn("no client connected");
 		return -1;
 	}
+	/// server mode and no client are connected
+	if (proto->clientfd == -1)
+		return len;
 	if (len == 0)
 		warn("send empty packet");
 	while (ret == -1 && errno == EAGAIN)
@@ -248,6 +259,10 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 	if (ret < 0)
 	{
 		err("mpegts: sending on tcp error %m");
+		close(proto->clientfd);
+		proto->clientfd = -1;
+		if (proto->serverfd > 0)
+			ret = 0;
 	}
 
 	if (errno == EAGAIN)
@@ -267,7 +282,11 @@ static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 	ret = recv(proto->clientfd, buf, len, 0);
 	if (ret < 0 && errno != EAGAIN)
 	{
-		err("mpegts: recving on tcp error %m");
+		err("mpegts: receiving on tcp error %m");
+		close(proto->clientfd);
+		proto->clientfd = -1;
+		if (proto->serverfd > 0)
+			ret = 0;
 	}
 
 	return ret;
