@@ -515,7 +515,7 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 		/**
 		 * send PMT packet
 		 */
-		int flags = MSG_MORE;
+		int flags = Proto_More;
 		if (mtu < 2 * dev->packetlen)
 				flags = 0;
 		uint8_t cc = dev->pmt.header.cc;
@@ -530,7 +530,7 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 		 * send PAT packet
 		 */
 		length += ret;
-		int flags = MSG_MORE;
+		Proto_Flags_t flags = Proto_More;
 		if (mtu < 2 * dev->packetlen)
 				flags = 0;
 		uint8_t cc = dev->pat.header.cc;
@@ -546,7 +546,7 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 		 * send SDT packet
 		 */
 		length += ret;
-		int flags = MSG_MORE;
+		Proto_Flags_t flags = Proto_More;
 		if (mtu < 2 * dev->packetlen)
 				flags = 0;
 		uint8_t cc = dev->sdt.header.cc;
@@ -560,7 +560,7 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 	while (ret > 0 && mtu > dev->packetlen)
 	{
 		length += ret;
-		int flags = MSG_MORE;
+		Proto_Flags_t flags = Proto_More;
 		if (mtu < 2 * dev->packetlen)
 				flags = 0;
 		ret = dev->proto->send(dev->protoctx, nullpacket, dev->packetlen, flags);
@@ -643,7 +643,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	while (length > 0 && ret > 0)
 	{
 		int paddinglength = 0;
-		int flags = MSG_MORE | MSG_NOSIGNAL;
+		Proto_Flags_t flags = Proto_More;
 		size_t buflength; /// the length of buffer to send with this ts packet
 		/// the packet must contain 188 bytes even when the payload is smaller
 		buflength = dev->packetlen;

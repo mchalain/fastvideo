@@ -231,7 +231,7 @@ static int proto_connect_server(void *arg)
 	return 0;
 }
 
-static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
+static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t flags)
 {
 	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
 	ssize_t ret = -1;
@@ -255,7 +255,7 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 	return ret;
 }
 
-static ssize_t proto_recv(void *arg, void *buf, size_t len, int flags)
+static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 {
 	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
 	ssize_t ret = -1;

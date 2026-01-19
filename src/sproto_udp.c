@@ -209,13 +209,16 @@ static int proto_connect(void *arg)
 	return 0;
 }
 
-static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
+static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t pflags)
 {
 	Proto_UDP_t *proto = (Proto_UDP_t *)arg;
 	ssize_t ret = -1;
 	errno = EAGAIN;
 	if (len == 0)
 		warn("send empty packet");
+	int flags = MSG_NOSIGNAL;
+	if (pflags & Proto_More)
+		flags |= MSG_MORE;
 	while (ret == -1 && errno == EAGAIN)
 	{
 		ret = sendto(proto->serverfd, buf, len, flags,
@@ -234,7 +237,7 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 	return ret;
 }
 
-static ssize_t proto_recv(void *arg, void *buf, size_t len, int flags)
+static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 {
 	Proto_UDP_t *proto = (Proto_UDP_t *)arg;
 	ssize_t ret = -1;

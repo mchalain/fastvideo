@@ -124,6 +124,13 @@ struct Proto_Config_s
 	int maxclients;
 };
 
+typedef enum Proto_Flags_e Proto_Flags_t;
+enum Proto_Flags_e
+{
+	Proto_Flush = 0,
+	Proto_More,
+};
+
 typedef struct Proto_s Proto_t;
 struct Proto_s
 {
@@ -133,8 +140,8 @@ struct Proto_s
 	void (*close)(void *arg);
 	size_t (*mtu)(void *arg);
 	int (*fd)(void *arg);
-	ssize_t (*send)(void *arg, const void *buf, size_t len, int flags);
-	ssize_t (*recv)(void *arg, void *buf, size_t len, int flags);
+	ssize_t (*send)(void *arg, const void *buf, size_t len, Proto_Flags_t flags);
+	ssize_t (*recv)(void *arg, void *buf, size_t len, Proto_Flags_t flags);
 	void (*flush)(void *arg);
 	void (*destroy)(void *arg);
 };

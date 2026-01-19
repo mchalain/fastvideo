@@ -137,7 +137,7 @@ static int proto_connect(void *arg)
 	return 0;
 }
 
-static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
+static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t pflags)
 {
 	Proto_UNIX_t *proto = (Proto_UNIX_t *)arg;
 	ssize_t ret = 0;
@@ -155,16 +155,20 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 		memcpy(proto->packet + proto->offset, buf, len);
 		proto->offset += len;
 	}
-	if ((flags & MSG_MORE) == 0)
+	if (pflags == Proto_More)
 #endif
 	{
+		int flags = MSG_NOSIGNAL;
+		if (pflags & Proto_More)
+			flags |= MSG_MORE;
+
 		fastvideolist_first(proto->clients);
 		for (Client_t *clt = fastvideolist_next(proto->clients); clt != NULL; clt = fastvideolist_next(proto->clients))
 		{
 #ifdef UNIX_PACKETIZER
-			ret = send(clt->fd, proto->packet, proto->offset, flags | MSG_NOSIGNAL);
+			ret = send(clt->fd, proto->packet, proto->offset, flags);
 #else
-			ret = send(clt->fd, buf, len, flags | MSG_NOSIGNAL);
+			ret = send(clt->fd, buf, len, flags);
 #endif
 			//dbg("send %d of %d", ret, len);
 			if (ret <= 0)
@@ -194,7 +198,7 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 	return ret;
 }
 
-static ssize_t proto_recv(void *arg, void *buf, size_t len, int flags)
+static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 {
 	Proto_UNIX_t *proto = (Proto_UNIX_t *)arg;
 	ssize_t ret = 0;
