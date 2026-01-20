@@ -36,6 +36,9 @@ struct GLProgram_Uniform_s
 
 static GLProgram_Uniform_t * _glprog_uniform_create(void *setting);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
+int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
+
+EGLProg_ops_t gles2_ops;
 
 typedef struct GLProgram_s GLProgram_t;
 struct GLProgram_s
@@ -477,7 +480,7 @@ int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out)
 	return 0;
 }
 
-GL_Buffer_t *glprog_createtexture(GLProgram_t *program, uint32_t fourcc)
+GL_Buffer_t *gltexture_create(GLProgram_t *program, uint32_t fourcc)
 {
 	GLenum textype = GL_TEXTURE_EXTERNAL_OES;
 	GLuint dma_texture;
@@ -518,7 +521,7 @@ GLuint gltexture_id(GL_Buffer_t *glbuffer)
 	return glbuffer->texture;
 }
 
-void gltexture_release(GL_Buffer_t *glbuffer)
+void gltexture_destroy(GL_Buffer_t *glbuffer)
 {
 	free(glbuffer);
 }
@@ -917,6 +920,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 			if (previous)
 				previous->next = config;
 			previous = config;
+			config->name = gles2_ops.name;
 		}
 	}
 	else if (jconfig && json_is_object(jconfig))
@@ -929,6 +933,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 		else
 		{
 			first = config;
+			config->name = gles2_ops.name;
 		}
 	}
 	if (arg != NULL)
@@ -940,9 +945,35 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 }
 #endif
 
+EGLProg_ops_t gles2_ops = {
+	.name = "gles2",
+	.create = glprog_create,
+	.setup = glprog_setup,
+	.buffer = {
+		.create = gltexture_create,
+		.attach = gltexture_attach,
+		.id = gltexture_id,
+		.destroy = gltexture_destroy,
+	},
+	.run = glprog_run,
+	.stop = glprog_stop,
+	.setuniform = glprog_setuniform,
+	.destroy = glprog_destroy,
+	.loadjsonsetting = glprog_loadjsonsetting,
+	.loadjsonconfiguration = glprog_loadjsonconfiguration,
+};
+
 #include <dlfcn.h>
 
 static void __attribute__ ((constructor)) segl_init()
 {
 	_egl_initprototypes();
+
+	segl_program_ops_append_t _segl_program_ops_append;
+	void *hdl = dlopen(NULL, RTLD_NOW);
+	_segl_program_ops_append = dlsym(hdl, "segl_program_ops_append");
+	if (_segl_program_ops_append)
+	{
+		_segl_program_ops_append(&gles2_ops);
+	}
 }

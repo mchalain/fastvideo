@@ -69,6 +69,7 @@ typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
 typedef struct EGLConfig_Program_s EGLConfig_Program_t;
 struct EGLConfig_Program_s
 {
+	const char *name;
 	const char *vertex;
 	const char *fragments[MAX_SHADERS];
 	const char *tex_name;
@@ -126,19 +127,42 @@ typedef void (*segl_export_append_t)(EGLExport_t *export);
 
 extern const GLchar *defaulttexturename;
 
-GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height);
-int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out);
-GL_Buffer_t *glprog_createtexture(GLProgram_t *program, uint32_t fourcc);
-void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image);
-void gltexture_release(GL_Buffer_t *glbuffer);
-GLuint gltexture_id(GL_Buffer_t *glbuffer);
-int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer);
-void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer);
-int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
-void glprog_destroy(GLProgram_t *program);
+typedef GLProgram_t *(*glprog_create_t)(EGLConfig_Program_t *config, GLuint width, GLuint height);
+typedef int (*glprog_setup_t)(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out);
+typedef GL_Buffer_t *(*glbuffer_create_t)(GLProgram_t *program, uint32_t fourcc);
+typedef void (*glbuffer_attach_t)(GL_Buffer_t *glbuffer, EGLImageKHR image);
+typedef void (*glbuffer_destroy_t)(GL_Buffer_t *glbuffer);
+typedef GLuint (*glbuffer_id_t)(GL_Buffer_t *glbuffer);
+typedef int (*glprog_run_t)(GLProgram_t *program, GL_Buffer_t *buffer);
+typedef void (*glprog_stop_t)(GLProgram_t *program, GL_Buffer_t *buffer);
+typedef int (*glprog_setuniform_t)(GLProgram_t *program, GLProgram_Uniform_t *uniform);
+typedef void (*glprog_destroy_t)(GLProgram_t *program);
+typedef int (*glprog_loadjsonsetting_t)(GLProgram_t *program, void *entry);
+typedef int (*glprog_loadjsonconfiguration_t)(void *arg, void *entry);
+
+typedef struct EGLProg_ops_s EGLProg_ops_t;
+struct EGLProg_ops_s
+{
+	const char *name;
+	glprog_create_t create;
+	glprog_setup_t setup;
+	struct {
+		glbuffer_create_t create;
+		glbuffer_attach_t attach;
+		glbuffer_id_t id;
+		glbuffer_destroy_t destroy;
+	} buffer;
+	glprog_run_t run;
+	glprog_stop_t stop;
+	glprog_setuniform_t setuniform;
+	glprog_destroy_t destroy;
+	glprog_loadjsonsetting_t loadjsonsetting;
+	glprog_loadjsonconfiguration_t loadjsonconfiguration;
+};
 
 int _egl_hasextension(EGLDisplay eglDisplay, const char *extension);
 int segl_hasextension(EGL_t *dev, const char *extension);
+typedef void (*segl_program_ops_append_t)(EGLProg_ops_t *prog_ops);
 
 #ifdef HAVE_JANSSON
 int segl_loadjsonsettings(EGL_t *dev, void *jconfig);
@@ -147,8 +171,6 @@ int segl_loadjsonconfiguration(void *arg, void *entry);
 #define segl_loadsettings segl_loadjsonsettings
 #define segl_loadconfiguration segl_loadjsonconfiguration
 
-int glprog_loadjsonsetting(GLProgram_t *program, void *entry);
-int glprog_loadjsonconfiguration(void *arg, void *entry);
 #else
 #define segl_loadsettings NULL
 #define segl_loadconfiguration NULL

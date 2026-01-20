@@ -44,6 +44,16 @@ void segl_export_append(EGLExport_t *export)
 		_exports[i] = export;
 }
 
+const EGLProg_ops_t *_prog_ops[5] = {0};
+
+void segl_program_ops_append(EGLProg_ops_t *prog_ops)
+{
+	int i = 0;
+	for (; _prog_ops[i] && i < sizeof(_prog_ops) / sizeof(*_prog_ops); i++);
+	if (i < sizeof(_prog_ops)/sizeof(*_prog_ops))
+		_prog_ops[i] = prog_ops;
+}
+
 typedef struct EGL_s EGL_t;
 struct EGL_s
 {
@@ -60,6 +70,7 @@ struct EGL_s
 	void *export_ctx;
 	EGLNativeDisplayType native_display;
 	EGLNativeWindowType native_window;
+	const EGLProg_ops_t *program_ops;
 	GLProgram_t *programs;
 	GLBuffer_t buffers[MAX_BUFFERS];
 	int curbufferid;
@@ -345,7 +356,16 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	dbg("segl: swap interval %d", minswapinterval);
 	eglSwapInterval(eglDisplay, minswapinterval);
 
-	GLProgram_t *programs = glprog_create(config->programs, width, height);
+	const EGLProg_ops_t *prog_ops = _prog_ops[0];
+	for (int i = 0; config->programs && i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
+	{
+		if (_prog_ops[i] && strcmp(_prog_ops[i]->name, config->programs->name))
+		{
+			prog_ops = _prog_ops[i];
+			break;
+		}
+	}
+	GLProgram_t *programs = prog_ops->create(config->programs, width, height);
 	if (programs == NULL)
 		return NULL;
 
@@ -356,6 +376,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	dev->eglconfig = eglConfigs[configid];
 	dev->eglcontext = eglContext;
 	dev->eglsurface = eglSurface;
+	dev->program_ops = prog_ops;
 	dev->programs = programs;
 
 	dev->native_window = nwindow;
@@ -368,7 +389,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 
 static int texture_fromdma(EGL_t *dev, GLBuffer_t *buffer, int dma_fd, size_t size)
 {
-	GL_Buffer_t *glbuffer = glprog_createtexture(dev->programs, dev->config->parent.fourcc);
+	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, dev->config->parent.fourcc);
 
 	uint32_t stride = dev->config->parent.stride;
 	if (stride == 0)
@@ -455,7 +476,7 @@ for (int i = 0; i < sizeof(formats) / sizeof(*formats); i++)
 	buffer->pitch = stride;
 	buffer->dma_fd = dma_fd;
 
-	gltexture_attach(glbuffer, image);
+	dev->program_ops->buffer.attach(glbuffer, image);
 	eglDestroyImageKHR(dev->egldisplay, image);
 	buffer->private = glbuffer;
 
@@ -464,7 +485,7 @@ for (int i = 0; i < sizeof(formats) / sizeof(*formats); i++)
 
 static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t size)
 {
-	GL_Buffer_t *glbuffer = glprog_createtexture(dev->programs, dev->config->parent.fourcc);
+	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, dev->config->parent.fourcc);
 
 	uint32_t stride = size / dev->config->parent.height;
 	EGLImageKHR image;
@@ -473,7 +494,7 @@ static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t siz
 					dev->egldisplay,
 					dev->eglcontext,
 					EGL_GL_TEXTURE_2D_KHR,
-					(EGLClientBuffer)(long)gltexture_id(glbuffer),
+					(EGLClientBuffer)(long)dev->program_ops->buffer.id(glbuffer),
 					mem);
 
 	if(image == EGL_NO_IMAGE_KHR)
@@ -486,7 +507,7 @@ static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t siz
 	buffer->pitch = stride;
 	buffer->memory = mem;
 
-	gltexture_attach(glbuffer, image);
+	dev->program_ops->buffer.attach(glbuffer, image);
 	eglDestroyImageKHR(dev->egldisplay, image);
 	buffer->private = glbuffer;
 
@@ -538,7 +559,7 @@ static void _egl_releasebuffer(EGL_t *dev, int id)
 {
 	if (dev->export_ctx && dev->export->releasebuffer)
 		dev->export->releasebuffer(dev->export_ctx, &dev->buffers[id]);
-	gltexture_release(dev->buffers[id].private);
+	dev->program_ops->buffer.destroy(dev->buffers[id].private);
 	dev->buffers[id].memory = NULL;
 }
 
@@ -699,7 +720,7 @@ EXT_API int segl_start(EGL_t *dev)
 	GL_Buffer_t *out = NULL;
 	if (dev->dup)
 		out = dev->dup->export->out(dev->dup->export_ctx);
-	glprog_setup(dev->programs, dev->fbo, out);
+	dev->program_ops->setup(dev->programs, dev->fbo, out);
 
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
 	dev->curbufferid = -1;
@@ -742,7 +763,7 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 	if (flags & FB_FLAGS_MODIFIER)
 		buffer->modifiers = dev->config->parent.modifiers;
 
-	glprog_run(dev->programs, buffer->private);
+	dev->program_ops->run(dev->programs, buffer->private);
 	if (eglSwapBuffers(dev->egldisplay, dev->eglsurface) == EGL_FALSE)
 		err("EGL swapbuffers error %m");
 	// errno is set to EAGAIN after eglSwapBuffers
@@ -797,7 +818,7 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 	}
 	dev->curbufferid = -1;
 	GLBuffer_t *buffer = &dev->buffers[id];
-	glprog_stop(dev->programs, buffer->private);
+	dev->program_ops->stop(dev->programs, buffer->private);
 	if (dev->native->sync(dev->native_window) < 0)
 		return -1;
 
@@ -819,7 +840,7 @@ EXT_API void segl_destroy(EGL_t *dev)
 {
 	if (dev->type != device_input)
 	{
-		glprog_destroy(dev->programs);
+		dev->program_ops->destroy(dev->programs);
 		eglDestroySurface(dev->egldisplay, dev->eglsurface);
 		eglDestroyContext(dev->egldisplay, dev->eglcontext);
 		dev->native->destroy(dev->native_display);
@@ -863,7 +884,7 @@ static const EGLNative_t *_segl_get_native(const char *name)
 
 int segl_loadjsonsettings(EGL_t *dev, void *jconfig)
 {
-	return glprog_loadjsonsetting(dev->programs, jconfig);
+	return dev->program_ops->loadjsonsetting(dev->programs, jconfig);
 }
 
 int segl_loadjsonconfiguration(void *arg, void *entry)
@@ -872,7 +893,12 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	EGLConfig_t *config = (EGLConfig_t *)arg;
 
 	json_t *jprograms = json_object_get(jconfig, "programs");
-	glprog_loadjsonconfiguration(&config->programs, jprograms);
+	for (int i = 0; i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
+	{
+		const EGLProg_ops_t *prog_ops = _prog_ops[i];
+		if (prog_ops)
+			prog_ops->loadjsonconfiguration(&config->programs, jprograms);
+	}
 	json_t *native = json_object_get(jconfig, "native");
 	if (native && json_is_array(native))
 	{
