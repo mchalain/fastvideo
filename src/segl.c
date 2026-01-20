@@ -66,10 +66,6 @@ struct EGL_s
 	int nbuffers;
 };
 
-#ifndef GL_TEXTURE_EXTERNAL_OES
-#define GL_TEXTURE_EXTERNAL_OES GL_TEXTURE_2D;
-#endif
-
 #ifndef EGL_KHR_image
 #error "this version of EGL doesn't support KHR Image"
 #endif
@@ -80,10 +76,6 @@ struct EGL_s
 #if defined(EGL_KHR_image)
 static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR = NULL;
 static PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR = NULL;
-#endif
-#if defined(GL_OES_EGL_image)
-static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
-static PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
 #endif
 #if EGL_EXT_image_dma_buf_import_modifiers
 static PFNEGLQUERYDMABUFFORMATSEXTPROC eglQueryDmaBufFormatsEXT = NULL;
@@ -99,11 +91,6 @@ static int _egl_initprototypes(void)
 	}
 	eglDestroyImageKHR = (void *) eglGetProcAddress("eglDestroyImageKHR");
 	if(eglDestroyImageKHR == NULL)
-	{
-		return -1;
-	}
-	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
-	if(glEGLImageTargetTexture2DOES == NULL)
 	{
 		return -1;
 	}
@@ -250,8 +237,6 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		return NULL;
 	}
 
-	glEnable(GL_TEXTURE_EXTERNAL_OES);
-
 	EGLint num_configs;
 	eglGetConfigs(eglDisplay, NULL, 0, &num_configs);
 
@@ -381,32 +366,9 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	return dev;
 }
 
-static GLuint texture_create(EGL_t *dev, GLenum textype)
-{
-	GLuint dma_texture;
-	glGenTextures(1, &dma_texture);
-
-	glBindTexture(textype, dma_texture);
-#if 0
-	uint32_t width = dev->config->parent.width;
-	uint32_t height = dev->config->parent.height;
-	const FourccFormat_t *format = fourcc_getformat(dev->config->parent.fourcc);
-	glTexImage2D(textype, 0, format->internal, width, height, 0, format->full, GL_UNSIGNED_BYTE, NULL);
-#endif
-	glTexParameteri(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(textype, GL_TEXTURE_MAX_LEVEL_APPLE, 0);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	return dma_texture;
-}
-
 static int texture_fromdma(EGL_t *dev, GLBuffer_t *buffer, int dma_fd, size_t size)
 {
-	GLuint texture = -1;
-	GLuint textype = GL_TEXTURE_EXTERNAL_OES;
-	texture = texture_create(dev, textype);
+	GL_Buffer_t *glbuffer = glprog_createtexture(dev->programs, dev->config->parent.fourcc);
 
 	uint32_t stride = dev->config->parent.stride;
 	if (stride == 0)
@@ -493,21 +455,16 @@ for (int i = 0; i < sizeof(formats) / sizeof(*formats); i++)
 	buffer->pitch = stride;
 	buffer->dma_fd = dma_fd;
 
-	GL_Buffer_t *glbuffer = &buffer->gl;
-	glbuffer->texture = texture;
-	glbuffer->textype = textype;
-	glEGLImageTargetTexture2DOES(textype, image);
+	gltexture_attach(glbuffer, image);
 	eglDestroyImageKHR(dev->egldisplay, image);
+	buffer->private = glbuffer;
 
 	return 0;
 }
 
 static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t size)
 {
-	GLuint texture = -1;
-	//GLuint textype = GL_TEXTURE_EXTERNAL_OES;
-	GLuint textype = GL_TEXTURE_2D;
-	texture = texture_create(dev, textype);
+	GL_Buffer_t *glbuffer = glprog_createtexture(dev->programs, dev->config->parent.fourcc);
 
 	uint32_t stride = size / dev->config->parent.height;
 	EGLImageKHR image;
@@ -516,7 +473,7 @@ static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t siz
 					dev->egldisplay,
 					dev->eglcontext,
 					EGL_GL_TEXTURE_2D_KHR,
-					(EGLClientBuffer)(long)texture,
+					(EGLClientBuffer)(long)gltexture_id(glbuffer),
 					mem);
 
 	if(image == EGL_NO_IMAGE_KHR)
@@ -529,11 +486,9 @@ static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t siz
 	buffer->pitch = stride;
 	buffer->memory = mem;
 
-	GL_Buffer_t *glbuffer = &buffer->gl;
-	glbuffer->texture = texture;
-	glbuffer->textype = textype;
-	glEGLImageTargetTexture2DOES(textype, image);
+	gltexture_attach(glbuffer, image);
 	eglDestroyImageKHR(dev->egldisplay, image);
+	buffer->private = glbuffer;
 
 	return 0;
 }
@@ -583,6 +538,7 @@ static void _egl_releasebuffer(EGL_t *dev, int id)
 {
 	if (dev->export_ctx && dev->export->releasebuffer)
 		dev->export->releasebuffer(dev->export_ctx, &dev->buffers[id]);
+	gltexture_release(dev->buffers[id].private);
 	dev->buffers[id].memory = NULL;
 }
 
@@ -738,7 +694,6 @@ EXT_API int segl_start(EGL_t *dev)
 		dev->curbufferid = 0;
 		return 0;
 	}
-	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
 
 	// initialize the first program with the output framebuffer
 	GL_Buffer_t *out = NULL;
@@ -783,17 +738,11 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 		return -1;
 	}
 
-#if 0
-	if (buffer->dma_fd == 0)
-	{
-		glTexSubImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, mem);
-	}
-#endif
 	buffer->modifiers = 0;
 	if (flags & FB_FLAGS_MODIFIER)
 		buffer->modifiers = dev->config->parent.modifiers;
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glprog_run(dev->programs, &buffer->gl);
+
+	glprog_run(dev->programs, buffer->private);
 	if (eglSwapBuffers(dev->egldisplay, dev->eglsurface) == EGL_FALSE)
 		err("EGL swapbuffers error %m");
 	// errno is set to EAGAIN after eglSwapBuffers
@@ -847,10 +796,8 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 		return id;
 	}
 	dev->curbufferid = -1;
-	glUseProgram(0);
-	glBindTexture(dev->buffers[0].gl.textype, 0);
-	glBindTexture(GL_TEXTURE_2D, 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	GLBuffer_t *buffer = &dev->buffers[id];
+	glprog_stop(dev->programs, buffer->private);
 	if (dev->native->sync(dev->native_window) < 0)
 		return -1;
 

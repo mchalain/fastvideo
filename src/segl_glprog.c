@@ -48,8 +48,9 @@ struct GLProgram_s
 	const char *in_texturename;
 	GL_Buffer_t out;
 	GLuint fbo;
-	GLfloat width;
-	GLfloat height;
+	uint32_t width;
+	uint32_t height;
+	uint32_t fourcc;
 	GLProgram_Uniform_t *controls;
 };
 
@@ -101,9 +102,17 @@ static const GLchar defaultfragment[] = ""
 "\n";
 #endif
 
+#ifndef GL_TEXTURE_EXTERNAL_OES
+#define GL_TEXTURE_EXTERNAL_OES GL_TEXTURE_2D;
+#endif
+
 #ifndef EGL_EGLEXT_PROTOTYPES
-PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = NULL;
-PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = NULL;
+static PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = NULL;
+static PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = NULL;
+#if defined(GL_OES_EGL_image)
+static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
+static PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
+#endif
 static int _egl_initprototypes(void)
 {
 	glGenVertexArraysOES = (void *) eglGetProcAddress("glGenVertexArraysOES");
@@ -113,6 +122,11 @@ static int _egl_initprototypes(void)
 	}
 	glBindVertexArrayOES = (void *) eglGetProcAddress("glBindVertexArrayOES");
 	if(glBindVertexArrayOES == NULL)
+	{
+		return -1;
+	}
+	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
+	if(glEGLImageTargetTexture2DOES == NULL)
 	{
 		return -1;
 	}
@@ -367,6 +381,9 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	program->width = width;
 	program->height = height;
 
+	glEnable(GL_TEXTURE_EXTERNAL_OES);
+
+	glViewport(0, 0, width, height);
 	glUseProgram(program->ID);
 
 	glGenVertexArraysOES(1, &program->vertexArrayID);
@@ -460,10 +477,57 @@ int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out)
 	return 0;
 }
 
+GL_Buffer_t *glprog_createtexture(GLProgram_t *program, uint32_t fourcc)
+{
+	GLenum textype = GL_TEXTURE_EXTERNAL_OES;
+	GLuint dma_texture;
+	glGenTextures(1, &dma_texture);
+
+	glBindTexture(textype, dma_texture);
+
+	for (GLProgram_t *it = program; it != NULL; it = it->next)
+	{
+		it->fourcc = fourcc;
+	}
+#if 0
+	uint32_t width = program->width;
+	uint32_t height = program->height;
+	const FourccFormat_t *format = fourcc_getformat(fourcc);
+	glTexImage2D(textype, 0, format->internal, width, height, 0, format->full, GL_UNSIGNED_BYTE, NULL);
+#endif
+	glTexParameteri(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(textype, GL_TEXTURE_MAX_LEVEL_APPLE, 0);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	GL_Buffer_t *glbuffer = calloc(1, sizeof(*glbuffer));
+	glbuffer->texture = dma_texture;
+	glbuffer->textype = textype;
+
+	return glbuffer;
+}
+
+void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image)
+{
+	glEGLImageTargetTexture2DOES(glbuffer->textype, image);
+}
+
+GLuint gltexture_id(GL_Buffer_t *glbuffer)
+{
+	return glbuffer->texture;
+}
+
+void gltexture_release(GL_Buffer_t *glbuffer)
+{
+	free(glbuffer);
+}
+
 int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 {
 	static int programid = 0;
 	GLenum err = 0;
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	if (program->fbo  > 0)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
@@ -516,6 +580,14 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 	}
 	programid = 0;
 	return 0;
+}
+
+void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer)
+{
+	glUseProgram(0);
+	glBindTexture(buffer->textype, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)

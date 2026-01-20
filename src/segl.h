@@ -61,7 +61,7 @@ struct GLBuffer_s
 	GLuint offset;
 	uint32_t size;
 	uint64_t modifiers;
-	GL_Buffer_t gl;
+	void* private;
 	FrameBuffer_state_e state;
 };
 
@@ -128,7 +128,12 @@ extern const GLchar *defaulttexturename;
 
 GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height);
 int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out);
+GL_Buffer_t *glprog_createtexture(GLProgram_t *program, uint32_t fourcc);
+void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image);
+void gltexture_release(GL_Buffer_t *glbuffer);
+GLuint gltexture_id(GL_Buffer_t *glbuffer);
 int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer);
+void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer);
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
 void glprog_destroy(GLProgram_t *program);
 
