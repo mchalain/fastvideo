@@ -9,6 +9,9 @@ The main feature is the use of dma_fd to transfer video from one device to anoth
  - [fastconfig](#fastconfig)   : it generates a json file with all hardware available on the host;
  - [fastsetting](#fastsetting) : open an unix socket to receive json objects that control the devices;
 
+
+Fastvideo uses an external server to manage AWB, AEC and AF Algorithms. Fastvideo extracts the data from the v4l2 meta capture device and push them into a server via a named pipe. As this server is hardware dependent their are stored into *utils* directory.
+
 # Features
 
 | Modules            |         | source | sync | transfer | control | dmafd | hw memory | soft memory | comment                      |
@@ -17,7 +20,6 @@ The main feature is the use of dma_fd to transfer video from one device to anoth
 |                    | m2m     |        |      |  X       | X       | X     | X         |             | isp, en/decoder ...          |
 |                    | output  |        | X    |          | X       | X     | X         |             | isp ...                      |
 | [subv4l](#subv4l)  |         |        |      |          | X       |       |           |             | only control v4l2 media      |
-| [v4l2_meta](#v4l2_meta)|     | X      |      |          |         | X     | X         |             | metadata stream from a media |
 | [screen](#drm)     |         |        | X    |  X       | X       | X     | X         |             | hdmi, writeback              |
 | [gpu](#egl)        | drm     |        | X    |  X       |         | X     | X         | X           | output pixels or Mesa        |
 |                    | x11     |        | X    |  X       |         | X     | X         | X           |                              |
@@ -87,7 +89,7 @@ The modules description may be into the root object of json's file or into the "
 ```json
  {
    "name": ["cam-ov5647","ov5647 10-0036"],
-   "disable": false,
+   "disable": true,
    "type": "subv4l",
    "device": "/dev/v4l-subdev0",
    "definition": {
@@ -96,23 +98,6 @@ The modules description may be into the root object of json's file or into the "
      "height": 1080,
      "fps": 30
  },
-```
-The entries are the same as v4l2 modules.
-
-## v4l2_meta
-
-This modules open a special v4l2 device with metadata.
-
-As the metadata and the data stream may come from the same device the module's name is different.
-
-### The *json* structure
-
-```json
-  {
-    "name": "video-control",
-    "type": "v4l2_meta",
-    "device": "/dev/video0"
-  },
 ```
 The entries are the same as v4l2 modules.
 
@@ -209,9 +194,9 @@ This module generates a MPEG2-ts stream. The sync input must be a h264 stream.
 
 | entries      | types            | parent       | comment                                  |
 |:--------     |:----------------:|:-------------|:-----------------------------------------|
-| type         | string           | root         | must be "mpegts"                            |
+| type         | string           | root         | must be "mpegts"                         |
 | name        | string &#124; array | root       | give one or several name to the module   |
-| proto        | string           | root         | may be "udp", "unix", "file"             |
+| proto        | string           | root      | may be "udp", "unix", "file", "fifo", "tcp" |
 | host         | string           | root         | the destination address or socket's path |
 | port         | integer          | root         | the port number for "udp" protocol       |
 | periodic     | integer          | root         | the number of frames between each I-frame|
@@ -247,6 +232,33 @@ This module is by default a simple serving plate between 2 others modules. But s
 | controls     | array of objects | root         | image settings                           |
 | dryrun       | boolean          | controls     | trash the stream                         |
 | tee          | boolean          | controls     | enable the branch description            |
+
+## file
+
+This module allows to push data into or fromto, file or fifo.
+If the path is a directory a "stream\_XXX" file is generated.
+
+This module accept argument into the application options:
+
+```shell
+$ fastvideo -j fastconfig.json -i cam -o file:./test.mjpeg
+```
+
+### The *json* structure
+
+```json
+  {
+    "name": "file",
+    "type": "file",
+  };
+```
+
+| entries      | types            | parent       | comment                                  |
+|:--------     |:----------------:|:-------------|:-----------------------------------------|
+| type         | string           | root         | must be "passthrough"                    |
+| name        | string &#124; array | root       | give one or several name to the module   |
+| path         | string           | root         | directory or file to use                 |
+| mode        | string &#124; array | root       | "file","fifo","tcp","udp","unix"         |
 
 # Applications
 
@@ -370,7 +382,7 @@ The project uses only GNU Makefile, gcc (or clang). The *defconfig* file contain
 
 Other interesting configuration's options :
 
- - CROSS_COMPILE=arm-none-linux-gnueabi
+ - CROSS\_COMPILE=arm-none-linux-gnueabi
  - SYSROOT=/opt/arm-none-linux-gnueabi-sdk/arm-none-linux-gnueabi/sysroot
 
 ## Contribute
@@ -379,3 +391,112 @@ You can find a module's skeleton into the sources directory, to start a new modu
 
 A lot modules are missing but the main goal is the speed on light boards, and the currently all video devices are supported.
 It should be easy to push the stream from the last device into another application that uses the CPU.
+
+## Missing
+
+## Automatic White Balance, Automatic Exposure Algo
+
+The project offers the *sv4l2\_meta* to unpack camera metadata and send command to the *fastsetting* application to change the controls.
+But the algorithms are missing.
+
+## Video extraction from GPU
+
+The *gpu* module allows to stream out the EGL Texture as a bitmap in CPU memory, or as a dma buffer. The second case, is more efficient but the embedded GPU use a tiled image format.
+
+## Video convertion intp CPU
+
+The current *convert* plugins are not ready.
+
+## Configuration
+
+As the V4L2 system may be a succession of link between devices and subdevices, the naming of each *v4l2* or *subdev* object is complex and the code is not really clear.
+This part of configuration may be refactored.
+
+# testing
+## PC with webcam
+
+The configuration for Webcam is available into "uvc-desktop.json" file.
+
+```shell
+$ fastvideo -j /etc/fastvideo/uvc-desktop.json -i uvc -o gpu -D
+```
+
+## Raspberry Pi 3/4
+
+The project offers configuration files to use with Raspberry Pi and Broadcom ISP, the [main file](data/raspicam.json) contains default configuration for camera, isp, gpu, screen. Several camera modules are supported and needs settings file.
+
+By default the output is the GPU rendering into X11 window. The native rendering available are *X11*, *wayland*, *drm* and *offscreen*, the choice is done by the first entry into the *native* table of the *gpu* object.
+
+### Raspberry Pi Camera Module 1
+
+This camera uses a ov5647 camera sensor. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-ov5647 -o isp-in -i isp-out -o gpu -D
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-ov5647.json
+```
+
+### Raspberry Pi Camera Module 3
+
+The camera uses a imx708 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx708 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu -D
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx708.json
+```
+
+### Raspberry Pi Camera Module HQ
+
+The camera uses a imx477 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx477 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu -D
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx477.json
+```
+
+### Raspberry Pi Camera Module GS
+
+This camera uses a imx296 camera sensor. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx296 -o isp-in -i isp-out -o gpu -D
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx296.json
+```
+### 3A Algorithms
+
+A 3AAlgo server is available into *utils* directory and named **rpivc4_alg**. It receives data from a fastvideo fifo and sends control to fastsetting socket.
+
+```bash
+$ rpivc4_alg -D
+$ fastvideo -j /etc/fastvideo/raspicam.json -i isp-meta -o rpivc4_alg -D
+```
+
+**NOTE:** As the rpivc4_alg uses a fifo file, the both process are synchronized. and each must be restarted at the same time.
+
+The full system should be:
+```
+ camera image --> fastvideo1 --> isp-in --> isp-out --> fastvideo1 --> gpu
+ if embedded : camera embedded --> fastvideo1 --> dryrun
+ camera statistics --> fastvideo2 --> fifo rpivc4_alg
+ fastsetting <--> socket unix
+ fifo rpivc4_alg --> rpivc4_alg <--> socket setting
+```
+
+**NOTE:** Currently rpivc4\_alg contains only a simple/bad AE algorithm, prefer to use AE from camera if available.
+
+## Raspberry Pi 5
+
+The Raspberry Pi 5 uses a new ISP chip (rp1). This chip needs a stream of data for initiliazing and running.
+The fastvideo application is ready to set the rp1 but the data generator is missing.
+
+Fastvideo may use the camera in raw mode. The video stream is Bayer images, and the output needs to be monochrome.
+A Bayer image displayed as monochrome is blurred. A solution is to use a monochrone camera.
+
+### Camera ov9281
+
+The ov9281 is a global shutter monochrome camera. The output is Y10 1920x1080 at 120 fps.
+
+```shell
+$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-ov9281 -o gpu -D
+$ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-ov9281.json
+```

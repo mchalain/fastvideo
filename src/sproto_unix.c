@@ -28,7 +28,7 @@ struct Client_s
 typedef struct Proto_UNIX_s Proto_UNIX_t;
 struct Proto_UNIX_s
 {
-	MPEG_TSConf_t *config;
+	Proto_Config_t *config;
 	pthread_t thread;
 	int serverfd;
 	size_t mtu;
@@ -38,7 +38,7 @@ struct Proto_UNIX_s
 	size_t offset;
 };
 
-static void *proto_create(MPEG_TSConf_t *config)
+static void *proto_create(Proto_Config_t *config)
 {
 	int sock = 0;
 	size_t mtu = 1500;
@@ -76,11 +76,11 @@ static void *proto_create(MPEG_TSConf_t *config)
 	ifr.ifr_addr.sa_family = family;
 	if (ioctl(sock, SIOCGIFMTU, &ifr) != -1)
 		mtu = ifr.ifr_mtu;
-	warn("smpegts: unix to %s %d", config->host, config->port);
 
 	Proto_UNIX_t *proto = calloc(1, sizeof(*proto));
 	proto->config = config;
 	proto->mtu = mtu - IP_HEADER_LENGTH - TCP_HEADER_LENGTH; /// maxsize of tcp/ip header
+	warn("smpegts: unix to %s (mtu %lu)", config->host, proto->mtu);
 	proto->serverfd = sock;
 	for (int i = 0 ; i < config->maxclients; i++)
 	{
@@ -137,7 +137,7 @@ static int proto_connect(void *arg)
 	return 0;
 }
 
-static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
+static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t pflags)
 {
 	Proto_UNIX_t *proto = (Proto_UNIX_t *)arg;
 	ssize_t ret = 0;
@@ -155,16 +155,20 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 		memcpy(proto->packet + proto->offset, buf, len);
 		proto->offset += len;
 	}
-	if ((flags & MSG_MORE) == 0)
+	if (pflags == Proto_More)
 #endif
 	{
+		int flags = MSG_NOSIGNAL;
+		if (pflags & Proto_More)
+			flags |= MSG_MORE;
+
 		fastvideolist_first(proto->clients);
 		for (Client_t *clt = fastvideolist_next(proto->clients); clt != NULL; clt = fastvideolist_next(proto->clients))
 		{
 #ifdef UNIX_PACKETIZER
-			ret = send(clt->fd, proto->packet, proto->offset, flags | MSG_NOSIGNAL);
+			ret = send(clt->fd, proto->packet, proto->offset, flags);
 #else
-			ret = send(clt->fd, buf, len, flags | MSG_NOSIGNAL);
+			ret = send(clt->fd, buf, len, flags);
 #endif
 			//dbg("send %d of %d", ret, len);
 			if (ret <= 0)
@@ -191,6 +195,17 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 	}
 	if (errno)
 		ret = -1;
+	return ret;
+}
+
+static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
+{
+	Proto_UNIX_t *proto = (Proto_UNIX_t *)arg;
+	ssize_t ret = 0;
+	/// Only one client may send data
+	fastvideolist_first(proto->clients);
+	Client_t *clt = fastvideolist_next(proto->clients);
+	ret = recv(clt->fd, buf, len, 0);
 	return ret;
 }
 
@@ -250,7 +265,7 @@ static void proto_destroy(void *arg)
 	free(proto);
 }
 
-Proto_t proto_unix =
+const Proto_t proto_unix =
 {
 	.name = "unix",
 	.create = proto_create,
@@ -259,6 +274,20 @@ Proto_t proto_unix =
 	.mtu = proto_mtu,
 	.fd = proto_fd,
 	.send = proto_send,
+	.recv = proto_recv,
 	.flush = proto_flush,
 	.destroy = proto_destroy,
 };
+
+#include <dlfcn.h>
+
+static void __attribute__ ((constructor)) smpegts_init()
+{
+	fastvideo_proto_append_t _fastvideo_proto_append;
+	void *hdl = dlopen(NULL, RTLD_NOW);
+	_fastvideo_proto_append = dlsym(hdl, "fastvideo_proto_append");
+	if (_fastvideo_proto_append)
+	{
+		_fastvideo_proto_append(&proto_unix);
+	}
+}

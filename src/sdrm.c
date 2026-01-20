@@ -107,6 +107,7 @@ typedef enum {
 	SDRM_PROPID_ROTATION,
 	SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR,
 	SDRM_PROPID_WRITEBACK_FB_ID,
+	SDRM_PROPID_WRITEBACK_PIXEL_FORMATS,
 	SDRM_PROPID_LAST
 } properties_id;
 
@@ -190,7 +191,10 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 			continue;
 		if (disp->type == device_transfer &&
 			connector->connector_type != DRM_MODE_CONNECTOR_WRITEBACK)
+		{
+			drmModeFreeConnector(connector);
 			continue;
+		}
 		if (connector->connection == DRM_MODE_CONNECTED)
 		{
 			/// if connector has not an encoder, use the freed one
@@ -379,8 +383,7 @@ static int sdrm_listconnector(Display_t *disp)
 			prop = drmModeGetProperty(disp->fd, props->props[j]);
 			if (prop)
 			{
-				dbg("\tproperty %s %d", prop->name, prop->prop_id);
-				dbg("\t\t%s : %llu", prop->name, props->prop_values[j]);
+				dbg("\tproperty %s %d => %llu", prop->name, prop->prop_id, props->prop_values[j]);
 			}
 		}
 	}
@@ -439,8 +442,7 @@ static int sdrm_listproperties(Display_t *disp,  uint32_t type)
 			prop = drmModeGetProperty(disp->fd, props->props[j]);
 			if (prop)
 			{
-				dbg("\tproperty %s %d", prop->name, prop->prop_id);
-				dbg("\t\t%s : %llu", prop->name, props->prop_values[j]);
+				dbg("\tproperty %s %d => %llu", prop->name, prop->prop_id, props->prop_values[j]);
 			}
 		}
 	}
@@ -456,20 +458,20 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	planes = drmModeGetPlaneResources(disp->fd);
 
 	*plane_id = (uint32_t)-1;
-	drmModePlanePtr plane;
+	drmModePlanePtr plane = NULL;
 	dbg("sdrm: Plane");
 	for (int i = 0; i < planes->count_planes; ++i)
 	{
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
 		int type = (int)sdrm_properties(disp, DRM_MODE_OBJECT_PLANE, plane->plane_id, "type", (uint64_t)-1);
-		dbg("  [%d] %u: %si %#x %d", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
+		dbg("  [%d] %u: %s %#x %d", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
 		if (*plane_id == (uint32_t)-1 && plane->possible_crtcs & (1 << disp->crtcindex) && type == disp->plane_type)
 		{
 			for (int j = 0; j < plane->count_formats; ++j)
 			{
 				uint32_t fourcc = plane->formats[j];
-				warn("\tformat %.4s", (char *)&fourcc);
-				if ((!disp->fourcc || plane->formats[j] == disp->fourcc) && plane->possible_crtcs & (1 << disp->crtcindex))
+				warn("\tformat %.4s %.4s", (char *)&fourcc, &disp->fourcc);
+				if ((!disp->fourcc || fourcc == disp->fourcc) && plane->possible_crtcs & (1 << disp->crtcindex))
 				{
 					ret = 0;
 					disp->fourcc = plane->formats[j];
@@ -495,9 +497,9 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	return ret;
 }
 
-static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height, uint32_t fourcc, FrameBuffer_t *buffer)
+static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
+			uint32_t stride, uint32_t fourcc, FrameBuffer_t *buffer)
 {
-	uint32_t stride;
 	uint64_t size;
 	int bpp = 32;
 	switch (fourcc)
@@ -505,8 +507,10 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 		case FOURCC_RG16:
 		case FOURCC_RGBP:
 		case FOURCC_YUYV:
+		case FOURCC_Y16:
 			bpp = 16;
 		break;
+		case FOURCC_GREY:
 		case FOURCC_NV12:
 			bpp = 8;
 		break;
@@ -522,11 +526,17 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 	switch (fourcc)
 	{
 		case FOURCC_YUYV:
-			buffer->strides[1] = buffer->strides[0] / 2;
-			buffer->offsets[1] = buffer->strides[0] * height;
-			buffer->strides[2] = buffer->strides[1];
-			buffer->offsets[2] = buffer->offsets[1] + buffer->strides[1] * height;
-			buffer->nplanes = 3;
+			if (stride && stride < buffer->strides[0])
+				buffer->strides[0] = stride;
+			else
+			{
+				buffer->strides[0] /= 2;
+				buffer->strides[1] = buffer->strides[0] / 2;
+				buffer->offsets[1] = buffer->strides[0] * height;
+				buffer->strides[2] = buffer->strides[1];
+				buffer->offsets[2] = buffer->offsets[1] + buffer->strides[1] * height;
+				buffer->nplanes = 3;
+			}
 		break;
 		case FOURCC_NV12:
 			buffer->strides[1] = buffer->strides[0];
@@ -701,7 +711,11 @@ static int sdrm_atomic_commit(Display_t *disp, FrameBuffer_t *buffer)
 		goto commit_error;
 	if (drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_CRTC_ID], disp->crtc_id) < 0) /// <=== failed ???
 		goto commit_error;
-	/// the src rectangle must be move from 16 bits without any reason found ???
+	/**
+	 * about 16bits, see drm_plane_state documentation into the kernel
+	 * "visible portion of plane within plane (in 16.16 fixed point)"
+	 * https://www.kernel.org/doc/html/latest/gpu/drm-kms.html#c.drm_plane_state
+	 */
 	if (disp->properties[SDRM_PROPID_SRC_X] != (uint32_t)-1 &&
 		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_SRC_X], 0 << 16) < 0)
 		goto commit_error;
@@ -827,7 +841,7 @@ Display_t *sdrm_create2(int fd, const char *name, device_type_e type, DisplayCon
 	for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 	{
 		if (sdrm_buffer_generic(disp,  disp->mode.hdisplay, disp->mode.vdisplay,
-				disp->fourcc, &disp->buffers[i]))
+				config->parent.stride, disp->fourcc, &disp->buffers[i]))
 		{
 			err("sdrm: buffer allocation error %m");
 			free(disp);
@@ -853,6 +867,7 @@ EXT_API Display_t *sdrm_create(const char *name, device_type_e type, DisplayConf
 	if (disp == NULL)
 	{
 		close(fd);
+		free(disp);
 		return NULL;
 	}
 	warn("sdrm: create %s device on  %s", name, config->device);
@@ -900,7 +915,7 @@ EXT_API Display_t *sdrm_duplicate(Display_t *dev, DisplayConf_t **pconfig)
 	for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 	{
 		if (sdrm_buffer_generic(disp,  disp->mode.hdisplay, disp->mode.vdisplay,
-				disp->fourcc, &disp->buffers[i]))
+				disp->config->parent.stride, disp->fourcc, &disp->buffers[i]))
 		{
 			err("sdrm: buffer allocation error %m");
 			free(disp);
@@ -925,7 +940,7 @@ static int sdrm_requestbuffer_output(Display_t *disp, enum buf_type_e t, va_list
 			disp->nbuffers = 0;
 			if (targets != NULL)
 			{
-				*targets = calloc(disp->nbuffers, sizeof(void*));
+				*targets = calloc(MAX_BUFFERS, sizeof(void*));
 				for (int i = 0; i < MAX_BUFFERS; i++, disp->nbuffers ++)
 				{
 					if (sdrm_buffer_dumb(disp, &disp->buffers[i]))
@@ -1560,7 +1575,7 @@ void sdrm_destroy(Display_t *disp)
 	free(disp);
 }
 
-DeviceConf_t * sdrm_createconfig()
+DeviceConf_t * sdrm_createconfig(const char *name)
 {
 	DisplayConf_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(DisplayConf_t));
@@ -1570,7 +1585,7 @@ DeviceConf_t * sdrm_createconfig()
 	return (DeviceConf_t *)devconfig;
 }
 
-FastVideoDevice_ops_t sdrm_ops = {
+const FastVideoDevice_ops_t sdrm_ops = {
 	.name = "screen",
 	.createconfig = sdrm_createconfig,
 	.create = (FastVideoDevice_create_t)sdrm_create,

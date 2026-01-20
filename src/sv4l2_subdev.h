@@ -7,6 +7,8 @@
 #include "config.h"
 #include "sv4l2.h"
 
+typedef struct sv4l2_subdev_stream_s sv4l2_subdev_stream_t;
+
 DeviceConf_t * sv4l2_subdev_createconfig();
 /**
  * @brief create a video subdevice and check capabilities
@@ -29,8 +31,8 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
  * @return the pixmap code (not the fourcc)
  */
 struct v4l2_subdev_format;
-uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, int pad, int (*pixformat)(void *arg, struct v4l2_subdev_format *ffs), void *cbarg);
-int sv4l2_subdev_setpixformat(V4L2_t *subdev, int pad, uint32_t fourcc, uint32_t width, uint32_t height);
+uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, int (*pixformat)(void *arg, struct v4l2_subdev_format *ffs), void *cbarg);
+int sv4l2_subdev_setpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, uint32_t fmtbus, uint32_t width, uint32_t height);
 
 /**
  * @brief returns information about fmtbus values available
@@ -44,7 +46,7 @@ int sv4l2_subdev_setpixformat(V4L2_t *subdev, int pad, uint32_t fourcc, uint32_t
  * @return the selected pixmap code (not the fourcc)
  */
 struct v4l2_subdev_mbus_code_enum;
-uint32_t sv4l2_subdev_getfmtbus(V4L2_t *subdev, int pad, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg);
+uint32_t sv4l2_subdev_getfmtbus(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg);
 
 /**
  * @brief get/set frame rate
@@ -55,7 +57,7 @@ uint32_t sv4l2_subdev_getfmtbus(V4L2_t *subdev, int pad, int(*fmtbus)(void *arg,
  *
  * @return the fps
  */
-int sv4l2_subdev_fps(V4L2_t *subdev, int pad, int fps);
+int sv4l2_subdev_fps(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, int fps);
 
 /**
  * @brief release memory of the instance
@@ -69,5 +71,5 @@ int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry);
 int sv4l2_subdev_capabilities(V4L2_t *subdev, json_t *capabilities, int all);
 #endif
 
-extern FastVideoDevice_ops_t subdev_ops;
+extern const FastVideoDevice_ops_t subdev_ops;
 #endif

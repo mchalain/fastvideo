@@ -36,6 +36,9 @@ struct GLProgram_Uniform_s
 
 static GLProgram_Uniform_t * _glprog_uniform_create(void *setting);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
+int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
+
+EGLProg_ops_t gles2_ops;
 
 typedef struct GLProgram_s GLProgram_t;
 struct GLProgram_s
@@ -48,8 +51,9 @@ struct GLProgram_s
 	const char *in_texturename;
 	GL_Buffer_t out;
 	GLuint fbo;
-	GLfloat width;
-	GLfloat height;
+	uint32_t width;
+	uint32_t height;
+	uint32_t fourcc;
 	GLProgram_Uniform_t *controls;
 };
 
@@ -101,9 +105,17 @@ static const GLchar defaultfragment[] = ""
 "\n";
 #endif
 
+#ifndef GL_TEXTURE_EXTERNAL_OES
+#define GL_TEXTURE_EXTERNAL_OES GL_TEXTURE_2D;
+#endif
+
 #ifndef EGL_EGLEXT_PROTOTYPES
-PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = NULL;
-PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = NULL;
+static PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = NULL;
+static PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = NULL;
+#if defined(GL_OES_EGL_image)
+static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
+static PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
+#endif
 static int _egl_initprototypes(void)
 {
 	glGenVertexArraysOES = (void *) eglGetProcAddress("glGenVertexArraysOES");
@@ -113,6 +125,11 @@ static int _egl_initprototypes(void)
 	}
 	glBindVertexArrayOES = (void *) eglGetProcAddress("glBindVertexArrayOES");
 	if(glBindVertexArrayOES == NULL)
+	{
+		return -1;
+	}
+	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
+	if(glEGLImageTargetTexture2DOES == NULL)
 	{
 		return -1;
 	}
@@ -367,6 +384,9 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	program->width = width;
 	program->height = height;
 
+	glEnable(GL_TEXTURE_EXTERNAL_OES);
+
+	glViewport(0, 0, width, height);
 	glUseProgram(program->ID);
 
 	glGenVertexArraysOES(1, &program->vertexArrayID);
@@ -393,7 +413,7 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	glActiveTexture(GL_TEXTURE0);
 
 	GLuint resolutionID = glGetUniformLocation(program->ID, "vResolution");
-	glUniform4f(resolutionID, program->width, program->height, 1 / program->width, 1 / program->height);
+	glUniform4f(resolutionID, (GLfloat)program->width, (GLfloat)program->height, 1 / (GLfloat)program->width, 1 / (GLfloat)program->height);
 
 	GLProgram_Uniform_t *uniform = program->controls;
 	while (uniform)
@@ -460,10 +480,57 @@ int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out)
 	return 0;
 }
 
+GL_Buffer_t *gltexture_create(GLProgram_t *program, uint32_t fourcc)
+{
+	GLenum textype = GL_TEXTURE_EXTERNAL_OES;
+	GLuint dma_texture;
+	glGenTextures(1, &dma_texture);
+
+	glBindTexture(textype, dma_texture);
+
+	for (GLProgram_t *it = program; it != NULL; it = it->next)
+	{
+		it->fourcc = fourcc;
+	}
+#if 0
+	uint32_t width = program->width;
+	uint32_t height = program->height;
+	const FourccFormat_t *format = fourcc_getformat(fourcc);
+	glTexImage2D(textype, 0, format->internal, width, height, 0, format->full, GL_UNSIGNED_BYTE, NULL);
+#endif
+	glTexParameteri(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(textype, GL_TEXTURE_MAX_LEVEL_APPLE, 0);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	GL_Buffer_t *glbuffer = calloc(1, sizeof(*glbuffer));
+	glbuffer->texture = dma_texture;
+	glbuffer->textype = textype;
+
+	return glbuffer;
+}
+
+void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image)
+{
+	glEGLImageTargetTexture2DOES(glbuffer->textype, image);
+}
+
+GLuint gltexture_id(GL_Buffer_t *glbuffer)
+{
+	return glbuffer->texture;
+}
+
+void gltexture_destroy(GL_Buffer_t *glbuffer)
+{
+	free(glbuffer);
+}
+
 int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 {
 	static int programid = 0;
 	GLenum err = 0;
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	if (program->fbo  > 0)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
@@ -473,7 +540,7 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 		err = glGetError();
 		if (err != GL_NO_ERROR)
 		{
-			err("segl: program[%d] Framebuffer access error", programid);
+			err("segl: program[%d] Framebuffer access error %#x", programid, err);
 		}
 	}
 	else
@@ -516,6 +583,14 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 	}
 	programid = 0;
 	return 0;
+}
+
+void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer)
+{
+	glUseProgram(0);
+	glBindTexture(buffer->textype, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
@@ -845,6 +920,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 			if (previous)
 				previous->next = config;
 			previous = config;
+			config->name = gles2_ops.name;
 		}
 	}
 	else if (jconfig && json_is_object(jconfig))
@@ -857,6 +933,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 		else
 		{
 			first = config;
+			config->name = gles2_ops.name;
 		}
 	}
 	if (arg != NULL)
@@ -868,9 +945,35 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 }
 #endif
 
+EGLProg_ops_t gles2_ops = {
+	.name = "gles2",
+	.create = glprog_create,
+	.setup = glprog_setup,
+	.buffer = {
+		.create = gltexture_create,
+		.attach = gltexture_attach,
+		.id = gltexture_id,
+		.destroy = gltexture_destroy,
+	},
+	.run = glprog_run,
+	.stop = glprog_stop,
+	.setuniform = glprog_setuniform,
+	.destroy = glprog_destroy,
+	.loadjsonsetting = glprog_loadjsonsetting,
+	.loadjsonconfiguration = glprog_loadjsonconfiguration,
+};
+
 #include <dlfcn.h>
 
 static void __attribute__ ((constructor)) segl_init()
 {
 	_egl_initprototypes();
+
+	segl_program_ops_append_t _segl_program_ops_append;
+	void *hdl = dlopen(NULL, RTLD_NOW);
+	_segl_program_ops_append = dlsym(hdl, "segl_program_ops_append");
+	if (_segl_program_ops_append)
+	{
+		_segl_program_ops_append(&gles2_ops);
+	}
 }

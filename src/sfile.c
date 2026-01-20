@@ -18,111 +18,39 @@
 #include "config.h"
 #include "log.h"
 
-typedef struct File_s File_t;
-struct File_s
-{
-	const char *path;
-	void *ctx;
-	File_ops_t *ops;
-	device_type_e type;
-	uint32_t fourcc;
-	uint32_t width;
-	uint32_t height;
-	uint32_t stride;
-	size_t size;
-	size_t nbuffers;
-	FrameBuffer_t *buffers;
-	int lastbufferid;
-};
+extern const Proto_t proto_file;
+
 EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int flags);
 
 EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
 {
-	const char *start = strchr(filename, ':');
-	if (start)
-		filename = start + 1;
-	File_ops_t *ops = &_passthrough_ops;
-	if (type == device_transfer)
+	if (type != device_input && type != device_output)
 	{
-		err("sfile: %s bad device type", config->parent.name);
+		err("sfile: support only input or output devices");
 		return NULL;
 	}
-	int rootfd = AT_FDCWD;
-	if (config == NULL)
-	{
-		err("config object must be set");
-		return NULL;
-	}
-	if (config->rootpath != NULL)
-	{
-		int fd = open(config->rootpath, O_DIRECTORY);
-		if (fd < 0)
-		{
-			err("root path is \"%s\" defined but unavailable %m", config->rootpath);
-			return NULL;
-		}
-		rootfd = fd;
-	}
-
-	if (config->filename != NULL)
-		filename = config->filename;
-	size_t fsize = 0;
-	int mode = 0;
-	if (type == device_input)
-	{
-		mode = O_RDONLY;
-		if (faccessat(rootfd, filename, R_OK, 0) < 0)
-		{
-			err("file \"%s\" not accessible", filename);
-			close(rootfd);
-			return NULL;
-		}
-		struct stat sb;
-		if (fstatat(rootfd, filename, &sb, 0) < 0)
-		{
-			err("statistic access error: %m");
-			close(rootfd);
-			return NULL;
-		}
-		fsize = sb.st_size;
-		for (int i = 0; i < sb.st_blocks; i++)
-		{
-
-		}
-	}
-	else if (device_output)
-	{
-		mode = O_WRONLY;
-		if (faccessat(rootfd, filename, F_OK, 0) < 0)
-			mode |= O_CREAT;
-	}
-	else
-	{
-		if (rootfd != AT_FDCWD)
-			close(rootfd);
-		return NULL;
-	}
-
-	void *ctx = ops->open(rootfd, filename, mode);
+	const Proto_t *ops = &proto_file;
+	if (config && config->proto)
+		ops = config->proto;
+	void *ctx = ops->create(&config->protoconf);
 	if (ctx == NULL)
-	{
-		err("file \"%s\" opening error %m", filename);
 		return NULL;
-	}
-	close(rootfd);
+
 	File_t *dev = calloc(1, sizeof(*dev));
+	dev->config = config;
 	dev->ctx = ctx;
 	dev->ops = ops;
-	dev->size = fsize;
 	dev->type = type;
-	dev->fourcc = config->parent.fourcc;
-	dev->width = config->parent.width;
-	dev->height = config->parent.height;
-	if (config->parent.stride)
-		dev->stride = config->parent.stride;
-	else if (fsize)
-		dev->stride = fsize / config->parent.height;
 	dev->path = filename;
+	switch (config->header)
+	{
+		case File_TIFF_e:
+			/// add TIFF header for other fourcc
+			dev->headerlen = snprintf(dev->header, sizeof(dev->header),
+				"P7 WIDTH %.4d HEIGHT %.4d DEPTH %.1d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR",
+				config->parent.width, config->parent.height, config->parent.stride / config->parent.width);
+	}
+	warn("sfile: %s opened for %.4s", config->filename, &config->parent.fourcc);
 	return dev;
 }
 
@@ -180,26 +108,44 @@ EXT_API int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 
 EXT_API int sfile_fd(File_t *dev, int writer)
 {
+#if 0
 	return dev->ops->fd(dev);
+#else
+	if (!writer && dev->type == device_input)
+	{
+		int ret = dev->ops->fd(dev->ctx);
+		for (int i = 0; i < dev->nbuffers; i++)
+		{
+			if (dev->buffers[i].state == queued)
+			{
+				ret = -1;
+				break;
+			}
+		}
+		return ret;
+	}
+	return -1;
+#endif
 }
 
 EXT_API int sfile_start(File_t *dev)
 {
 	dev->lastbufferid = 0;
-	if (dev->type & device_input)
+	if (dev->type == device_input)
 	{
-		dbg("start buffers enqueuing");
+		dbg("sfile: start buffers enqueuing");
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
 			if (sfile_queue(dev, i, NULL, 0, 0))
 				return -1;
 		}
 	}
-	return 0;
+	return dev->ops->connect(dev->ctx);
 }
 
 EXT_API int sfile_stop(File_t *dev)
 {
+	dev->ops->close(dev->ctx);
 	return 0;
 }
 
@@ -228,7 +174,7 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 {
 	if (index > dev->nbuffers)
 	{
-		err("unkown %d buffer index to queue", index);
+		err("sfile: unkown %d buffer index to queue", index);
 		return -1;
 	}
 	FrameBuffer_t *buffer = &dev->buffers[index];
@@ -249,7 +195,11 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 		}
 		if (mem == NULL)
 			mem = buffer->mem;
-		ssize_t ret = dev->ops->write(dev, mem, bytesused);
+		ssize_t ret = 0;
+		if (dev->headerlen)
+			ret = dev->ops->send(dev->ctx, dev->header, dev->headerlen, Proto_More);
+		if (ret >= 0)
+			ret = dev->ops->send(dev->ctx, mem, bytesused, 0);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
@@ -273,7 +223,7 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
 			buffer->mem = mmap(NULL, buffer->size, PROT_WRITE, MAP_SHARED, buffer->dma_buf, 0 );
 		}
-		ssize_t ret = dev->ops->read(dev, buffer->mem, bytesused);
+		ssize_t ret = dev->ops->send(dev->ctx, buffer->mem, bytesused, 0);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
@@ -294,7 +244,7 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 
 EXT_API void sfile_destroy(File_t *dev)
 {
-	dev->ops->close(dev);
+	dev->ops->destroy(dev->ctx);
 	if (dev->nbuffers > 0)
 		free(dev->buffers);
 	free(dev);
@@ -307,28 +257,50 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 	json_t *jconfig = entry;
 
 	FileConfig_t *config = (FileConfig_t *)arg;
-	if (config->parent.name != NULL)
-	{
-		const char *filepath = strchr(config->parent.name, ':');
-		if (filepath)
-		{
-			filepath++;
-			/// the filepath may be an URL
-			if (filepath[0] == '/' && filepath[1] == '/') filepath += 2;
-			config->filename = filepath;
-		}
-	}
-	json_t *filename = json_object_get(jconfig, "filename");
-	if (filename && json_is_string(filename))
-	{
-		const char *value = json_string_value(filename);
-		config->filename = value;
-	}
 	json_t *path = json_object_get(jconfig, "path");
 	if (path && json_is_string(path))
 	{
 		const char *value = json_string_value(path);
-		config->rootpath = value;
+		config->filename = value;
+	}
+	json_t *modes = json_object_get(jconfig, "protocol");
+	if (modes == NULL)
+		modes = json_object_get(jconfig, "proto");
+	if (modes == NULL)
+		modes = json_object_get(jconfig, "mode");
+	if (modes && json_is_array(modes))
+	{
+		json_t *mode;
+		int index;
+		json_array_foreach(modes, index, mode)
+		{
+			if (mode && json_is_string(mode))
+			{
+				const char *value = json_string_value(mode);
+				for (int i = 0; i < (sizeof(_protos)/sizeof(*_protos)); i++)
+				{
+					if (_protos[i] && !strcasecmp(value, _protos[i]->name))
+					{
+						config->proto = _protos[i];
+						break;
+					}
+				}
+				if (! strncasecmp(value, "tiff", 6))
+					config->header = File_TIFF_e;
+			}
+		}
+	}
+	if (modes && json_is_string(modes))
+	{
+		const char *value = json_string_value(modes);
+		for (int i = 0; i < (sizeof(_protos)/sizeof(*_protos)); i++)
+		{
+			if (_protos[i] && !strcasecmp(value, _protos[i]->name))
+			{
+				config->proto = _protos[i];
+				break;
+			}
+		}
 	}
 library_end:
 	return 0;
@@ -349,24 +321,34 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 }
 #endif
 
-DeviceConf_t * sfile_createconfig()
+DeviceConf_t * sfile_createconfig(const char *name)
 {
 	FileConfig_t *devconfig = NULL;
+
+	/// this is possible if name variable exits when "create" is called
 	devconfig = calloc(1, sizeof(FileConfig_t));
+	const char *filepath = strchr(name, ':');
+	if (filepath)
+	{
+		filepath++;
+		/// the filepath may be an URL
+		if (filepath[0] == '/' && filepath[1] == '/') filepath += 2;
+		devconfig->filename = filepath;
+	}
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sfile_loadjsonconfiguration;
 #endif
 	return (DeviceConf_t *)devconfig;
 }
 
-FastVideoDevice_ops_t sfile_ops = {
+const FastVideoDevice_ops_t sfile_ops = {
 	.name = "file",
 	.createconfig = sfile_createconfig,
 	.create = (FastVideoDevice_create_t)sfile_create,
 	.duplicate = (FastVideoDevice_duplicate_t)NULL,
 	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)sfile_requestbuffer,
-	.eventfd = (FastVideoDevice_eventfd_t)NULL,
+	.eventfd = (FastVideoDevice_eventfd_t)sfile_fd,
 	.start = (FastVideoDevice_start_t)sfile_start,
 	.stop = (FastVideoDevice_stop_t)sfile_stop,
 	.dequeue = (FastVideoDevice_dequeue_t)sfile_dequeue,

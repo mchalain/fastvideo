@@ -19,7 +19,7 @@ struct FastVideoDevice_s
 	FastVideoDevice_ops_t *ops;
 };
 
-typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(void);
+typedef DeviceConf_t * (*FastVideoDevice_createconfig_t)(const char *name);
 typedef void *(*FastVideoDevice_create_t)(const char *devicename, device_type_e type, DeviceConf_t *config);
 typedef void *(*FastVideoDevice_create2_t)(int fd, const char *name, device_type_e type, DeviceConf_t *config);
 typedef void *(*FastVideoDevice_duplicate_t)(void *dev, DeviceConf_t **pconfig);
@@ -51,8 +51,8 @@ struct FastVideoDevice_ops_s
 	FastVideoDevice_destroy_t destroy;
 };
 
-typedef void (*fastvideodevice_ops_append_t)(FastVideoDevice_ops_t *ops);
-void fastvideodevice_ops_append(FastVideoDevice_ops_t *ops);
+typedef void (*fastvideodevice_ops_append_t)(const FastVideoDevice_ops_t *ops);
+void fastvideodevice_ops_append(const FastVideoDevice_ops_t *ops);
 FastVideoDevice_ops_t *fastvideodevice_ops_next(FastVideoDevice_ops_t *ops);
 
 typedef struct FastVideoList_s FastVideoList_t;
@@ -83,6 +83,13 @@ enum
 	FB_FLAGS_MODIFIER = 0x00000001,
 };
 
+typedef enum {
+	invalid,
+	dequeued,
+	ready,
+	queued,
+} FrameBuffer_state_e;
+
 typedef struct FrameBuffer_s FrameBuffer_t;
 struct FrameBuffer_s
 {
@@ -103,14 +110,42 @@ struct FrameBuffer_s
 		uint32_t height;
 	};
 	int flags;
-	enum {
-		invalid,
-		dequeued,
-		ready,
-		queued,
-	} state;
+	FrameBuffer_state_e state;
 	void *private;
 	FrameBuffer_t *next;
 };
 
+typedef struct Proto_Config_s Proto_Config_t;
+struct Proto_Config_s
+{
+	DeviceConf_t parent;
+	const char *host;
+	int port;
+	int maxclients;
+};
+
+typedef enum Proto_Flags_e Proto_Flags_t;
+enum Proto_Flags_e
+{
+	Proto_Flush = 0,
+	Proto_More,
+};
+
+typedef struct Proto_s Proto_t;
+struct Proto_s
+{
+	const char *name;
+	void *(*create)(Proto_Config_t *config);
+	int (*connect)(void *arg);
+	void (*close)(void *arg);
+	size_t (*mtu)(void *arg);
+	int (*fd)(void *arg);
+	ssize_t (*send)(void *arg, const void *buf, size_t len, Proto_Flags_t flags);
+	ssize_t (*recv)(void *arg, void *buf, size_t len, Proto_Flags_t flags);
+	void (*flush)(void *arg);
+	void (*destroy)(void *arg);
+};
+
+typedef void (*fastvideo_proto_append_t)(const Proto_t *proto);
+extern const Proto_t *_protos[10];
 #endif

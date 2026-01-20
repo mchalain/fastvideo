@@ -17,6 +17,13 @@
 
 #define segl_dbg(...)
 
+EXT_API int segl_start(EGL_t *dev);
+EXT_API int segl_stop(EGL_t *dev);
+EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flags);
+EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags);
+
+static const EGLNative_t *_segl_get_native(const char *name);
+
 const EGLNative_t * _natives[5] = {0};
 
 void segl_native_append(EGLNative_t *native)
@@ -37,6 +44,16 @@ void segl_export_append(EGLExport_t *export)
 		_exports[i] = export;
 }
 
+const EGLProg_ops_t *_prog_ops[5] = {0};
+
+void segl_program_ops_append(EGLProg_ops_t *prog_ops)
+{
+	int i = 0;
+	for (; _prog_ops[i] && i < sizeof(_prog_ops) / sizeof(*_prog_ops); i++);
+	if (i < sizeof(_prog_ops)/sizeof(*_prog_ops))
+		_prog_ops[i] = prog_ops;
+}
+
 typedef struct EGL_s EGL_t;
 struct EGL_s
 {
@@ -53,15 +70,12 @@ struct EGL_s
 	void *export_ctx;
 	EGLNativeDisplayType native_display;
 	EGLNativeWindowType native_window;
+	const EGLProg_ops_t *program_ops;
 	GLProgram_t *programs;
 	GLBuffer_t buffers[MAX_BUFFERS];
 	int curbufferid;
 	int nbuffers;
 };
-
-#ifndef GL_TEXTURE_EXTERNAL_OES
-#define GL_TEXTURE_EXTERNAL_OES GL_TEXTURE_2D;
-#endif
 
 #ifndef EGL_KHR_image
 #error "this version of EGL doesn't support KHR Image"
@@ -74,9 +88,9 @@ struct EGL_s
 static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR = NULL;
 static PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR = NULL;
 #endif
-#if defined(GL_OES_EGL_image)
-static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
-static PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
+#if EGL_EXT_image_dma_buf_import_modifiers
+static PFNEGLQUERYDMABUFFORMATSEXTPROC eglQueryDmaBufFormatsEXT = NULL;
+static PFNEGLQUERYDMABUFMODIFIERSEXTPROC eglQueryDmaBufModifiersEXT = NULL;
 #endif
 
 static int _egl_initprototypes(void)
@@ -91,8 +105,13 @@ static int _egl_initprototypes(void)
 	{
 		return -1;
 	}
-	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
-	if(glEGLImageTargetTexture2DOES == NULL)
+	eglQueryDmaBufFormatsEXT = (void *) eglGetProcAddress("eglQueryDmaBufFormatsEXT");
+	if(eglQueryDmaBufFormatsEXT == NULL)
+	{
+		return -1;
+	}
+	eglQueryDmaBufModifiersEXT = (void *) eglGetProcAddress("eglQueryDmaBufModifiersEXT");
+	if(eglQueryDmaBufModifiersEXT == NULL)
 	{
 		return -1;
 	}
@@ -196,13 +215,18 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		err("segl: %s bad device type", config->parent.name);
 		return NULL;
 	}
+	config->type = type;
 	EGLNativeDisplayType ndisplay = EGL_DEFAULT_DISPLAY;
 
 	uint32_t width = config->parent.width;
 	uint32_t height = config->parent.height;
 
 	const EGLNative_t * native = config->native;
-	warn("segl: native %s", native->name);
+	if (type == device_transfer && config->export && config->export->native)
+		config->native = _segl_get_native(config->export->native);
+
+	if (native == NULL)
+		return NULL;
 	ndisplay = native->display(config);
 	if (EGL_CAST(EGLint,ndisplay) == EGL_UNKNOWN)
 		return NULL;
@@ -224,11 +248,30 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		return NULL;
 	}
 
-	glEnable(GL_TEXTURE_EXTERNAL_OES);
-
 	EGLint num_configs;
 	eglGetConfigs(eglDisplay, NULL, 0, &num_configs);
 
+#if 0
+	// the function eglQueryDmaBufModifiersEXT looks bugged
+	uint32_t fourccs[4] = {0};
+	int numfourccs = 0;
+	eglQueryDmaBufFormatsEXT(eglDisplay, 4, &fourccs[0], &numfourccs);
+	for (int i = 0; i < 4 && i < numfourccs; i++)
+	{
+		dbg("segl: %.4s supported with modifiers:", &fourccs[i]);
+		uint64_t modifiers[4] = {0};
+		EGLint nummodifiers = 0;
+		EGLBoolean external = 0;
+		eglQueryDmaBufModifiersEXT(eglDisplay, fourccs[i], 0, NULL, &external, &nummodifiers);
+		if (nummodifiers > (sizeof(modifiers)/sizeof(*modifiers)))
+			nummodifiers = (sizeof(modifiers)/sizeof(*modifiers));
+		eglQueryDmaBufModifiersEXT(eglDisplay, fourccs[i], nummodifiers, modifiers, &external, &nummodifiers);
+		for (int j = 0; j < 4 && j < nummodifiers;j++)
+		{
+			dbg("\t%#llx %s", modifiers[j], external?"ext":"");
+		}
+	}
+#endif
 	EGLConfig eglConfigs[20];
 	if (num_configs > 20)
 	{
@@ -313,7 +356,16 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	dbg("segl: swap interval %d", minswapinterval);
 	eglSwapInterval(eglDisplay, minswapinterval);
 
-	GLProgram_t *programs = glprog_create(config->programs, width, height);
+	const EGLProg_ops_t *prog_ops = _prog_ops[0];
+	for (int i = 0; config->programs && i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
+	{
+		if (_prog_ops[i] && strcmp(_prog_ops[i]->name, config->programs->name))
+		{
+			prog_ops = _prog_ops[i];
+			break;
+		}
+	}
+	GLProgram_t *programs = prog_ops->create(config->programs, width, height);
 	if (programs == NULL)
 		return NULL;
 
@@ -324,62 +376,26 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	dev->eglconfig = eglConfigs[configid];
 	dev->eglcontext = eglContext;
 	dev->eglsurface = eglSurface;
+	dev->program_ops = prog_ops;
 	dev->programs = programs;
 
 	dev->native_window = nwindow;
 	dev->native_display = ndisplay;
 	dev->curbufferid = -1;
 	dev->type = type;
+	warn("segl: create device %s %lux%lu %.4s", native->name, width, height, &dev->config->parent.fourcc);
 	return dev;
-}
-
-static GLuint texture_create(EGL_t *dev, GLenum textype)
-{
-	GLuint dma_texture;
-	glGenTextures(1, &dma_texture);
-
-	glBindTexture(textype, dma_texture);
-#if 0
-	uint32_t width = dev->config->parent.width;
-	uint32_t height = dev->config->parent.height;
-	const FourccFormat_t *format = fourcc_getformat(dev->config->parent.fourcc);
-	glTexImage2D(textype, 0, format->internal, width, height, 0, format->full, GL_UNSIGNED_BYTE, NULL);
-#endif
-	glTexParameteri(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	return dma_texture;
 }
 
 static int texture_fromdma(EGL_t *dev, GLBuffer_t *buffer, int dma_fd, size_t size)
 {
-	GLuint texture = -1;
-	GLuint textype = GL_TEXTURE_EXTERNAL_OES;
-	texture = texture_create(dev, textype);
+	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, dev->config->parent.fourcc);
 
-	uint32_t stride = size / dev->config->parent.height;
+	uint32_t stride = dev->config->parent.stride;
+	if (stride == 0)
+		stride = size / dev->config->parent.height;
 	uint32_t fourcc;
-	switch (dev->config->parent.fourcc)
-	{
-		/**
-		 * change multi-planar format to mono-planar grey format
-		 */
-#if 0
-		case FOURCC('I','4','2','0'):
-		case FOURCC('N','V','2','1'):
-		case FOURCC('N','V','1','2'):
-		case FOURCC('Y','V','1','2'):
-		case FOURCC('Y','V','1','6'):
-			fourcc = FOURCC('G','R','E','Y');
-			fourcc = FOURCC('R','8',' ',' ');
-			stride = dev->config->parent.width;
-			size = dev->config->parent.width * dev->config->parent.height;
-		break;
-#endif
-		default:
-			fourcc = dev->config->parent.fourcc;
-	}
+	fourcc = dev->config->parent.fourcc;
 	EGLImageKHR image;
 	GLint attrib_list[] = {
 		EGL_IMAGE_PRESERVED_KHR, EGL_TRUE,
@@ -460,21 +476,16 @@ for (int i = 0; i < sizeof(formats) / sizeof(*formats); i++)
 	buffer->pitch = stride;
 	buffer->dma_fd = dma_fd;
 
-	GL_Buffer_t *glbuffer = &buffer->gl;
-	glbuffer->texture = texture;
-	glbuffer->textype = textype;
-	glEGLImageTargetTexture2DOES(textype, image);
+	dev->program_ops->buffer.attach(glbuffer, image);
 	eglDestroyImageKHR(dev->egldisplay, image);
+	buffer->private = glbuffer;
 
 	return 0;
 }
 
 static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t size)
 {
-	GLuint texture = -1;
-	//GLuint textype = GL_TEXTURE_EXTERNAL_OES;
-	GLuint textype = GL_TEXTURE_2D;
-	texture = texture_create(dev, textype);
+	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, dev->config->parent.fourcc);
 
 	uint32_t stride = size / dev->config->parent.height;
 	EGLImageKHR image;
@@ -483,7 +494,7 @@ static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t siz
 					dev->egldisplay,
 					dev->eglcontext,
 					EGL_GL_TEXTURE_2D_KHR,
-					(EGLClientBuffer)(long)texture,
+					(EGLClientBuffer)(long)dev->program_ops->buffer.id(glbuffer),
 					mem);
 
 	if(image == EGL_NO_IMAGE_KHR)
@@ -496,11 +507,9 @@ static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t siz
 	buffer->pitch = stride;
 	buffer->memory = mem;
 
-	GL_Buffer_t *glbuffer = &buffer->gl;
-	glbuffer->texture = texture;
-	glbuffer->textype = textype;
-	glEGLImageTargetTexture2DOES(textype, image);
+	dev->program_ops->buffer.attach(glbuffer, image);
 	eglDestroyImageKHR(dev->egldisplay, image);
+	buffer->private = glbuffer;
 
 	return 0;
 }
@@ -548,8 +557,9 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 
 static void _egl_releasebuffer(EGL_t *dev, int id)
 {
-	if (dev->export_ctx)
+	if (dev->export_ctx && dev->export->releasebuffer)
 		dev->export->releasebuffer(dev->export_ctx, &dev->buffers[id]);
+	dev->program_ops->buffer.destroy(dev->buffers[id].private);
 	dev->buffers[id].memory = NULL;
 }
 
@@ -640,8 +650,6 @@ EXT_API int segl_requestbuffer(EGL_t *dev, enum buf_type_e t, ...)
 EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 {
 	EGL_t *dup = NULL;
-	uint32_t width = dev->config->parent.width;
-	uint32_t height = dev->config->parent.height;
 	if (dev->type != device_transfer)
 	{
 		err("segl: device may not support duplication");
@@ -655,13 +663,19 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	*pconfig = malloc(sizeof(*(dup->config)));
 	memcpy(*pconfig, dev->config, sizeof(*(dup->config)));
 	memmove(&(*pconfig)->parent, &dev->config->transfer, sizeof((*pconfig)->parent));
-	(*pconfig)->parent.width = width;
-	(*pconfig)->parent.height = height;
+	if ((*pconfig)->parent.width == 0)
+		(*pconfig)->parent.width = dev->config->parent.width;
+	if ((*pconfig)->parent.height == 0)
+		(*pconfig)->parent.height = dev->config->parent.height;
 	dup->config = *pconfig;
+	uint32_t width = dup->config->parent.width;
+	uint32_t height = dup->config->parent.height;
+	uint32_t fourcc = dup->config->parent.fourcc;
 	dup->type = device_input;
 	dev->dup = dup;
-	dbg("segl: duplicate %.4s %lux%lu", &dup->config->parent.fourcc, width, height);
-	dup->export = dup->config->export;
+	dup->export = _exports[0];
+	if (dup->config->export)
+		dup->export = dup->config->export;
 	dup->export_ctx = dup->export->create(dup->config, dev->egldisplay, dev->eglcontext);
 	if (!dup->export_ctx)
 	{
@@ -669,9 +683,10 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		free(dup);
 		return NULL;
 	}
+	warn("segl: create device export %lux%lu %.4s with %s", width, height, &fourcc, dup->export->name);
 
 	dup->nbuffers = 0;
-	const FourccFormat_t *fformat = fourcc_getformat(dup->config->parent.fourcc);
+	const FourccFormat_t *fformat = fourcc_getformat(fourcc);
 	size_t size = width;
 	size *= height;
 	size *= fformat->stride_factor[0];
@@ -690,14 +705,22 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 EXT_API int segl_start(EGL_t *dev)
 {
 	if (dev->type == device_input)
+	{
+		dbg("segl: %s start buffers enqueuing", dev->config->parent.name);
+		for (int i = 0; i < dev->nbuffers; i++)
+		{
+			if (segl_queue(dev, i, NULL, 0, 0))
+				return -1;
+		}
+		dev->curbufferid = 0;
 		return 0;
-	glViewport(0, 0, dev->config->parent.width, dev->config->parent.height);
+	}
 
 	// initialize the first program with the output framebuffer
 	GL_Buffer_t *out = NULL;
 	if (dev->dup)
 		out = dev->dup->export->out(dev->dup->export_ctx);
-	glprog_setup(dev->programs, dev->fbo, out);
+	dev->program_ops->setup(dev->programs, dev->fbo, out);
 
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
 	dev->curbufferid = -1;
@@ -718,15 +741,17 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 	uint32_t width = dev->config->parent.width;
 	uint32_t height = dev->config->parent.height;
 
-	if (dev->type == device_input)
-	{
-		dev->curbufferid = -1;
-		return 0;
-	}
 	if ((int)id > dev->nbuffers)
 	{
 		err("segl: unknown buffer id %d", id);
 		return -1;
+	}
+	GLBuffer_t *buffer = &dev->buffers[id];
+
+	if (dev->type == device_input)
+	{
+		buffer->state = queued;
+		return 0;
 	}
 	if (dev->curbufferid != -1)
 	{
@@ -734,18 +759,11 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 		return -1;
 	}
 
-	GLBuffer_t *buffer = &dev->buffers[id];
-#if 0
-	if (buffer->dma_fd == 0)
-	{
-		glTexSubImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, mem);
-	}
-#endif
 	buffer->modifiers = 0;
 	if (flags & FB_FLAGS_MODIFIER)
 		buffer->modifiers = dev->config->parent.modifiers;
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glprog_run(dev->programs, &buffer->gl);
+
+	dev->program_ops->run(dev->programs, buffer->private);
 	if (eglSwapBuffers(dev->egldisplay, dev->eglsurface) == EGL_FALSE)
 		err("EGL swapbuffers error %m");
 	// errno is set to EAGAIN after eglSwapBuffers
@@ -756,8 +774,11 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 		dev->curbufferid = id;
 		if (dev->dup)
 		{
-			dev->dup->curbufferid = dev->curbufferid;
-			dev->dup->curbufferid %= dev->dup->nbuffers;
+			buffer = &dev->dup->buffers[id];
+			if (buffer->state == queued)
+			{
+				buffer->state = ready;
+			}
 		}
 	}
 	return ret;
@@ -767,7 +788,6 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 {
 	errno = 0;
 	int id = dev->curbufferid;
-	dev->curbufferid = -1;
 	if (dev->type == device_input)
 	{
 		if (id == -1)
@@ -776,20 +796,29 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 			return id;
 		}
 		GLBuffer_t *buffer = &dev->buffers[id];
+		if (!buffer)
+			return -1;
+		if (buffer->state != ready)
+		{
+			errno = EAGAIN;
+			return -1;
+		}
 		dev->export->flush(dev->export_ctx, buffer);
 		if (mem)
 			*mem = buffer->memory;
 
-		if (flags && dev->buffers[id].modifiers)
+		if (flags && buffer->modifiers)
 			*flags |= FB_FLAGS_MODIFIER;
 		if (bytesused)
-			*bytesused = dev->buffers[id].size;
+			*bytesused = buffer->size;
+		buffer->state != dequeued;
+		dev->curbufferid++;
+		dev->curbufferid %= dev->nbuffers;
 		return id;
 	}
-	glUseProgram(0);
-	glBindTexture(dev->buffers[0].gl.textype, 0);
-	glBindTexture(GL_TEXTURE_2D, 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	dev->curbufferid = -1;
+	GLBuffer_t *buffer = &dev->buffers[id];
+	dev->program_ops->stop(dev->programs, buffer->private);
 	if (dev->native->sync(dev->native_window) < 0)
 		return -1;
 
@@ -800,6 +829,10 @@ EXT_API int segl_fd(EGL_t *dev, int writer)
 {
 	if (writer && dev->curbufferid == -1)
 		return 0;
+	if (writer)
+		return -1;
+	if (dev->type == device_input)
+		return dev->export->fd(dev->export_ctx);
 	return dev->native->fd(dev->native_window);
 }
 
@@ -807,7 +840,7 @@ EXT_API void segl_destroy(EGL_t *dev)
 {
 	if (dev->type != device_input)
 	{
-		glprog_destroy(dev->programs);
+		dev->program_ops->destroy(dev->programs);
 		eglDestroySurface(dev->egldisplay, dev->eglsurface);
 		eglDestroyContext(dev->egldisplay, dev->eglcontext);
 		dev->native->destroy(dev->native_display);
@@ -821,15 +854,29 @@ EXT_API void segl_destroy(EGL_t *dev)
 	free(dev);
 }
 
-DeviceConf_t * segl_createconfig()
+DeviceConf_t * segl_createconfig(const char *name)
 {
 	EGLConfig_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(EGLConfig_t));
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = segl_loadjsonconfiguration;
 #endif
-	devconfig->export = _exports[0];
+	devconfig->export = NULL;
 	return (DeviceConf_t *)devconfig;
+}
+
+static const EGLNative_t *_segl_get_native(const char *name)
+{
+	const EGLNative_t *native = NULL;
+	for (int i = 0; i < sizeof(_natives) / sizeof(*_natives) && _natives[i]; i++)
+	{
+		if (!strcmp(_natives[i]->name, name))
+		{
+			native = _natives[i];
+			break;
+		}
+	}
+	return native;
 }
 
 #ifdef HAVE_JANSSON
@@ -837,7 +884,7 @@ DeviceConf_t * segl_createconfig()
 
 int segl_loadjsonsettings(EGL_t *dev, void *jconfig)
 {
-	return glprog_loadjsonsetting(dev->programs, jconfig);
+	return dev->program_ops->loadjsonsetting(dev->programs, jconfig);
 }
 
 int segl_loadjsonconfiguration(void *arg, void *entry)
@@ -846,7 +893,12 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	EGLConfig_t *config = (EGLConfig_t *)arg;
 
 	json_t *jprograms = json_object_get(jconfig, "programs");
-	glprog_loadjsonconfiguration(&config->programs, jprograms);
+	for (int i = 0; i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
+	{
+		const EGLProg_ops_t *prog_ops = _prog_ops[i];
+		if (prog_ops)
+			prog_ops->loadjsonconfiguration(&config->programs, jprograms);
+	}
 	json_t *native = json_object_get(jconfig, "native");
 	if (native && json_is_array(native))
 	{
@@ -855,26 +907,10 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	if (native && json_is_string(native))
 	{
 		const char *value = json_string_value(native);
-		for (int i = 0; i < sizeof(_natives) / sizeof(*_natives) && _natives[i]; i++)
+		config->native = _segl_get_native(value);
+		if (config->native == NULL)
 		{
-			if (!strcmp(_natives[i]->name, value))
-			{
-				config->native = _natives[i];
-				break;
-			}
-		}
-	}
-	json_t *export = json_object_get(jconfig, "export");
-	if (export && json_is_string(export))
-	{
-		const char *value = json_string_value(export);
-		for (int i = 0; i < sizeof(_exports) / sizeof(*_exports) && _exports[i]; i++)
-		{
-			if (!strcmp(_exports[i]->name, value))
-			{
-				config->export = _exports[i];
-				break;
-			}
+			err("segl: naive %s not found", value);
 		}
 	}
 	json_t *device = json_object_get(jconfig, "device");
@@ -895,6 +931,21 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 		config->transfer.fourcc = config->parent.fourcc;
 	if (config->transfer.modifiers == 0)
 		config->transfer.modifiers = config->parent.modifiers;
+	json_t *export = json_object_get(jconfig, "export");
+	if (!export)
+		export = json_object_get(transfer, "export");
+	if (export && json_is_string(export))
+	{
+		const char *value = json_string_value(export);
+		for (int i = 0; i < sizeof(_exports) / sizeof(*_exports) && _exports[i]; i++)
+		{
+			if (!strcmp(_exports[i]->name, value))
+			{
+				config->export = _exports[i];
+				break;
+			}
+		}
+	}
 
 	return 0;
 }
@@ -948,7 +999,7 @@ int segl_capabilities(EGL_t *dev, json_t *capabilities, int all)
 
 #endif //HAVE_JANSSON
 
-FastVideoDevice_ops_t segl_ops = {
+const FastVideoDevice_ops_t segl_ops = {
 	.name = "gpu",
 	.createconfig = segl_createconfig,
 	.create = (FastVideoDevice_create_t)segl_create,

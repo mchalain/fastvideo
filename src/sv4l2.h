@@ -11,6 +11,8 @@
 #define MODE_INTERACTIVE 0x04
 #define MODE_SHOT 0x08
 
+#define MAX_SUBDEVS 4
+#define MAX_SUBDEVPADS 10
 #define CAMERACONFIG(config, defaultdevice) config = { \
 	.DEVICECONFIG(parent, config, sv4l2_loadconfiguration), \
 	.device = defaultdevice, \
@@ -32,10 +34,10 @@ struct V4l2Config_s
 	const char *device;
 	int mode;
 	int fps;
-	int fmtbus;
 	int periodic;
 	int periodiccontrol;
-	void *subdev_entries[4];
+	V4l2Config_t *subdev_entries[MAX_SUBDEVS];
+	uint32_t fmtbus[MAX_SUBDEVPADS];
 };
 
 typedef struct V4L2Buffer_s V4L2Buffer_t;
@@ -61,6 +63,7 @@ struct V4L2_s
 	} ops;
 	int (*periodicfunc)(V4L2_t *dev, int bufferid);
 	int periodic;
+	V4L2_t *subdevs[MAX_SUBDEVS];
 };
 
 /**
@@ -257,5 +260,5 @@ int sv4l2_jsoncontrol_cb(void *arg, struct v4l2_query_ext_ctrl *ctrl);
 #define sv4l2_capabilities NULL
 #endif
 
-extern FastVideoDevice_ops_t sv4l2_ops;
+extern const FastVideoDevice_ops_t sv4l2_ops;
 #endif

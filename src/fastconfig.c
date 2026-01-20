@@ -15,7 +15,6 @@
 #include "log.h"
 #include "sv4l2.h"
 #include "sv4l2_subdev.h"
-#include "sv4l2_meta.h"
 #ifdef HAVE_LIBDRM
 #include "sdrm.h"
 #endif
@@ -174,8 +173,12 @@ static json_t *_device_v4l2(json_t *devices, int devfd, const char *path, const 
 
 static json_t * _device_subv4l2(json_t *devices, int devfd, const char *path, const char *name, uint32_t type)
 {
-	json_t *device = json_object();
-	json_object_set_new(device, "name", json_string(name));
+	json_t *device = NULL;
+#ifdef V4L2_SUBDEV
+	device = json_object();
+	json_t *jname = json_array();
+	json_array_insert_new(jname, 0, json_string(name));
+	json_object_set_new(device, "name", jname);
 #if 0
 	switch (type)
 	{
@@ -200,6 +203,7 @@ static json_t * _device_subv4l2(json_t *devices, int devfd, const char *path, co
 		subdev_ops.destroy(subdev);
 	}
 	else
+#endif
 		close(devfd);
 	return device;
 }
@@ -385,6 +389,9 @@ static int _media_device(void *arg, int fd, const char *path, const char *name)
 	}
 	json_array_foreach(mediadevices, i, device)
 	{
+		json_t *jdevicename = json_object_get(device, "name");
+		if (json_is_array(jdevicename))
+			jdevicename = json_array_get(jdevicename, 0);
 		json_t *subdevices = NULL;
 		int id = json_integer_value(json_object_get(device, "id"));
 		json_t *subdevice;
@@ -406,7 +413,17 @@ static int _media_device(void *arg, int fd, const char *path, const char *name)
 			}
 		}
 		if (subdevices != NULL)
+		{
+			json_t *subdevice;
+			int index;
+			json_array_foreach(subdevices, index, subdevice)
+			{
+				json_t *jname = json_object_get(subdevice, "name");
+				if (json_is_array(jname))
+					json_array_insert_new(jname, 0, jdevicename);
+			}
 			json_object_set_new(device,"subdevices", subdevices);
+		}
 		const char *type = json_string_value(json_object_get(device, "type"));
 
 		if (type && !strcmp("v4l2", type))
@@ -429,17 +446,6 @@ int _passthrough_device(void *arg, int fd, const char *path, const char *name)
 	spassthrough_ops.capabilities(dev, passthrough, all_capabilities_format);
 	spassthrough_ops.destroy(dev);
 	_devices_append(devices, passthrough);
-	return 0;
-}
-
-int _v4l2_meta_device(void *arg, int fd, const char *path, const char *name)
-{
-	json_t *devices = (json_t *)arg;
-	json_t *metadevice = json_object();
-	void *dev = sv4l2_meta_ops.create(path, device_output, NULL);
-	sv4l2_meta_ops.capabilities(dev, metadevice, all_capabilities_format);
-	sv4l2_meta_ops.destroy(dev);
-	_devices_append(devices, metadevice);
 	return 0;
 }
 
@@ -528,7 +534,6 @@ int main(int argc, char *const argv[])
 	}
 #endif
 	_passthrough_device(devices, 0, "passthrough", "passthrough");
-	_v4l2_meta_device(devices, 0, "metadevice", "metadevice");
 	json_dump_file(devices, output, JSON_INDENT(2));
 	json_decref(devices);
 	return 0;

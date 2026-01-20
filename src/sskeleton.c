@@ -1,4 +1,5 @@
 #include <string.h>
+#include <errno.h>
 
 #include "fastvideo.h"
 #include "config.h"
@@ -12,6 +13,7 @@ struct Dev_s
 	device_type_e type;
 	FrameBuffer_t *buffers;
 	int nbuffers;
+	int currentid;
 };
 
 static FrameBuffer_t *_create_buffer(DeviceConf_t *config)
@@ -28,7 +30,7 @@ static void _destroy_buffer(FrameBuffer_t *buffer)
 	free(buffer->mem);
 }
 
-EXT_API DeviceConf_t * skeleton_createconfig(void)
+EXT_API DeviceConf_t * skeleton_createconfig(const char *name)
 {
 	DeviceConf_t *devconfig = (void *)(long) -1;
 	return devconfig;
@@ -242,7 +244,7 @@ EXT_API void skeleton_destroy(Dev_t *dev)
 	free(dev);
 }
 
-FastVideoDevice_ops_t sskeleton_ops = {
+const FastVideoDevice_ops_t sskeleton_ops = {
 	.name = "skeleton",
 	.createconfig = skeleton_createconfig,
 	.create = (FastVideoDevice_create_t)skeleton_create,

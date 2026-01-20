@@ -7,6 +7,7 @@
 #include <sys/ioctl.h>
 #include <linux/dma-buf.h>
 #include <time.h>
+#include <stdlib.h>
 
 #include <arpa/inet.h>
 
@@ -274,7 +275,7 @@ struct Dev_s
 {
 	device_type_e type;
 	MPEG_TSConf_t *config;
-	Proto_t *proto;
+	const Proto_t *proto;
 	void *protoctx;
 	uint32_t frames;
 	FrameBuffer_t buffers[MAX_BUFFERS];
@@ -339,15 +340,15 @@ static const char default_addr[] = "FF02::1:FF00:56";
 #else
 static const char default_addr[] = "239.0.0.14";
 #endif
-DeviceConf_t *mpegts_createconfig(void)
+DeviceConf_t *mpegts_createconfig(const char *name)
 {
 	MPEG_TSConf_t *config = calloc(1, sizeof(*config));
 	config->parent.fourcc = FOURCC_H264;
 	config->host = default_addr;
-	config->port = 5014;
+	config->port = 1024;
 	config->pid = 0x41;
 	config->maxclients = 5;
-	config->proto = &proto_udp;
+	config->proto = _protos[0];
 #ifdef HAVE_JANSSON
 	config->parent.ops.loadconfiguration = mpegts_loadjsonconfiguration;
 #endif
@@ -514,7 +515,7 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 		/**
 		 * send PMT packet
 		 */
-		int flags = MSG_MORE;
+		int flags = Proto_More;
 		if (mtu < 2 * dev->packetlen)
 				flags = 0;
 		uint8_t cc = dev->pmt.header.cc;
@@ -529,7 +530,7 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 		 * send PAT packet
 		 */
 		length += ret;
-		int flags = MSG_MORE;
+		Proto_Flags_t flags = Proto_More;
 		if (mtu < 2 * dev->packetlen)
 				flags = 0;
 		uint8_t cc = dev->pat.header.cc;
@@ -545,7 +546,7 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 		 * send SDT packet
 		 */
 		length += ret;
-		int flags = MSG_MORE;
+		Proto_Flags_t flags = Proto_More;
 		if (mtu < 2 * dev->packetlen)
 				flags = 0;
 		uint8_t cc = dev->sdt.header.cc;
@@ -559,7 +560,7 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 	while (ret > 0 && mtu > dev->packetlen)
 	{
 		length += ret;
-		int flags = MSG_MORE;
+		Proto_Flags_t flags = Proto_More;
 		if (mtu < 2 * dev->packetlen)
 				flags = 0;
 		ret = dev->proto->send(dev->protoctx, nullpacket, dev->packetlen, flags);
@@ -569,9 +570,8 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 		nullpacket[3] %= 0x0f;
 		mtu -= ret;
 	}
-	length += ret;
 #else
-	if (ret > 0 mtu > dev->packetlen)
+	if (ret > 0 && mtu > dev->packetlen)
 	{
 		length += ret;
 		dev->proto->flush(dev->protoctx);
@@ -643,7 +643,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	while (length > 0 && ret > 0)
 	{
 		int paddinglength = 0;
-		int flags = MSG_MORE | MSG_NOSIGNAL;
+		Proto_Flags_t flags = Proto_More;
 		size_t buflength; /// the length of buffer to send with this ts packet
 		/// the packet must contain 188 bytes even when the payload is smaller
 		buflength = dev->packetlen;
@@ -803,10 +803,10 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	if (type != device_output)
 		return NULL;
 
-	Proto_t *proto = &proto_udp;
-	if (config)
+	const Proto_t *proto = &proto_udp;
+	if (config && config->proto)
 		proto = config->proto;
-	void *protoctx = proto->create(config);
+	void *protoctx = proto->create(&config->protoconf);
 	if (protoctx == NULL)
 		return NULL;
 
@@ -887,6 +887,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	dumpfd = open("/tmp/dump.h264", O_RDWR | O_CREAT);
 	err("dumpfd %d %m", dumpfd);
 #endif
+	warn("smpegts: stream %s out to %s", dev->proto->name , config->host);
 	return dev;
 }
 
@@ -940,9 +941,20 @@ EXT_API int mpegts_requestbuffer(Dev_t *dev, enum buf_type_e t, ...)
 
 EXT_API int mpegts_fd(Dev_t *dev, int writer)
 {
-	if (writer && dev->currentid == -1)
-		return 0;
-	return dev->proto->fd(dev->protoctx);
+	if (!writer && dev->type == device_input)
+	{
+		int ret = dev->proto->fd(dev->protoctx);
+		for (int i = 0; i < dev->nbuffers; i++)
+		{
+			if (dev->buffers[i].state == queued)
+			{
+				ret = -1;
+				break;
+			}
+		}
+		return ret;
+	}
+	return -1;
 }
 
 EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
@@ -950,7 +962,7 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 	if (id < 0 || id > dev->nbuffers)
 		return -1;
 	FrameBuffer_t *buffer = &dev->buffers[id];
-	if (dev->currentid != -1)
+	if (buffer->state != dequeued && buffer->state != invalid)
 	{
 		errno = EAGAIN;
 		return -1;
@@ -975,7 +987,6 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 		buffer->mem = mem;
 	}
 
-	dev->currentid = id;
 	buffer->state = queued;
 	if (_client_pushdata(dev, id) < 0)
 	{
@@ -986,15 +997,23 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 
 EXT_API int mpegts_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags)
 {
-	int id = dev->currentid;
+	int id = 0;
+	for (int i = 0; i < dev->nbuffers; i++)
+	{
+		id = dev->currentid + i;
+		id %= dev->currentid;
+		if (dev->buffers[id].state == ready)
+			break;
+		id = -1;
+	}
 	if (id == -1)
 	{
 		errno = EAGAIN;
 		return -1;
 	}
 	FrameBuffer_t *buffer = NULL;
-	buffer = &dev->buffers[dev->currentid];
-	dev->currentid = -1;
+	buffer = &dev->buffers[id];
+	dev->currentid = id;
 
 	if (buffer->state == ready)
 	{
@@ -1031,9 +1050,8 @@ EXT_API int mpegts_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags
 
 EXT_API int mpegts_start(Dev_t *dev)
 {
-	dev->proto->connect(dev->protoctx);
-	dev->currentid = -1;
-	return 0;
+	dev->currentid = 0;
+	return dev->proto->connect(dev->protoctx);
 }
 
 EXT_API int mpegts_stop(Dev_t *dev)
@@ -1089,21 +1107,33 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 		uint32_t value = json_integer_value(maxframes);
 		config->maxframes = value;
 	}
+	json_t *maxclients = json_object_get(jconfig, "maxclients");
+	if (maxclients && json_is_integer(maxclients))
+	{
+		uint32_t value = json_integer_value(maxclients);
+		config->maxclients = value;
+	}
 	json_t *proto = json_object_get(jconfig, "proto");
+	if (proto == NULL)
+		proto = json_object_get(jconfig, "protocol");
 	if (proto && json_is_string(proto))
 	{
 		const char *value = json_string_value(proto);
-		if (!strcasecmp(value, proto_unix.name))
-			config->proto = &proto_unix;
-		if (!strcasecmp(value, proto_file.name))
-			config->proto = &proto_file;
+		for (int i = 0; i < (sizeof(_protos)/sizeof(*_protos)); i++)
+		{
+			if (_protos[i] && !strcasecmp(value, _protos[i]->name))
+			{
+				config->proto = _protos[i];
+				break;
+			}
+		}
 	}
 library_end:
 	return 0;
 }
 #endif
 
-FastVideoDevice_ops_t smpegts_ops = {
+const FastVideoDevice_ops_t smpegts_ops = {
 	.name = "mpegts",
 	.createconfig = mpegts_createconfig,
 	.create = (FastVideoDevice_create_t)mpegts_create,

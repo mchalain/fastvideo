@@ -111,30 +111,31 @@
         "value": 1000
       }
     ],
-    "id": 6,
-    "media": "media4"
-  },{
+    "end": true
+  },
+  {
     "name": ["isp1-out","bcm2835-isp0-capture1"],
     "type": "v4l2",
     "device": "/dev/video21",
     "definition": {
       "fourcc": "NV12",
       "width": 1920,
-      "height": 1080
+      "height": 1080,
+      "end": true
     },
-    "id": 12,
-    "media": "media4"
-  },{
+    "end": true
+  },
+  {
     "name": ["isp1-out2","bcm2835-isp0-capture2"],
     "type": "v4l2",
     "device": "/dev/video22",
     "definition": {
       "fourcc": "YUYV",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "end": true
     },
-    "id": 18,
-    "media": "media4"
+    "end": true
   },
   {
     "name": ["isp1-meta"],
@@ -148,7 +149,8 @@
       "end": true
     },
     "end": true
-  },{
+  },
+  {
     "name": ["dec-h264","bcm2835-codec-decode-source"],
     "type": "v4l2",
     "device": "/dev/video10",
@@ -173,16 +175,15 @@
         "value": 4
       }
     ],
-    "id": 1,
-    "media": "media2"
-  },{
+    "end": true
+  },
+  {
     "name": ["enc-h264","bcm2835-codec-encode-source"],
     "type": "v4l2",
     "device": "/dev/video11",
     "definition": {
-      "width":1920,
-      "height":1080,
-      "end":true
+      "fps":30,
+      "end": true
     },
     "transformation": [
     ],
@@ -244,9 +245,9 @@
       "periodiccontrol": 10029541,
       "end": true
     },
-    "id": 15,
-    "media": "media2"
-  },{
+    "end": true
+  },
+  {
     "name": ["debayer","bcm2835-codec-isp-source"],
     "type": "v4l2",
     "device": "/dev/video12",
@@ -265,9 +266,9 @@
         "value": false
       }
     ],
-    "id": 29,
-    "media": "media2"
-  },{
+    "end": true
+  },
+  {
     "name": [
       "crop",
       "bcm2835-codec-image_fx-source"
@@ -285,9 +286,9 @@
         "height": 480
       }
     ],
-    "id": 43,
-    "media": "media2"
-  },{
+    "end": true
+  },
+  {
     "name": ["enc-jpeg","bcm2835-codec-encode_image-sour"],
     "type": "v4l2",
     "device": "/dev/video31",
@@ -302,8 +303,7 @@
         "value": 80
       }
     ],
-    "id": 57,
-    "media": "media2"
+    "end": true
   },
   {
     "name": ["dec-hevc","rpivid-source"],
@@ -312,7 +312,8 @@
     "definition": {
       "fourcc": "S265",
       "width": 1920,
-      "height": 1088
+      "height": 1088,
+      "end": true
     },
     "controls": [
       {
@@ -327,28 +328,22 @@
         "value_show": "No Start Code"
       }
     ],
-    "id": 1,
-    "media": "media0"
+    "end": true
   },{
     "name": ["isp-in","bcm2835-isp0-output0"],
     "type": "v4l2",
     "device": "/dev/video13",
-    "definition": {
-      "width":1920,
-      "height":1080,
-      "end":true
-    },
     "transformation": [
     ],
     "controls": [
       {
         "name": "Red Balance",
         "id": 9963790,
-        "value": 1000
+        "value": 2315
       },{
         "name": "Blue Balance",
         "id": 9963791,
-        "value": 1000
+        "value": 2878
       },{
         "name": "Colour Correction Matrix",
         "id": 9968097,
@@ -446,20 +441,19 @@
         "value": 1000
       }
     ],
-    "id": 6,
-    "media": "media3"
+    "end": true
   },
   {
     "name": ["isp-out","bcm2835-isp0-capture1"],
     "type": "v4l2",
     "device": "/dev/video14",
     "definition": {
-      "fourcc": "XR24",
+      "fourcc": "XB24",
       "width": 1920,
-      "height": 1080
+      "height": 1080,
+      "end": true
     },
-    "id": 12,
-    "media": "media3"
+    "end": true
   },
   {
     "name": ["isp-out2","bcm2835-isp0-capture2"],
@@ -468,16 +462,15 @@
     "definition": {
       "fourcc": "YUYV",
       "width": 640,
-      "height": 480
+      "height": 480,
+      "end": true
     },
-    "id": 18,
-    "media": "media3"
+    "end": true
   },
   {
     "name": ["isp-meta"],
     "type": "v4l2",
     "device": "/dev/video16",
-    "media": "media1",
     "definition":{
       "fourcc": "BSTA",
       "end": true
@@ -485,387 +478,151 @@
     "end": true
   },
   {
-    "name": ["unicam-image","cam-imx477","cam-imx296","cam-imx708","cam-ov5647"],
+    "name": ["rpivc4_alg"],
+    "type": "file",
+    "path": "/tmp",
+    "filename": "statistics",
+    "mode": "fifo",
+    "end": true
+  },
+  {
+    "name": ["unicam-embedded"],
+    "type": "v4l2",
+    "device": "/dev/video1",
+    "end": true
+  },
+  {
+    "name": ["unicam-image","cam-imx477","cam-imx296","cam-imx708","cam-tc358743","cam-ov5647","cam-ov9281"],
     "type": "v4l2",
     "device": "/dev/video0",
-    "id": 6,
-    "media": "media1",
-    "definition":{
-      "fourcc": "GB10",
-      "width": 1920,
-      "height": 1080,
-      "end": true
-    },
     "subdevices": [
       {
-        "name": ["cam-imx708","imx708_wide_noir"],
-	"disable": true,
+        "name": ["cam-tc358743","unicam-image","tc358743 10-000f"],
+        "disable": false,
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "RG10",
-          "width": 2304,
-          "height": 1296
+          "fourcc": "YUYV",
+          "width": 1920,
+          "height": 1080,
+          "end": true
         },
-        "controls": [
-          {
-            "name": "Exposure",
-            "id": 9963793,
-            "value": 1600
-          },{
-            "name": "Horizontal Flip",
-            "id": 9963796,
-            "value": false
-          },{
-            "name": "Vertical Flip",
-            "id": 9963797,
-            "value": false
-          },{
-            "name": "Wide Dynamic Range",
-            "id": 10094869,
-            "value": false
-          },{
-            "name": "Camera Orientation",
-            "id": 10094882,
-            "value": 2,
-            "value_show": "External"
-          },{
-            "name": "Camera Sensor Rotation",
-            "id": 10094883,
-            "value": 180
-          },{
-            "name": "Vertical Blanking",
-            "id": 10356993,
-            "value": 58
-          },{
-            "name": "Horizontal Blanking",
-            "id": 10356994,
-            "value": 11040
-          },{
-            "name": "Analogue Gain",
-            "id": 10356995,
-            "value": 112
-          },{
-            "name": "Red Pixel Value",
-            "id": 10356996,
-            "value": 4095
-          },{
-            "name": "Green (Red) Pixel Value",
-            "id": 10356997,
-            "value": 4095
-          },{
-            "name": "Blue Pixel Value",
-            "id": 10356998,
-            "value": 4095
-          },{
-            "name": "Green (Blue) Pixel Value",
-            "id": 10356999,
-            "value": 4095
-          },{
-            "name": "Notify Gains",
-            "id": 10357001,
-            "value": -1
-          },{
-            "name": "Link Frequency",
-            "id": 10422529,
-            "value": 0,
-            "value_show": 450000000
-          },{
-            "name": "Pixel Rate",
-            "id": 10422530,
-            "value": 595200000
-          },{
-            "name": "Test Pattern",
-            "id": 10422531,
-            "value": 0,
-            "value_show": "Disabled"
-          },{
-            "name": "Digital Gain",
-            "id": 10422533,
-            "value": 256
-          }
-        ],
-        "sink": 12,
-        "id": 1,
-        "media": "media1"
+        "end": true
       },
       {
-        "name": ["cam-imx708","dw9807 10-000c"],
-        "disable": true,
+        "name": ["cam-ov9281","ov9281 4-0060"],
+        "type": "subv4l",
+        "disable": false,
+        "device": "/dev/v4l-subdev0",
+        "definition": {
+          "fourcc": "Y10 ",
+          "fmtbus": "0x200a",
+          "width": 1280,
+          "height":  720,
+          "fps": 120,
+          "end": true
+        }
+      },
+      {
+        "name": ["cam-imx708","unicam-image","imx708_wide_noir"],
+        "disable": false,
+        "type": "subv4l",
+        "device": "/dev/v4l-subdev0",
+        "definition": {
+          "fourcc": "pBAA",
+          "width": 2304,
+          "height": 1296,
+          "end": true
+        },
+        "end": true
+      },
+      {
+        "name": ["cam-imx708","unicam-image","dw9807 10-000c"],
+        "disable": false,
         "type": "subv4l",
         "device": "/dev/v4l-subdev1",
-        "controls": [
-          {
-            "name": "Focus, Absolute",
-            "id": 10094858,
-            "value": 480
-          }
-        ],
-        "id": 4,
-        "media": "media1"
+        "end": true
       },
       {
-        "name": ["cam-imx296","imx296 10-001a"],
-	"disable": true,
+        "name": ["cam-imx296","unicam-image","imx296 10-001a"],
+        "disable": false,
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "RG10",
+          "fourcc": "pBAA",
           "width":1456,
-          "height":1088
+          "height":1088,
+          "end": true
         },
-        "controls": [
-          {
-            "name": "Exposure",
-            "id": 9963793,
-            "value": 1104
-          },{
-            "name": "Horizontal Flip",
-            "id": 9963796,
-            "value": false
-          },{
-            "name": "Vertical Flip",
-            "id": 9963797,
-            "value": false
-          },{
-            "name": "Camera Orientation",
-            "id": 10094882,
-            "value": 2,
-            "value_show": "External"
-          },{
-            "name": "Camera Sensor Rotation",
-            "id": 10094883,
-            "value": 180
-          },{
-            "name": "Vertical Blanking",
-            "id": 10356993,
-            "value": 30
-          },{
-            "name": "Horizontal Blanking",
-            "id": 10356994,
-            "value": 304
-          },{
-            "name": "Analogue Gain",
-            "id": 10356995,
-            "value": 0
-          },{
-            "name": "Pixel Rate",
-            "id": 10422530,
-            "value": 118800000
-          },{
-            "name": "Test Pattern",
-            "id": 10422531,
-            "value": 0,
-            "value_show": "Disabled"
-          }
-        ],
-        "sink": 3,
-        "id": 1,
-        "media": "/dev/media1"
+        "end": true
       },{
-        "name": ["cam-imx477","imx477 10-001a"],
-        "disable": true,
+        "name": ["cam-imx477","unicam-image","imx477 10-001a"],
+        "disable": false,
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "RG12",
+          "fourcc": "pBCC",
           "width": 2028,
-          "height": 1080
+          "height": 1080,
+          "end": true
         },
-        "controls": [
-          {
-            "name": "Exposure",
-            "id": 9963793,
-            "value": 1516
-          },
-          {
-            "name": "Horizontal Flip",
-            "id": 9963796,
-            "value": false
-          },
-          {
-            "name": "Vertical Flip",
-            "id": 9963797,
-            "value": false
-          },
-          {
-            "name": "Camera Orientation",
-            "id": 10094882,
-            "value": 2,
-            "value_show": "External"
-          },
-          {
-            "name": "Camera Sensor Rotation",
-            "id": 10094883,
-            "value": 180
-          },
-          {
-            "name": "Vertical Blanking",
-            "id": 10356993,
-            "value": 46
-          },
-          {
-            "name": "Horizontal Blanking",
-            "id": 10356994,
-            "value": 19944
-          },
-          {
-            "name": "Analogue Gain",
-            "id": 10356995,
-            "value": 900
-          },
-          {
-            "name": "Red Pixel Value",
-            "id": 10356996,
-            "value": 4095
-          },
-          {
-            "name": "Green (Red) Pixel Value",
-            "id": 10356997,
-            "value": 2047
-          },
-          {
-            "name": "Blue Pixel Value",
-            "id": 10356998,
-            "value": 4095
-          },
-          {
-            "name": "Green (Blue) Pixel Value",
-            "id": 10356999,
-            "value": 2047
-          },
-          {
-            "name": "Link Frequency",
-            "id": 10422529,
-            "value": 0,
-            "value_show": 450000000
-          },
-          {
-            "name": "Pixel Rate",
-            "id": 10422530,
-            "value": 840000000
-          },
-          {
-            "name": "Test Pattern",
-            "id": 10422531,
-            "value": 0,
-            "value_show": "Disabled"
-          },
-          {
-            "name": "Digital Gain",
-            "id": 10422533,
-            "value": 256
-          }
-        ],
-        "sink": 10,
-        "id": 1,
-        "media": "/dev/media4"
+        "end": true
       },{
-        "name": ["cam-ov5647","ov5647 10-0036"],
-	"disable": false,
+        "name": ["cam-ov5647","unicam-image","ov5647 10-0036"],
+        "disable": false,
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "GB10",
+          "fourcc": "BG10",
           "width": 1920,
-          "-width": 640,
           "height": 1080,
-          "-height": 480,
           "fps": 30,
           "end": true
         },
-        "controls": [
-          {
-            "disable": false,
-            "name":"White Balance, Automatic",
-            "id": 9963788,
-            "value":true
-          },{
-            "disable": false,
-            "name":"Gain, Automatic",
-            "id": 9963794,
-            "value": true
-          },{
-            "disable": true,
-            "name":"Analogue Gain",
-            "id": 10356995,
-            "value":100
-          },{
-            "disable": false,
-            "name":"Auto Exposure",
-            "id": 10094849,
-            "value": 0
-          },{
-            "disable": true,
-            "name":"Exposure",
-            "id": 9963793,
-            "value":1000
-          },{
-            "disable": false,
-            "name":"Vertical Flip",
-            "id": 9963797,
-            "comment": "true value fail the startup",
-            "value": false
-          },{
-            "disable": false,
-            "name":"Horizontal Flip",
-            "id": 9963796,
-            "comment": "true value fail the startup",
-            "value": false
-          },{
-            "read-only": true,
-            "name": "Camera Sensor Rotation",
-            "id": 10094883,
-            "value": 180
-          },{
-            "disable": false,
-            "name":"Vertical Blanking",
-            "id": 10356993,
-            "comment": "set this value for fps: value = (pixelrate / fps / (width+hblank)) - height; 24=>60fps 46=>30fps",
-            "value": 24
-          }
-        ]
+        "end": true
       }
     ]
   },
   {
-    "name":[ "screen" ],
+    "name":["screen"],
     "type":"screen",
     "device":"/dev/dri/card0",
     "rotation": [ "reflect"],
+    "definition": {
+      "fourcc": "XR24",
+      "end": true
+    },
     "end":true
   },
   {
-    "name":[ "gpu" ],
+    "name":["gpu"],
     "type":"gpu",
-    "native":"drm",
+    "native":["x11","wayland","drm"],
     "device":"/dev/dri/card0",
     "definition": {
-      "transfer": "XR24",
+      "end": true
+    },
+    "transfer": {
+      "fourcc": "XR24",
+      "export": "drmwriteback",
       "end": true
     },
     "end":true
   },
   {
-    "name":[ "offscreen" ],
-    "type":"gpu",
-    "native":"offscreen",
-    "device":"/dev/dri/renderD128",
-    "definition": {
-      "width": 1920,
-      "height": 1080,
-      "transfer": "XR24",
-      "transfer_modifiers": 1,
-      "end": true
-    },
-    "end":true
-  },
-  {
-    "name": "dvb-i",
+    "name": "dvb-e",
     "type": "mpegts",
-    "port": 5024,
-    "host": "192.168.176.12",
-    "periodic": 60,
+    "protocol": "udp",
+    "port": 1024,
+    "host": "239.0.0.14",
+    "periodic": 30,
+    "end": true
+  },
+  {
+    "name": "webstream",
+    "type": "mpegts",
+    "protocol": "unix",
+    "host": "/srv/www/webstream/camera.ts",
     "end": true
   },
   {
@@ -876,7 +633,7 @@
   {
     "name": "dryrun",
     "type": "passthrough",
-    "control": [
+    "controls": [
       {
         "dryrun": true,
         "end": true

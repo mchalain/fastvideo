@@ -22,6 +22,7 @@
 #define FOURCC_GR88  FOURCC('G','R','8','8')
 
 #define FOURCC_GREY  FOURCC('G','R','E','Y')
+#define FOURCC_Y16   FOURCC('Y','1','6',' ')
 #define FOURCC_YUYV  FOURCC('Y','U','Y','V')
 #define FOURCC_YUY2  FOURCC('Y','U','Y','2')
 #define FOURCC_NV12  FOURCC('N','V','1','2')

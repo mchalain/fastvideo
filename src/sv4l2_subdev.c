@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include <linux/v4l2-subdev.h>
+#include <linux/v4l2-mediabus.h>
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 #endif
@@ -11,6 +12,13 @@
 #include "fastvideo.h"
 #include "log.h"
 #include "sv4l2_subdev.h"
+
+typedef struct sv4l2_subdev_stream_s sv4l2_subdev_stream_t;
+struct sv4l2_subdev_stream_s
+{
+	int pad;
+	int stream;
+};
 
 typedef struct _V4L2_subdev_format_s _V4L2_subdev_format_t;
 struct _V4L2_subdev_format_s
@@ -21,10 +29,10 @@ struct _V4L2_subdev_format_s
 };
 
 #ifndef V4L2_PIX_FMT_SGBRG16P
-# define V4L2_PIX_FMT_SGBRG16P 0
-# define V4L2_PIX_FMT_SBGGR16P 0
-# define V4L2_PIX_FMT_SGRBG16P 0
-# define V4L2_PIX_FMT_SRGGB16P 0
+# define V4L2_PIX_FMT_SGBRG16P v4l2_fourcc('P', 'C', '1', 'g')
+# define V4L2_PIX_FMT_SBGGR16P v4l2_fourcc('P', 'C', '1', 'B')
+# define V4L2_PIX_FMT_SGRBG16P v4l2_fourcc('P', 'C', '1', 'G')
+# define V4L2_PIX_FMT_SRGGB16P v4l2_fourcc('P', 'C', '1', 'R')
 #endif
 
 static _V4L2_subdev_format_t _buscode2fourcc[] =
@@ -43,7 +51,7 @@ static _V4L2_subdev_format_t _buscode2fourcc[] =
 	{.fourcc=V4L2_PIX_FMT_SRGGB16, .fourcc_packed=V4L2_PIX_FMT_SRGGB16P, .buscode=MEDIA_BUS_FMT_SRGGB16_1X16},
 };
 
-const char sv4l2_subdev_defaultdevice[20] = "/dev/v4l_subdev0";
+const char sv4l2_subdev_defaultdevice[20] = "/dev/v4l-subdev0";
 
 uint32_t _v4l2_subdev_buscode2fourcc(int buscode, int packed)
 {
@@ -88,14 +96,14 @@ static int _v4l2_subdev_fmtbus(void *arg, struct v4l2_subdev_mbus_code_enum *mbu
 	return -1;
 }
 
-static uint32_t _v4l2_subdev_getfmtbus(int ctrlfd, int pad, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
+static uint32_t _v4l2_subdev_getfmtbus(int ctrlfd, sv4l2_subdev_stream_t *stream, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
 {
 	uint32_t ret = 0;
 	dbg("sv4l2: subdev format :");
 	for (int i = 0; ; i++)
 	{
 		struct v4l2_subdev_mbus_code_enum mbusEnum = {0};
-		mbusEnum.pad = pad;
+		mbusEnum.pad = stream->pad;
 		mbusEnum.index = i;
 		mbusEnum.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 
@@ -114,36 +122,75 @@ static uint32_t _v4l2_subdev_getfmtbus(int ctrlfd, int pad, int(*fmtbus)(void *a
 	return ret;
 }
 
-uint32_t sv4l2_subdev_getfmtbus(V4L2_t *subdev, int pad, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
+uint32_t sv4l2_subdev_getfmtbus(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
 {
-	return _v4l2_subdev_getfmtbus(subdev->fd, pad, fmtbus, cbarg);
+	return _v4l2_subdev_getfmtbus(subdev->fd, stream, fmtbus, cbarg);
 }
 
 static uint32_t sv4l2_subdev_translate_fmtbus(int ctrlfd, uint32_t fourcc)
 {
 	uint32_t ret = -1;
 	uint32_t code = _v4l2_subdev_fourcc2buscode(fourcc);
-	ret = _v4l2_subdev_getfmtbus(ctrlfd, 0, _v4l2_subdev_fmtbus, &code);
+	ret = code;
 	return ret;
 }
 
-int sv4l2_subdev_setpixformat(V4L2_t *subdev, int pad, uint32_t fourcc, uint32_t width, uint32_t height)
+int sv4l2_subdev_setpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, uint32_t fmtbus, uint32_t width, uint32_t height)
 {
 	struct v4l2_subdev_format ffs = {0};
-	ffs.pad = pad;
-	ffs.which = V4L2_SUBDEV_FORMAT_TRY;
+	ffs.pad = stream->pad;
+	ffs.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	ffs.format.width = width;
 	ffs.format.height = height;
-	ffs.format.code = sv4l2_subdev_translate_fmtbus(subdev->fd, fourcc);
-	dbg("sv4l2: subdev format request %lux%lu %#x for %.4s", width, height, ffs.format.code, &fourcc);
+	ffs.format.code = 0;
+	ffs.format.field = V4L2_FIELD_NONE;
+	dbg("sv4l2: subdev format request %lux%lu for (%#x)", width, height, fmtbus);
 	/**
-	 * currently this ioctl unconfigure the media if set as ACTIVE and not TRY
+	 * The sensor has a Bayer colour filter which is arranged depending a colours' grid
+	 * he only way you can change the colour format would be either:
+	 * - cropping an odd number of pixels off the left side
+	 * - cropping an odd number of lines off the top of the image
+	 * - horizontal flip to start reading from the right hand side
+	 * - vertical flip to start reading from the last line
+	 * The first two aren't supported by the sensor, but the last two are.
+	 * Thx 6by9
 	 */
-	if (ffs.format.code != (uint32_t)-1 && ioctl(subdev->fd, VIDIOC_SUBDEV_S_FMT, &ffs) != 0)
+	struct control_s
 	{
-		err("sv4l2: subdev set format error %m");
-		return -1;
+		int id;
+		int value;
+	};
+	struct control_s controls[] = {
+		{0, 0},
+		{V4L2_CID_VFLIP, 1},
+		{V4L2_CID_HFLIP, 1},
+		{V4L2_CID_VFLIP, 0},
+	};
+	for (int i = 0; i < (sizeof(controls)/sizeof(*controls)) &&
+			ffs.format.code != fmtbus; i++)
+	{
+		ffs.format.code = fmtbus;
+		int ret = -1;
+		if (controls[i].id)
+		{
+			struct v4l2_control control = {0};
+			control.id = controls[i].id;
+			control.value = controls[i].value;
+			ret = ioctl(subdev->fd, VIDIOC_S_CTRL, &control);
+			if (ret)
+				err("sv4l2: subdev control error %m");
+		}
+		if (ffs.format.code != (uint32_t)-1)
+			ret = ioctl(subdev->fd, VIDIOC_SUBDEV_S_FMT, &ffs);
+		if (ret != 0)
+		{
+			err("sv4l2: subdev set format error %m");
+			return -1;
+		}
 	}
+	if (fmtbus != ffs.format.code)
+		err("v4l2: subdev bus format not set! %#x", ffs.format.code);
+	dbg("sv4l2: subdev format acquired %lux%lu %#x", ffs.format.width, ffs.format.height, ffs.format.code);
 	return 0;
 }
 
@@ -156,10 +203,10 @@ static int _v4l2_subdev_loadformat(void *arg, struct v4l2_subdev_format *ffs)
 	return 0;
 }
 
-uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, int pad, int (*busformat)(void *arg, struct v4l2_subdev_format *ffs), void *cbarg)
+uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, int (*busformat)(void *arg, struct v4l2_subdev_format *ffs), void *cbarg)
 {
 	struct v4l2_subdev_format ffs = {0};
-	ffs.pad = pad;
+	ffs.pad = stream->pad;
 	ffs.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	if (ioctl(subdev->fd, VIDIOC_SUBDEV_G_FMT, &ffs) != 0)
 	{
@@ -167,16 +214,31 @@ uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, int pad, int (*busformat)(voi
 		return -1;
 	}
 	dbg("sv4l2: current subdev %lu x %lu %#X", ffs.format.width, ffs.format.height, ffs.format.code);
+#ifdef DEBUG
+	struct v4l2_subdev_frame_size_enum efs = {0};
+	efs.pad = stream->pad;
+	efs.which = V4L2_SUBDEV_FORMAT_TRY;
+	efs.code = ffs.format.code;
+	dbg("sv4l2: subdev frames supported:");
+	while (ioctl(subdev->fd, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, &efs) == 0)
+	{
+		if (efs.min_width != efs.max_width)
+			dbg("\t(%lu=>%lu)x(%lu=>%lu)", efs.min_width, efs.max_width, efs.min_height, efs.max_height);
+		else
+			dbg("\t%lux%lu", efs.min_width, efs.min_height);
+		efs.index++;
+	}
+#endif
 	if (busformat)
 		return busformat(cbarg, &ffs);
-	return 0;
+	return ffs.format.code;
 }
 
-int sv4l2_subdev_fps(V4L2_t *subdev, int pad, int fps)
+int sv4l2_subdev_fps(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, int fps)
 {
 	int ret = 0;
 	struct v4l2_subdev_frame_interval interval = {0};
-	interval.pad = pad;
+	interval.pad = stream->pad;
 	ret = ioctl(subdev->fd, VIDIOC_SUBDEV_G_FRAME_INTERVAL, &interval);
 	if (ret)
 	{
@@ -213,11 +275,6 @@ int sv4l2_subdev_fps(V4L2_t *subdev, int pad, int fps)
 
 V4L2_t *sv4l2_subdev_create2(int ctrlfd, const char *name, device_type_e dtype, V4l2Config_t *config)
 {
-	struct v4l2_capability cap = {0};
-	if (ioctl(ctrlfd, VIDIOC_QUERYCAP, &cap) != 0)
-		err("sv4l2: subdev is not video %m");
-	else
-		warn("sv4l2: subdev %.32s", cap.card);
 #ifdef VIDIOC_SUBDEV_QUERYCAP
 	struct v4l2_subdev_capability caps = {0};
 	if (ioctl(ctrlfd, VIDIOC_SUBDEV_QUERYCAP, &caps) != 0)
@@ -250,7 +307,8 @@ V4L2_t *sv4l2_subdev_create2(int ctrlfd, const char *name, device_type_e dtype, 
 	subdev->type = dtype;
 	subdev->name = subdev->devicename;
 	strncpy(subdev->devicename, name, sizeof(subdev->devicename) - 1);
-	sv4l2_subdev_getpixformat(subdev, 0, _v4l2_subdev_loadformat, subdev);
+	sv4l2_subdev_stream_t stream = {0};
+	sv4l2_subdev_getpixformat(subdev, &stream, _v4l2_subdev_loadformat, subdev);
 	warn("sv4l2: subdev %s created", subdev->name);
 	return subdev;
 }
@@ -261,7 +319,7 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 	int ctrlfd = -1;
 	if (config->device)
 		ctrlfd = open(config->device, O_RDWR, 0);
-	if (ctrlfd < 0)
+	if (ctrlfd < 0 && devicename)
 	{
 		ctrlfd = open(devicename, O_RDWR, 0);
 	}
@@ -270,6 +328,9 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 		err("sv4l2: subdevice %s not exist", config->device);
 		return NULL;
 	}
+	if (config->parent.fourcc && !config->fmtbus[0])
+		config->fmtbus[0] = sv4l2_subdev_translate_fmtbus(ctrlfd, config->parent.fourcc);
+
 	V4L2_t *subdev = sv4l2_subdev_create2(ctrlfd, devicename, type, config);
 	if (subdev == NULL)
 	{
@@ -280,10 +341,21 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 	if (config->parent.height) subdev->height = config->parent.height;
 	if (config->parent.fourcc) subdev->fourcc = config->parent.fourcc;
 
-	sv4l2_subdev_setpixformat(subdev, pad, subdev->fourcc, subdev->width, subdev->height);
-	if (sv4l2_subdev_fps(subdev, pad, config->fps) == -1)
-		sv4l2_fps(subdev, config->fps);
-	sv4l2_subdev_fps(subdev, pad, -1);
+	if (config->fmtbus && type != device_control)
+	{
+		for (int i = 0; i < (sizeof(config->fmtbus)/sizeof(*config->fmtbus)); i++)
+		{
+			sv4l2_subdev_stream_t stream = {0};
+			stream.pad = i;
+			if (!config->fmtbus[i])
+				continue;
+			sv4l2_subdev_setpixformat(subdev, &stream, config->fmtbus[i], subdev->width, subdev->height);
+			if (sv4l2_subdev_fps(subdev, &stream, config->fps) == -1)
+				sv4l2_fps(subdev, config->fps);
+			else
+				sv4l2_subdev_fps(subdev, &stream, -1);
+		}
+	}
 	return subdev;
 }
 
@@ -294,7 +366,7 @@ void sv4l2_subdev_destroy(V4L2_t *subdev)
 	free(subdev);
 }
 
-DeviceConf_t * sv4l2_subdev_createconfig()
+DeviceConf_t * sv4l2_subdev_createconfig(const char *name)
 {
 	V4l2Config_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(V4l2Config_t));
@@ -314,41 +386,55 @@ int sv4l2_subdev_loadjsonconfiguration(void *arg, void *entry)
 
 	if (subdevice && json_is_object(subdevice))
 	{
-		int disable = json_is_true(json_object_get(subdevice, "disable"));
-		if (!disable)
+		sv4l2_loadjsonconfiguration(config, subdevice);
+		json_t *definition = json_object_get(subdevice, "definition");
+		json_t *fmtbus = NULL;
+		if (definition && json_is_array(definition))
 		{
-			sv4l2_loadjsonconfiguration(config, subdevice);
-			json_t *definition = json_object_get(subdevice, "definition");
-			json_t *fmtbus = NULL;
-			if (definition && json_is_array(definition))
+			int index;
+			json_t *item;
+			json_array_foreach(definition, index, item)
 			{
-				int index;
-				json_t *item;
-				json_array_foreach(definition, index, item)
+				if (json_is_object(item))
 				{
-					if (json_is_object(item))
+					json_t *name = json_object_get(item, "name");
+					if (name && !strcmp(json_string_value(name), "fmtbus"))
 					{
-						json_t *name = json_object_get(item, "name");
-						if (name && !strcmp(json_string_value(name), "fmtbus"))
-						{
-							fmtbus = json_object_get(item, "value");
-							break;
-						}
+						fmtbus = json_object_get(item, "value");
+						break;
 					}
 				}
 			}
-			if (definition && json_is_object(definition))
+		}
+		if (definition && json_is_object(definition))
+		{
+				fmtbus = json_object_get(definition, "fmtbus");
+		}
+		if (fmtbus && json_is_array(fmtbus))
+		{
+			json_t *entry;
+			int index;
+			json_array_foreach(fmtbus, index, entry)
 			{
-					fmtbus = json_object_get(definition, "fmtbus");
+				if (index == (sizeof(config->fmtbus)/sizeof(*config->fmtbus)))
+					break;
+				if (json_is_string(entry))
+				{
+					config->fmtbus[index] = strtol(json_string_value(entry), NULL, 16);
+				}
+				if (json_is_integer(entry))
+				{
+					config->fmtbus[index] = json_integer_value(entry);
+				}
 			}
-			if (fmtbus && json_is_string(fmtbus))
-			{
-				config->fmtbus = strtol(json_string_value(fmtbus), NULL, 16);
-			}
-			if (fmtbus && json_is_integer(fmtbus))
-			{
-				config->fmtbus = json_integer_value(fmtbus);
-			}
+		}
+		if (fmtbus && json_is_string(fmtbus))
+		{
+			config->fmtbus[0] = strtol(json_string_value(fmtbus), NULL, 16);
+		}
+		if (fmtbus && json_is_integer(fmtbus))
+		{
+			config->fmtbus[0] = json_integer_value(fmtbus);
 		}
 	}
 	if (subdevice && json_is_string(subdevice))
@@ -377,13 +463,13 @@ static int _sv4l2_subdev_capabilities_fmtbus_items(void *arg, struct v4l2_subdev
 
 static int _v4l2_subdev_capabilities_fmtbus(V4L2_t *subdev, json_t *definition, int all)
 {
-	int pad = 0;
+	sv4l2_subdev_stream_t stream = {0};
 	json_t *fmtbus = json_object();
 	json_object_set_new(fmtbus, "name", json_string("fmtbus"));
 
 	int ret = 0;
 	struct v4l2_subdev_format mbus = {0};
-	mbus.pad = pad;
+	mbus.pad = stream.pad;
 	mbus.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	ret = ioctl(subdev->fd, VIDIOC_SUBDEV_G_FMT, &mbus);
 	if (!ret)
@@ -399,7 +485,7 @@ static int _v4l2_subdev_capabilities_fmtbus(V4L2_t *subdev, json_t *definition, 
 		arg.controls = items;
 		arg.all = all;
 		arg.ctrlfd = subdev->fd;
-		sv4l2_subdev_getfmtbus(subdev, pad, _sv4l2_subdev_capabilities_fmtbus_items, &arg);
+		sv4l2_subdev_getfmtbus(subdev, &stream, _sv4l2_subdev_capabilities_fmtbus_items, &arg);
 		if (json_array_size > 0)
 			json_object_set_new(fmtbus, "items", items);
 	}
@@ -451,7 +537,7 @@ int sv4l2_subdev_capabilities(V4L2_t *subdev, json_t *capabilities, int all)
 
 #endif
 
-FastVideoDevice_ops_t subdev_ops = {
+const FastVideoDevice_ops_t subdev_ops = {
 	.name = "subv4l",
 	.createconfig = sv4l2_subdev_createconfig,
 	.create = (FastVideoDevice_create_t)sv4l2_subdev_create,

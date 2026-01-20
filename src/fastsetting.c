@@ -36,7 +36,7 @@ int _createdevices(void *data, const char *name, const char *type, void *config)
 		if (! strcmp(ops->name, type))
 		{
 			DeviceConf_t *devconfig = NULL;
-			devconfig = config_create(name, ops, config);
+			devconfig = config_create(name, name, ops, config);
 			if (devconfig)
 			{
 				devconfig->ops.loadconfiguration(devconfig, config);
@@ -60,32 +60,44 @@ int _loadjsonsetting(FastVideoList_t *devices, const char *name, json_t *jentry)
 {
 	int ret = -1;
 	fastvideolist_first(devices);
+	dbg("loadsettings look for %s", name);
 	for (FastVideoDevice_t *device = fastvideolist_next(devices);
 			device != NULL; device = fastvideolist_next(devices))
 	{
-		if (!strcmp(name, device->config->name) &&
+		if (device->config && config_isnamed(device->config, name) &&
 			device->ops->loadsettings && device->dev)
 		{
-			dbg("loadsettings");
+			warn("loadsttings for %s", name);
 			ret = device->ops->loadsettings(device->dev, jentry);
 			break;
 		}
 	}
 	return ret;
 }
-int _loadsetting(FastVideoList_t *devices, client_t *clt, json_t *jentry)
+int _loadsetting(FastVideoList_t *devices, client_t *clt, json_t *jsetting)
 {
 	int ret = 0;
-	if (jentry && json_is_object(jentry))
+	if (jsetting && json_is_array(jsetting))
 	{
-		json_t *jname = json_object_get(jentry, "name");
+		json_t *jentry;
+		int index;
+		json_array_foreach(jsetting, index, jentry)
+		{
+			ret = _loadsetting(devices, clt, jentry);
+		}
+	}
+	if (jsetting && json_is_object(jsetting))
+	{
+		json_t *jname = json_object_get(jsetting, "name");
+		if (jname && json_is_array(jname))
+			jname = json_array_get(jname, 0);
 		if (jname && json_is_string(jname))
-			ret = _loadjsonsetting(devices, json_string_value(jname), jentry);
+			ret = _loadjsonsetting(devices, json_string_value(jname), jsetting);
 #define RESPONSE_LOADSETTING_OK "{\"cmd\":\"loadsetting\", \"status\":0}"
 #define RESPONSE_LOADSETTING_KO "{\"cmd\":\"loadsetting\", \"status\":-1}"
-		if (ret > 0)
+		if (clt && ret > 0)
 			client_send(clt, RESPONSE_LOADSETTING_OK, sizeof(RESPONSE_LOADSETTING_OK) - 1);
-		else
+		else if (clt)
 			client_send(clt, RESPONSE_LOADSETTING_KO, sizeof(RESPONSE_LOADSETTING_KO) - 1);
 	}
 	return ret;
@@ -210,17 +222,23 @@ int main(int argc, char * const argv[])
 	unsigned int mode = 0;
 	const char *logfile = "-";
 	const char *cwd = NULL;
+	FastVideoList_t *settings = NULL;
 
+#ifdef V4L2_SUBDEV
 	fastvideodevice_ops_append(&subdev_ops);
+#endif
 
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "j:L:W:IDP:");
+		opt = getopt(argc, argv, "j:J:L:W:IDP:");
 		switch (opt)
 		{
 			case 'j':
 				configfile = optarg;
+			break;
+			case 'J':
+				settings = fastvideolist_insert(settings, optarg);
 			break;
 			case 'L':
 				logfile = optarg;
@@ -253,8 +271,7 @@ int main(int argc, char * const argv[])
 			err("log file error %m");
 	}
 
-	if (cwd != NULL && chdir(cwd) != 0)
-		err("main: working directory %m");
+	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, cwd);
 
 	FastVideoList_t *devices = NULL;
 	config_parseconfigfile(configfile, _createdevices, &devices);
@@ -279,6 +296,26 @@ int main(int argc, char * const argv[])
 			}
 		}
 	}
+	for (const char *configfile = fastvideolist_next(settings); configfile != NULL; configfile = fastvideolist_next(settings))
+	{
+		FILE *cf = fopen(configfile, "r");
+		if (cf == NULL)
+		{
+			err("config %s error %m", configfile);
+			return -1;
+		}
+		json_t *jsettings;
+		json_error_t error;
+		jsettings = json_loadf(cf, 0, &error);
+		if (! jsettings || !(json_is_object(jsettings) || json_is_array(jsettings)))
+		{
+			err("config %s:%d error %s", configfile, error.line, error.text);
+			return -1;
+		}
+		warn("load json file %s", configfile);
+		_loadsetting(devices, NULL, jsettings);
+
+	}
 	if ((mode & MODE_INITIALIZE) == 0)
 	{
 		server_t *server = server_create(serverpath, 2);
@@ -287,7 +324,6 @@ int main(int argc, char * const argv[])
 		warn("fastsetting server runs on %s", serverpath);
 		server_attach_receive(server, _server_control, devices);
 
-		daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
 		server_run(server);
 		killdaemon(pidfile);
 		server_destroy(server);

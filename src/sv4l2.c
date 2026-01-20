@@ -35,6 +35,10 @@
 #define V4L2_TRYRATIO 40
 #endif
 
+#ifdef V4L2_SUBDEV
+#define ADD_SUBDEVICES 1
+#endif
+
 #define dbg_buffer_splane(v4l2) 		dbg("sv4l2: buf %d info:", v4l2->index); \
 		dbg("\ttype: %s", (v4l2->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)? "CAPTURE":"OUTPUT"); \
 		dbg("\tmemory: %s", (v4l2->memory == V4L2_MEMORY_DMABUF)? "DMABUF":(v4l2->memory == V4L2_MEMORY_MMAP)?"MMAP":"USERPTR"); \
@@ -274,6 +278,10 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 		memcpy(interface, cap.card, sizeof(cap.card));
 
 	uint32_t caps = cap.capabilities;
+#ifdef DEBUG
+	if (caps & (V4L2_CAP_META_CAPTURE | V4L2_CAP_META_OUTPUT))
+		dbg("sv4l2: media has Metadata capabilities");
+#endif
 	if (caps & V4L2_CAP_DEVICE_CAPS)
 	{
 		dbg("sv4l2: device capabilities available on %s %#x", cap.card, cap.capabilities);
@@ -287,9 +295,16 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 	 * We unset meta if the device may not support meta.
 	 */
 	if (!(caps & (V4L2_CAP_META_CAPTURE | V4L2_CAP_META_OUTPUT)))
-		*mode &= ~MODE_META;
-	else if (!(caps & (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_OUTPUT)))
 	{
+		if (*mode & MODE_META)
+		{
+			err("sv4l2: device Metadata not available");
+			return -1;
+		}
+	}
+	else if (!(*mode & MODE_META) && !(caps & (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_OUTPUT)))
+	{
+		warn("sv4l2: force enable Metadata");
 		*mode |= MODE_META;
 	}
 	else
@@ -299,31 +314,31 @@ static int _v4l2_devicecapabilities(int fd, char interface[32], int *mode, devic
 #endif
 
 #ifdef DEBUG
-	dbg("sv4l2 :device %s capabilities %#X", interface, cap.device_caps);
+	dbg("sv4l2: device %s capabilities %#X", interface, cap.device_caps);
 	if(caps & V4L2_CAP_VIDEO_CAPTURE)
-		dbg("sv4l2 :device %s capture (camera)", cap.card);
+		dbg("sv4l2: device %s capture (camera)", cap.card);
 	if(caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE)
-		dbg("sv4l2 :device %s capture mplane", cap.card);
+		dbg("sv4l2: device %s capture mplane", cap.card);
 	if(caps & V4L2_CAP_VIDEO_OUTPUT)
-		dbg("sv4l2 :device %s output", cap.card);
+		dbg("sv4l2: device %s output", cap.card);
 	if(caps & V4L2_CAP_VIDEO_OUTPUT_MPLANE)
-		dbg("sv4l2 :device %s output mplane", cap.card);
+		dbg("sv4l2: device %s output mplane", cap.card);
 	if(caps & V4L2_CAP_VIDEO_OVERLAY)
-		dbg("sv4l2 :device %s overlay", cap.card);
+		dbg("sv4l2: device %s overlay", cap.card);
 	if(caps & V4L2_CAP_VIDEO_M2M)
-		dbg("sv4l2 :device %s memory to memory", cap.card);
+		dbg("sv4l2: device %s memory to memory", cap.card);
 	if(caps & V4L2_CAP_VIDEO_M2M_MPLANE)
-		dbg("sv4l2 :device %s memory to memory mplane", cap.card);
+		dbg("sv4l2: device %s memory to memory mplane", cap.card);
 	if(caps & V4L2_CAP_AUDIO)
-		dbg("sv4l2 :device %s audio", cap.card);
+		dbg("sv4l2: device %s audio", cap.card);
 	if(caps & V4L2_CAP_VBI_CAPTURE)
-		dbg("sv4l2 :device %s vbi", cap.card);
+		dbg("sv4l2: device %s vbi", cap.card);
 	if(caps & V4L2_CAP_RADIO)
-		dbg("sv4l2 :device %s radio", cap.card);
+		dbg("sv4l2: device %s radio", cap.card);
 	if(caps & V4L2_CAP_EXT_PIX_FORMAT)
-		dbg("sv4l2 :device %s Pixformat extension available", cap.card);
+		dbg("sv4l2: device %s Pixformat extension available", cap.card);
 	if(caps & V4L2_CAP_IO_MC)
-		dbg("sv4l2 :device %s media control available", cap.card);
+		dbg("sv4l2: device %s media control available", cap.card);
 #endif
 	if ((caps & V4L2_CAP_VIDEO_CAPTURE ||
 		caps & V4L2_CAP_META_CAPTURE ||
@@ -636,11 +651,12 @@ static int _v4l2_setfps_vblank(int ctrlfd, uint32_t width, uint32_t height, int 
 	{
 		fps = vblank + height;
 		fps *= width + hblank;
-		fps = pixelrate / fps;
+		if (fps)
+			fps = pixelrate / fps;
 	}
 	if (fps != -1)
 		warn("sv4l2: Frame rate: %d/%d fps vertical blank %lu",
-			(fps > 0)?1:-fps, (fps > 0)?fps:1, vblank);
+			(fps > 0)?fps:1, (fps > 0)?1:-fps, vblank);
 	return fps;
 }
 
@@ -1037,7 +1053,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 	return ret;
 }
 
-int _v4l2_transform(V4L2_t *dev, struct v4l2_rect *r, int target)
+static int _v4l2_transform(V4L2_t *dev, struct v4l2_rect *r, int target)
 {
 	struct v4l2_selection sel = {0};
 	sel.type = dev->type;
@@ -1218,8 +1234,20 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 	int ctrlfd = dev->fd;
 	struct v4l2_query_ext_ctrl queryctrl = {0};
 	queryctrl.id = id;
+	void *retvalue = NULL;
 	int ret = ioctl(ctrlfd, VIDIOC_QUERYCTRL, &queryctrl);
 	if (ret != 0)
+	{
+		retvalue = (void *)(long)-1;
+#if ADD_SUBDEVICES
+		for (int i = 0; retvalue == (void *)(long)-1 && i < (sizeof(dev->subdevs) / sizeof(*(dev->subdevs))); i++)
+		{
+			if (dev->subdevs[i])
+				retvalue = sv4l2_control(dev->subdevs[i], id, value);
+		}
+#endif
+	}
+	if (retvalue == (void *)(long)-1)
 	{
 		err("sv4l2: control %d not supported", id);
 		return (void *)-1;
@@ -1238,7 +1266,8 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 		err("sv4l2: control %d with payload unsupported", id);
 		return 0;
 	}
-	return _sv4l2_control(ctrlfd, id, value, &queryctrl);
+	retvalue =  _sv4l2_control(ctrlfd, id, value, &queryctrl);
+	return retvalue;
 }
 
 static int _v4l2_periodiccontrol(V4L2_t *dev, int bufferid)
@@ -1361,6 +1390,9 @@ static uint32_t _sv4l2_getfourcc(int fd, enum v4l2_buf_type type, uint32_t fourc
 
 	switch (fourcc)
 	{
+		case FOURCC_XB24:
+			fourcc = _sv4l2_getfourcc(fd, type, FOURCC_AB24);
+		break;
 		case FOURCC_XR24:
 		case FOURCC_AR24:
 			fourcc = _sv4l2_getfourcc(fd, type, FOURCC_BGR4);
@@ -1438,6 +1470,17 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 	dev->type = type;
 	dev->mode = mode;
 	dev->ops.createbuffers = createbuffers_splane;
+#if ADD_SUBDEVICES
+	/// the subdevices must be intialized, even if they are not used after
+	for (int i = 0; config && i < (sizeof(dev->subdevs) / sizeof(*(dev->subdevs))) &&
+			i < (sizeof(config->subdev_entries) / sizeof(*(config->subdev_entries))); i++)
+	{
+		if (config->subdev_entries[i])
+		{
+			dev->subdevs[i] = subdev_ops.create(config->subdev_entries[i]->parent.name, dtype, (DeviceConf_t *)config->subdev_entries[i]);
+		}
+	}
+#endif
 	if (mode & MODE_MPLANE)
 	{
 		dev->ops.createbuffers = createbuffers_mplane;
@@ -1494,8 +1537,13 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	dup->mode &= ~MODE_OUTPUT;
 	dup->type = -1;
 	*pconfig = dup->config = malloc(sizeof(*dev->config));
-	memmove(dup->config, *pconfig, sizeof(*dev->config));
-	memmove(&dup->config->parent, &dev->config->transfer, sizeof(dup->config->parent));
+	memmove(dup->config, dev->config, sizeof(*dev->config));
+	if (!dev->config->transfer.width)
+		dup->config->parent.width = dev->config->parent.width;
+	if (!dev->config->transfer.height)
+		dup->config->parent.height = dev->config->parent.height;
+	if (!dev->config->transfer.fourcc)
+		dup->config->parent.fourcc = dev->config->parent.fourcc;
 	if ((dup->mode & MODE_CAPTURE) && dup->config->periodic)
 	{
 		dup->periodicfunc = _v4l2_periodiccontrol;
@@ -1508,7 +1556,7 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	}
 
 	sv4l2_getpixformat(dup, NULL, NULL);
-	dbg("sv4l2: %s(dup) %dx%d, %.4s", dup->name, dup->width, dup->height, (char*)&dup->fourcc);
+	warn("sv4l2: %s output  %dx%d, %.4s", dup->name, dup->width, dup->height, (char*)&dup->fourcc);
 
 	return dup;
 }
@@ -1605,7 +1653,7 @@ int sv4l2_queue(V4L2_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
 	int ret = 0;
 	if (flags & FB_FLAGS_MODIFIER && !dev->config->parent.modifiers)
-		err("sv4ll2: input format required not supported modifier");
+		err("sv4l2: input format required not supported modifier");
 	if (bytesused > 0)
 		dev->buffers[index].v4l2.bytesused = bytesused;
 	if (mem && dev->buffers[0].v4l2.memory == V4L2_MEMORY_USERPTR)
@@ -1641,12 +1689,19 @@ void sv4l2_destroy(V4L2_t *dev)
 			if (dev->buffers[i].map[j])
 				munmap(dev->buffers[i].map[j], dev->buffers[i].length);
 	}
+#if ADD_SUBDEVICES
+	for (int i = 0; i < (sizeof(dev->subdevs) / sizeof(*(dev->subdevs))); i++)
+	{
+		if (dev->subdevs[i])
+			subdev_ops.destroy(dev->subdevs[i]);
+	}
+#endif
 	free(dev->buffers);
 	close(dev->fd);
 	free(dev);
 }
 
-DeviceConf_t * sv4l2_createconfig()
+DeviceConf_t * sv4l2_createconfig(const char *name)
 {
 	V4l2Config_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(V4l2Config_t));
@@ -1911,6 +1966,9 @@ static int _v4l2_loadjsoncontrol(V4L2_t *dev, json_t *control)
 	json_t *jdisable = json_object_get(control, "disable");
 	if (json_is_true(jdisable))
 		return 1;
+	json_t *jrdonly = json_object_get(control, "read-only");
+	if (json_is_true(jrdonly))
+		return 1;
 	json_t *jid = json_object_get(control, "id");
 	if (!jid || !json_is_integer(jid))
 		return -1;
@@ -1981,6 +2039,26 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 {
 	json_t *jconfig = entry;
 
+	json_t *jname = json_object_get(jconfig, "name");
+	if (jname && json_is_array(jname))
+	{
+		int index = 0;
+		json_t *jentry = NULL;
+		json_array_foreach(jname, index, jentry)
+		{
+			if (dev->config && config_isnamed(&dev->config->parent, json_string_value(jentry)))
+			{
+				jname = jentry;
+				break;
+			}
+		}
+	}
+	if (jname && json_is_string(jname) &&
+			!config_isnamed(&dev->config->parent, json_string_value(jname)))
+	{
+		return -1;
+	}
+
 	json_t *transformations = json_object_get(jconfig, "transformation");
 	if (transformations && json_is_array(transformations))
 	{
@@ -1995,6 +2073,10 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 	{
 		_v4l2_loadjsontransformation(dev, transformations);
 	}
+
+	json_t *disable = json_object_get(jconfig, "disable");
+	if (json_is_true(disable))
+		return -1;
 
 	json_t *jcontrols = json_object_get(jconfig,"controls");
 	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
@@ -2085,20 +2167,22 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
  * the subdevices should be useless for video
  * It is enought to manage the subdevices independently for the controls
  */
-int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevice, const char *name)
+int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevices, const char *name)
 {
 	int subdev_id = 0;
-	if (subdevice && json_is_array(subdevice))
+	if (subdevices && json_is_array(subdevices))
 	{
-		json_t *field = NULL;
+		json_t *subdevice = NULL;
 		int index = 0;
-		json_array_foreach(subdevice, index, field)
+		json_t *jlastname = NULL;
+		json_array_foreach(subdevices, index, subdevice)
 		{
-			if (json_is_object(field))
+			if (json_is_object(subdevice))
 			{
-				json_t *jname = json_object_get(field, "name");
+				json_t *jname = json_object_get(subdevice, "name");
 				if (jname && json_is_array(jname))
 				{
+					jlastname = json_array_get(jname, json_array_size(jname) - 1);
 					json_t *it = NULL;
 					int i = 0;
 					json_array_foreach(jname, i, it)
@@ -2113,21 +2197,29 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevice, const char *nam
 				}
 				if (jname && json_is_string(jname) &&
 					!strcmp(json_string_value(jname), name) &&
-					json_is_object(field))
+					json_is_object(subdevice))
 				{
-					json_t *disable = json_object_get(field, "disable");
-					if (json_is_true(disable))
+					json_t *jdisable = json_object_get(subdevice, "disable");
+					if (json_is_true(jdisable))
+					{
+						warn("sv4l2: subdev %s is disabled", name);
+#if 0
 						continue;
-
-					json_t *definition = json_object_get(field, "definition");
+#endif
+					}
+					json_t *definition = json_object_get(subdevice, "definition");
 					_v4l2_parsedefinition(definition, config);
 					if (subdev_id >= (sizeof(config->subdev_entries) / sizeof(*config->subdev_entries)))
 						break;
-					config->subdev_entries[subdev_id] = field;
+
+					config->subdev_entries[subdev_id] = (V4l2Config_t *)subdev_ops.createconfig(name);
+					config->subdev_entries[subdev_id]->parent.entry = subdevice;
+					config->subdev_entries[subdev_id]->parent.ops.loadconfiguration(config->subdev_entries[subdev_id], subdevice);
+					if (jlastname && json_is_string(jlastname))
+						config->subdev_entries[subdev_id]->parent.name = json_string_value(jlastname);
 					subdev_id++;
 				}
 			}
-			if (subdev_id >= sizeof(config->subdev_entries)/sizeof(*config->subdev_entries))
 		}
 	}
 	return 0;
@@ -2805,7 +2897,7 @@ int sv4l2_capabilities(V4L2_t *dev, json_t *capabilities, int all)
 
 #endif
 
-FastVideoDevice_ops_t sv4l2_ops = {
+const FastVideoDevice_ops_t sv4l2_ops = {
 	.name = "v4l2",
 	.createconfig = sv4l2_createconfig,
 	.create = (FastVideoDevice_create_t)sv4l2_create,

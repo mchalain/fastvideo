@@ -3,197 +3,50 @@
     "name": ["isp-in","isp0-in","pispbe-input"],
     "type": "v4l2",
     "device": "/dev/video20",
-    "id": 11,
-    "media": "media2"
+    "end": true
   },
   {
-    "name": ["ips-out","ips-out0","ips0-out0","pispbe-output0"],
+    "name": ["isp-out","ips-out0","ips0-out0","pispbe-output0"],
     "type": "v4l2",
     "device": "/dev/video24",
-    "definition": [
-      {
-        "name": "fourcc",
-        "value": "YUYV",
-        "type": "string",
-        "items": [
-          "YU12",
-          "YV12",
-          "NV12",
-          "NV21",
-          "YUYV",
-          "UYVY",
-          "YVYU",
-          "VYUY",
-          "YM12",
-          "NM12",
-          "NM21",
-          "YM21",
-          "YM16",
-          "YM61",
-          "YM24",
-          "YM42",
-          "RGB3",
-          "BGR3",
-          "XR24",
-          "XB24",
-          "RGB6",
-          "BGR6",
-          "RGGB",
-          "BA81",
-          "GRBG",
-          "GBRG",
-          "RG16",
-          "BYR2",
-          "GR16",
-          "GB16",
-          "RG10",
-          "BG10",
-          "BA10",
-          "GB10",
-          "RG12",
-          "BG12",
-          "BA12",
-          "GB12",
-          "RG14",
-          "BG14",
-          "GR14",
-          "GB14",
-          "PC1B",
-          "PC1R",
-          "PC1G",
-          "PC1g",
-          "GREY",
-          "Y16 ",
-          "PC1M",
-          "RPBP"
-        ]
-      },
-      {
-        "name": "width",
-        "value": 1920,
-        "type": "integer",
-        "minimum": 32,
-        "maximum": 65535,
-        "step": 2
-      },
-      {
-        "name": "height",
-        "value": 1080,
-        "type": "integer",
-        "minimum": 32,
-        "maximum": 65535,
-        "step": 2
-      }
-    ],
-    "id": 35,
-    "media": "media2"
+    "definition": {
+      "fourcc": "YUYV",
+      "width": 1920,
+      "height": 1080
+    },
+    "end": true
   },
   {
-    "name": ["ips-out1","ips0-out1","pispbe-output1"],
+    "name": ["isp-out1","isp0-out1","pispbe-output1"],
     "type": "v4l2",
     "device": "/dev/video25",
-    "definition": [
-      {
-        "name": "fourcc",
-        "value": "YUYV",
-        "type": "string",
-        "items": [
-          "YU12",
-          "YV12",
-          "NV12",
-          "NV21",
-          "YUYV",
-          "UYVY",
-          "YVYU",
-          "VYUY",
-          "YM12",
-          "NM12",
-          "NM21",
-          "YM21",
-          "YM16",
-          "YM61",
-          "YM24",
-          "YM42",
-          "RGB3",
-          "BGR3",
-          "XR24",
-          "XB24",
-          "RGB6",
-          "BGR6",
-          "RGGB",
-          "BA81",
-          "GRBG",
-          "GBRG",
-          "RG16",
-          "BYR2",
-          "GR16",
-          "GB16",
-          "RG10",
-          "BG10",
-          "BA10",
-          "GB10",
-          "RG12",
-          "BG12",
-          "BA12",
-          "GB12",
-          "RG14",
-          "BG14",
-          "GR14",
-          "GB14",
-          "PC1B",
-          "PC1R",
-          "PC1G",
-          "PC1g",
-          "GREY",
-          "Y16 ",
-          "PC1M",
-          "RPBP"
-        ]
-      },
-      {
-        "name": "width",
-        "value": 1920,
-        "type": "integer",
-        "minimum": 32,
-        "maximum": 65535,
-        "step": 2
-      },
-      {
-        "name": "height",
-        "value": 1080,
-        "type": "integer",
-        "minimum": 32,
-        "maximum": 65535,
-        "step": 2
-      }
-    ],
-    "id": 41,
-    "media": "media2"
+    "definition": {
+      "fourcc": "YUYV",
+      "width": 1920,
+      "height": 1080
+    },
+    "end": true
+  },
+  {
+    "name": ["isp-config","isp0-config","pispbe-config"],
+    "type": "v4l2",
+    "device": "/dev/video25",
+    "definition": {
+      "fourcc": "RPBC",
+      "size": 16720
+    },
+    "end": true
   },
   {
     "name": ["enc-hevc","rpivid-source"],
     "type": "v4l2",
     "device": "/dev/video19",
-    "definition": [
-      {
-        "name": "fourcc",
-        "value": "S265",
-        "type": "string",
-        "items": [
-          "S265"
-        ]
-      },
-      {
-        "name": "width",
-        "value": 1920,
-        "type": "integer"
-      },
-      {
-        "name": "height",
-        "value": 1088,
-        "type": "integer"
-      }
-    ],
+    "definition": {
+      "fourcc": "S265",
+      "width": 1920,
+      "height": 1088,
+      "end": true
+    },
     "controls": [
       {
         "name": "Stateless Codec Controls",
@@ -251,437 +104,239 @@
         ]
       }
     ],
-    "id": 1,
-    "media": "media0"
+    "end": true
   },
   {
-    "name": ["cam","imx296","imx477","rp1-cfe-fe_image0"],
+    "name": ["cam-stats","rp1-cfe-fe_stats"],
+    "type": "v4l2",
+    "device": "/dev/video6",
+    "definition": {
+      "fourcc": "RPFS",
+      "size": 23200
+    },
+    "end": true
+  },
+  {
+    "name": ["cam-config","rp1-cfe-fe_config"],
+    "type": "v4l2",
+    "device": "/dev/video7",
+    "definition": {
+      "mode": "meta",
+      "fourcc": "RPFC",
+      "size": 632
+    },
+    "end": true
+  },
+  {
+    "name": ["config-cam"],
+    "type": "file",
+    "filename": "data/rp1_fe_config.bin",
+    "definition": {
+      "fourcc": "RPFC",
+      "size": 632
+    },
+    "end": true
+  },
+  {
+    "name": ["cam-embedded","rp1-cfe-fe_embedded"],
+    "type": "v4l2",
+    "device": "/dev/video1",
+    "definition": {
+      "mode": "meta"
+    },
+    "end": true
+  },
+  {
+    "name": ["cam-meta","rp1-cfe-fe_image0"],
     "type": "v4l2",
     "device": "/dev/video4",
-    "definition": [
-      {
-        "name": "fourcc",
-        "value": "RG16"
-      }
-    ],
-    "id": 35,
-    "media": "media1",
+    "definition": {
+      "mode": "meta"
+    },
+    "end": true
+  },
+  {
+    "name": ["raw","raw-ov9281","raw-imx708","raw-imx296","raw-imx477","rp1-cfe-fe_ch0"],
+    "type": "v4l2",
+    "device": "/dev/video0",
     "subdevices": [
       {
-        "name": "pisp-fe",
+        "name": ["raw-ov9281","raw-imx296","raw-imx708","raw-imx477","csi2"],
         "type": "subv4l",
-        "device": "/dev/v4l-subdev1",
-        "sink": [35,39,43],
-        "id": 10,
-        "media": "media1"
+        "disable": true,
+        "device": "/dev/v4l-subdev0",
+        "end": true
       },
       {
-      "name": "csi2",
-      "type": "subv4l",
-      "device": "/dev/v4l-subdev0",
-      "sink": [19,10,23,27,10,31,10],
-      "id": 1,
-      "media": "media1"
-      },
-      {
-        "name": ["imx296","imx296 6-001a"],
+        "name": ["raw-imx708","imx708_wide_noir"],
         "type": "subv4l",
+        "disable": false,
         "device": "/dev/v4l-subdev2",
-        "definition": [
-          {
-            "name": "fourcc",
-            "value": "RG10",
-            "type": "string",
-            "items": [
-              "RG10"
-            ]
-          },
-          {
-            "name": "width",
-            "value": 1456,
-            "type": "integer",
-            "items": [
-              1456
-            ]
-          },
-          {
-            "name": "height",
-            "value": 1088,
-            "type": "integer",
-            "items": [
-              1088
-            ]
-          }
-        ],
-        "controls": [
-          {
-            "name": "User Controls",
-            "id": 9961473,
-            "type": "control class",
-            "items": [
-              {
-                "name": "Exposure",
-                "id": 9963793,
-                "type": "integer",
-                "value": 1104,
-                "minimum": 1,
-                "maximum": 1048575,
-                "step": 1,
-                "default_value": 1104
-              },
-              {
-                "name": "Horizontal Flip",
-                "id": 9963796,
-                "type": "boolean",
-                "value": false,
-                "default_value": 0
-              },
-              {
-                "name": "Vertical Flip",
-                "id": 9963797,
-                "type": "boolean",
-                "value": false,
-                "default_value": 0
-              }
-            ]
-          },
-          {
-            "name": "Camera Controls",
-            "id": 10092545,
-            "type": "control class",
-            "items": [
-              {
-                "name": "Camera Orientation",
-                "id": 10094882,
-                "type": "menu",
-                "value": 2,
-                "items": [
-                  "Front",
-                  "Back",
-                  "External"
-                ],
-                "value_show": "External",
-                "default_value": 2
-              },
-              {
-                "name": "Camera Sensor Rotation",
-                "id": 10094883,
-                "type": "integer",
-                "value": 180,
-                "minimum": 180,
-                "maximum": 180,
-                "step": 1,
-                "default_value": 180
-              }
-            ]
-          },
-          {
-            "name": "Image Source Controls",
-            "id": 10354689,
-            "type": "control class",
-            "items": [
-              {
-                "name": "Vertical Blanking",
-                "id": 10356993,
-                "type": "integer",
-                "value": 30,
-                "minimum": 30,
-                "maximum": 1047487,
-                "step": 1,
-                "default_value": 30
-              },
-              {
-                "name": "Horizontal Blanking",
-                "id": 10356994,
-                "type": "integer",
-                "value": 304,
-                "minimum": 304,
-                "maximum": 304,
-                "step": 1,
-                "default_value": 304
-              },
-              {
-                "name": "Analogue Gain",
-                "id": 10356995,
-                "type": "integer",
-                "value": 0,
-                "minimum": 0,
-                "maximum": 480,
-                "step": 1,
-                "default_value": 0
-              }
-            ]
-          },
-          {
-            "name": "Image Processing Controls",
-            "id": 10420225,
-            "type": "control class",
-            "items": [
-              {
-                "name": "Pixel Rate",
-                "id": 10422530,
-                "type": "large integer",
-                "value": 118800000,
-                "default_value": 118800000
-              },
-              {
-                "name": "Test Pattern",
-                "id": 10422531,
-                "type": "menu",
-                "value": 0,
-                "items": [
-                  "Disabled",
-                  "Multiple Pixels",
-                  "Sequence 1",
-                  "Sequence 2",
-                  "Gradient",
-                  "Row",
-                  "Column",
-                  "Cross",
-                  "Stripe",
-                  "Checks"
-                ],
-                "value_show": "Disabled",
-                "default_value": 0
-              }
-            ]
-          }
-        ],
-        "sink": [
-          1
-        ],
-        "id": 16,
-        "media": "media1"
+        "definition": {
+          "fourcc": "BYR2",
+          "fmtbus": "0x3007",
+          "width": 2304,
+          "height": 1296,
+          "end": true
+        }
       },
       {
-      "name": ["inx477","imx477 6-001a"],
-      "type": "subv4l",
-      "device": "/dev/v4l-subdev2",
-      "definition": [
-        {
-        "name": "fourcc",
-        "value": "RG12"
-        },
-        {
-        "name": "width",
-        "value": 4056,
-        "type": "integer",
-        "items": [
-          4056,
-          2028,
-          2028
-        ]
-        },
-        {
-        "name": "height",
-        "value": 3040,
-        "type": "integer",
-        "items": [
-          3040,
-          1520,
-          1080
-        ]
+        "name": ["raw-imx708","dw9807 10-000c"],
+        "type": "subv4l",
+        "disable": false,
+        "device": "/dev/v4l-subdev3",
+        "definition": {
+          "mode" : "control"
         }
-      ],
-      "controls": [
-        {
-        "name": "User Controls",
-        "id": 9961473,
-        "type": "control class",
-        "items": [
-          {
-          "name": "Exposure",
-          "id": 9963793,
-          "type": "integer",
-          "value": 1600,
-          "minimum": 4,
-          "maximum": 3478,
-          "step": 1,
-          "default_value": 1600
-          },
-          {
-          "name": "Horizontal Flip",
-          "id": 9963796,
-          "type": "boolean",
-          "value": false,
-          "default_value": 0
-          },
-          {
-          "name": "Vertical Flip",
-          "id": 9963797,
-          "type": "boolean",
-          "value": false,
-          "default_value": 0
-          }
-        ]
-        },
-        {
-        "name": "Camera Controls",
-        "id": 10092545,
-        "type": "control class",
-        "items": [
-          {
-          "name": "Camera Orientation",
-          "id": 10094882,
-          "type": "menu",
-          "value": 2,
-          "items": [
-            "Front",
-            "Back",
-            "External"
-          ],
-          "value_show": "External",
-          "default_value": 2
-          },
-          {
-          "name": "Camera Sensor Rotation",
-          "id": 10094883,
-          "type": "integer",
-          "value": 180,
-          "minimum": 180,
-          "maximum": 180,
-          "step": 1,
-          "default_value": 180
-          }
-        ]
-        },
-        {
-        "name": "Image Source Controls",
-        "id": 10354689,
-        "type": "control class",
-        "items": [
-          {
-          "name": "Vertical Blanking",
-          "id": 10356993,
-          "type": "integer",
-          "value": 460,
-          "minimum": 460,
-          "maximum": 8380960,
-          "step": 1,
-          "default_value": 460
-          },
-          {
-          "name": "Horizontal Blanking",
-          "id": 10356994,
-          "type": "integer",
-          "value": 19944,
-          "minimum": 19944,
-          "maximum": 65520,
-          "step": 1,
-          "default_value": 19944
-          },
-          {
-          "name": "Analogue Gain",
-          "id": 10356995,
-          "type": "integer",
-          "value": 0,
-          "minimum": 0,
-          "maximum": 978,
-          "step": 1,
-          "default_value": 0
-          },
-          {
-          "name": "Red Pixel Value",
-          "id": 10356996,
-          "type": "integer",
-          "value": 4095,
-          "minimum": 0,
-          "maximum": 4095,
-          "step": 1,
-          "default_value": 4095
-          },
-          {
-          "name": "Green (Red) Pixel Value",
-          "id": 10356997,
-          "type": "integer",
-          "value": 4095,
-          "minimum": 0,
-          "maximum": 4095,
-          "step": 1,
-          "default_value": 4095
-          },
-          {
-          "name": "Blue Pixel Value",
-          "id": 10356998,
-          "type": "integer",
-          "value": 4095,
-          "minimum": 0,
-          "maximum": 4095,
-          "step": 1,
-          "default_value": 4095
-          },
-          {
-          "name": "Green (Blue) Pixel Value",
-          "id": 10356999,
-          "type": "integer",
-          "value": 4095,
-          "minimum": 0,
-          "maximum": 4095,
-          "step": 1,
-          "default_value": 4095
-          }
-        ]
-        },
-        {
-        "name": "Image Processing Controls",
-        "id": 10420225,
-        "type": "control class",
-        "items": [
-          {
-          "name": "Link Frequency",
-          "id": 10422529,
-          "type": "menu",
-          "value": 0,
-          "items": [
-            450000000
-          ],
-          "value_show": 450000000,
-          "default_value": 0
-          },
-          {
-          "name": "Pixel Rate",
-          "id": 10422530,
-          "type": "large integer",
-          "value": 840000000,
-          "default_value": 840000000
-          },
-          {
-          "name": "Test Pattern",
-          "id": 10422531,
-          "type": "menu",
-          "value": 0,
-          "items": [
-            "Disabled",
-            "Color Bars",
-            "Solid Color",
-            "Grey Color Bars",
-            "PN9"
-          ],
-          "value_show": "Disabled",
-          "default_value": 0
-          },
-          {
-          "name": "Digital Gain",
-          "id": 10422533,
-          "type": "integer",
-          "value": 256,
-          "minimum": 256,
-          "maximum": 65535,
-          "step": 1,
-          "default_value": 256
-          }
-        ]
+      },
+      {
+        "name": ["raw-imx296","imx296 6-001a"],
+        "type": "subv4l",
+        "disable": false,
+        "device": "/dev/v4l-subdev2",
+        "definition": {
+          "fourcc": "BYR2",
+          "fmtbus": "0x3007",
+          "width": 1456,
+          "height": 1088,
+          "end": true
         }
-      ],
-      "sink": [1],
-      "id": 16,
-      "media": "media1"
+      },
+      {
+        "name": ["raw-imx477","imx477 6-001a"],
+        "type": "subv4l",
+        "disable": false,
+        "device": "/dev/v4l-subdev2",
+        "definition": {
+          "fourcc": "RG16",
+          "fmtbus": "0x3012",
+          "width": 2028,
+          "height": 1520,
+          "end": true
+        }
+      },
+      {
+        "name": ["raw-ov9281","ov9281 4-0060"],
+        "type": "subv4l",
+        "disable": false,
+        "device": "/dev/v4l-subdev2",
+        "definition": {
+          "fourcc": "Y16 ",
+          "fmtbus": "0x200a",
+          "width": 1280,
+          "height":  720,
+          "end": true
+        }
+      }
+    ],
+    "end": true
+  },
+  {
+    "name": ["cam","cam-imx708","cam-imx296","cam-imx477","rp1-cfe-fe_image0"],
+    "type": "v4l2",
+    "device": "/dev/video4",
+    "subdevices": [
+      {
+        "name": ["cam-imx296","cam-imx708","pisp-fe"],
+        "type": "subv4l",
+        "disable": true,
+        "device": "/dev/v4l-subdev1",
+        "end": true
+      },
+      {
+        "name": ["cam-imx296","cam-imx708","csi2"],
+        "type": "subv4l",
+        "disable": true,
+        "device": "/dev/v4l-subdev0",
+        "end": true
+      },
+      {
+        "name": ["cam-imx708","imx708_wide_noir"],
+        "type": "subv4l",
+        "disable": true,
+        "device": "/dev/v4l-subdev2",
+        "definition": {
+          "fourcc": "PC1B",
+          "fmtbus": "0x3007",
+          "width": 2304,
+          "height": 1296,
+          "end": true
+        },
+        "end": true
+      },
+      {
+        "name": ["cam-imx708","dw9807 10-000c"],
+        "type": "subv4l",
+        "disable": true,
+        "device": "/dev/v4l-subdev3",
+        "definition": {
+          "mode" : "control"
+        },
+        "end": true
+      },
+      {
+        "name": ["cam-imx296","imx296 6-001a"],
+        "type": "subv4l",
+        "disable": true,
+        "device": "/dev/v4l-subdev2",
+        "definition": {
+          "fourcc": "PC1B",
+          "fmtbus": "0x3007",
+          "width": 1456,
+          "height": 1088,
+          "end": true
+        },
+        "end": true
+      },
+      {
+        "name": ["cam-imx477","imx477 6-001a"],
+        "type": "subv4l",
+        "disable": true,
+        "device": "/dev/v4l-subdev2",
+        "definition": {
+          "fourcc": "PC1R",
+          "fmtbus": "0x300a",
+          "width": 4056,
+          "height": 3040,
+          "end": true
+        },
+        "end": true
       }
     ]
-  }
-  ,{
-     "name": ["gpu"],
-     "type": "gpu",
-     "native": "drm"
+  },
+  {
+    "name": "Y16toR16",
+    "type": "passthrough",
+    "transfer": {
+      "fourcc": "R16 "
+    },
+    "end": true
+  },
+  {
+    "name": "dryrun",
+    "type": "passthrough",
+    "controls": [{
+      "dryrun": true,
+      "end": true
+    }],
+    "end": true
+  },
+  {
+    "name": ["screen"],
+    "type": "screen",
+    "device": "/dev/dri/card0",
+    "end": true
+  },
+  {
+    "name": ["offscreen"],
+    "type": "gpu",
+    "native": ["offscreen"],
+    "end": true
+  },
+  {
+    "name": ["gpu"],
+    "type": "gpu",
+    "native": ["x11","wayland","drm"],
+    "end": true
   }
 ]

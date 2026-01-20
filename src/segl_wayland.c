@@ -269,7 +269,7 @@ static void native_destroy(EGLNativeDisplayType native_display)
 	wl_display_disconnect(native_display);
 }
 
-EGLNative_t eglnative_wayland = 
+EGLNative_t eglnative_wayland =
 {
 	.name = "wayland",
 	.display = native_display,

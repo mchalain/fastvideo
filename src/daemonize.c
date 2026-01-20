@@ -139,25 +139,51 @@ static int _setowner(const char *user)
 	return ret;
 }
 
-int daemonize(unsigned char onoff, const char *pidfile, const char *owner)
+static int _chroot(const char *rootfs)
 {
-	pid_t pid;
+	if (chroot(rootfs) == 0)
+	{
+		warn("daemon runs insizde a sandbix");
+	}
+	else if (chdir(rootfs) != 0)
+	{
+		err("%s directory not accessible", rootfs);
+		return -1;
+	}
+	return 0;
+}
+
+int daemonize(unsigned char onoff, const char *pidfile, const char *owner, const char *rootfs)
+{
+	pid_t pid = -1;
+	pid_t sid = -1;
 	if ( getppid() == 1 )
 	{
 		return -1;
 	}
-	if (onoff && (pid = fork()) > 0)
+	if (onoff && (pid = fork()) == (pid_t)-1)
+	{
+		err("process may not be daemonized");
+		return -1;
+	}
+	if (pid > 0)
 	{
 		dbg("start daemon on pid %d", pid);
 		exit(0);
 	}
-	int sid = setsid();
-	dbg("start daemon sid %d", sid);
+	if (pid == 0 && (sid = setsid()) == (pid_t)-1)
+	{
+		err("process may not be owner group");
+		return -1;
+	}
 
 	if (pidfile != NULL && _setpidfile(pidfile))
 		return -1;
 
 	if (owner != NULL && _setowner(owner))
+		return -1;
+
+	if (rootfs != NULL && _chroot(rootfs))
 		return -1;
 
 #ifdef HAVE_SIGACTION

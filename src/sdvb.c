@@ -244,7 +244,7 @@ EXT_API void sdvb_destroy(DVB_t *dev)
 	free(dev);
 }
 
-DeviceConf_t * sdvb_createconfig()
+DeviceConf_t * sdvb_createconfig(const char *name)
 {
 	DVBConfig_t *devconfig = NULL;
 	devconfig = calloc(1, sizeof(DVBConfig_t));
@@ -294,7 +294,7 @@ int sdvb_loadjsonconfiguration(void *arg, void *entry)
 }
 #endif
 
-FastVideoDevice_ops_t sdvb_ops = {
+const FastVideoDevice_ops_t sdvb_ops = {
 	.name = "dvb",
 	.createconfig = sdvb_createconfig,
 	.create = (FastVideoDevice_create_t)sdvb_create,

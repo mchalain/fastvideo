@@ -13,6 +13,10 @@
 #include "sfile.h"
 #include "sdmabuf.h"
 
+#if defined(__ARM_NEON) && !__aarch64__
+#define NEON_COPY 1
+#endif
+
 static const char spassthrough[] = "spassthrough";
 static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry);
 
@@ -58,7 +62,7 @@ struct Passthrough_s
 	{
 		DeviceConf_t *config;
 		void *dev;
-		FastVideoDevice_ops_t *ops;
+		const FastVideoDevice_ops_t *ops;
 	} branch;
 	size_t (*copy)(void *, const char *const , char *, size_t);
 	void *convert_ctx;
@@ -80,7 +84,7 @@ Convert_t *spassthrough_convert_next(Convert_t *convert)
 
 EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry);
 
-DeviceConf_t * spassthrough_createconfig(void)
+DeviceConf_t * spassthrough_createconfig(const char *name)
 {
 	Passthrough_config_t *config = calloc(1, sizeof(*config));
 	config->parent.name = spassthrough;
@@ -91,16 +95,16 @@ DeviceConf_t * spassthrough_createconfig(void)
 	return &config->parent;
 }
 
-#ifdef __ARM_NEON
+#if NEON_COPY
 static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t size)
 {
-	/// [%[src]:256] for alignment on 256bits
+	/// [%[src]:256] for alignment on 256bits d{n} => 2 words (2*32bits = 8bytes)
 	asm volatile (
-		"1:                                               \n"
+		"loop:                                            \n"
 		"subs     %[size], %[size], #32                   \n"
 		"vld1.u8  {d0, d1, d2, d3}, [%[src]:256]!         \n"
 		"vst1.u8  {d0, d1, d2, d3}, [%[dst]:256]!         \n"
-		"bgt      1b                                      \n"
+		"bne      loop                                    \n"
 		: [dst]"+r"(dst)
 		: [src]"r"(src), [size]"r"(size)
 		: "d0", "d1", "d2", "d3", "cc", "memory"
@@ -145,19 +149,19 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 	Passthrough_t *dev = calloc(1, sizeof(*dev));
 	dev->config = config;
 	dev->name = devicename;
-	dev->type = device_output;
-	if (config->mode & MODE_COPY)
+	dev->type = type;
+	if (config && config->mode & MODE_COPY)
 	{
 		dev->copy = _default_copy;
 		dev->convert_ctx = dev;
-#ifdef __ARM_NEON
+#if NEON_COPY
 		if (scpu_check(SCPU_NEON))
 		{
 			dev->copy = _neon_copy;
 		}
 #endif
 	}
-	if (config->convert &&
+	if (config && config->convert &&
 		(config->convert->fourcc_in == 0 || config->convert->fourcc_in == config->parent.fourcc))
 	{
 		if (config->parent.width && config->parent.height)
@@ -192,7 +196,7 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 	dup->config->mode &= ~MODE_COPY;
 	if (dev->config->branch.type != 0)
 	{
-		FastVideoDevice_ops_t *opss[] = {
+		const FastVideoDevice_ops_t *opss[] = {
 			&sfile_ops,
 			NULL,
 		};
@@ -203,7 +207,7 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 		}
 		DeviceConf_t *devconfig = NULL;
 		if (dev->branch.ops)
-			dev->branch.ops->createconfig();
+			dev->branch.ops->createconfig("");
 		if (devconfig)
 		{
 			devconfig->name = dev->config->branch.name;
@@ -220,7 +224,11 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 
 EXT_API int spassthrough_loadsettings(Passthrough_t *dev, void *configentry)
 {
+#ifdef HAVE_JANSSON
 	return spassthrough_loadjsonsettings(dev, configentry);
+#else
+	return 0;
+#endif
 }
 
 static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems, int *dmabufs, size_t size, int copy)
@@ -533,12 +541,16 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 		if (dev->buffers[i].mem)
 			sdmabuf_unmap(dev->buffers[i].mem, dev->buffers[i].size);
 	}
-	if (dev->config->mode & MODE_COPY)
+	if (dev->config)
 	{
-		_passthrough_freedmabuf(dev);
+		if (dev->config->mode & MODE_COPY)
+		{
+			_passthrough_freedmabuf(dev);
+		}
+		if (dev->config->convert && dev->convert_ctx)
+			dev->config->convert->ops.destroy(dev->convert_ctx);
+		free(dev->config);
 	}
-	if (dev->config->convert && dev->convert_ctx)
-		dev->config->convert->ops.destroy(dev->convert_ctx);
 #if 0
 	/**
 	 * currently this member may contain local buffers info or the pipe client
@@ -549,8 +561,6 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 	if (dev->dmabufs)
 		free(dev->dmabufs);
 #endif
-	if (dev->config)
-		free(dev->config);
 	free(dev);
 }
 

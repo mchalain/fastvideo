@@ -114,10 +114,12 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 		if (status == -1)
 			err("smpegts: udp broadcast error %m");
 	}
+	else
+		status = 0;
 	return status;
 }
 
-static void *proto_create(MPEG_TSConf_t *config)
+static void *proto_create(Proto_Config_t *config)
 {
 	int sock = 0;
 	size_t mtu = 1500;
@@ -207,16 +209,21 @@ static int proto_connect(void *arg)
 	return 0;
 }
 
-static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
+static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t pflags)
 {
 	Proto_UDP_t *proto = (Proto_UDP_t *)arg;
 	ssize_t ret = -1;
 	errno = EAGAIN;
 	if (len == 0)
 		warn("send empty packet");
+	int flags = MSG_NOSIGNAL;
+	if (pflags & Proto_More)
+		flags |= MSG_MORE;
 	while (ret == -1 && errno == EAGAIN)
+	{
 		ret = sendto(proto->serverfd, buf, len, flags,
 					(struct sockaddr *)&proto->dest_addr, proto->dest_size);
+	}
 	if (ret < 0)
 	{
 		char host[NI_MAXHOST];
@@ -224,6 +231,32 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, int flags)
 			host, NI_MAXHOST,
 			NULL, 0, NI_NUMERICHOST);
 		err("mpegts: sending on %s error %m", host);
+	}
+
+	errno = 0;
+	return ret;
+}
+
+static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
+{
+	Proto_UDP_t *proto = (Proto_UDP_t *)arg;
+	ssize_t ret = -1;
+	errno = EAGAIN;
+	if (len == 0)
+		return 0;
+	socklen_t dest_size = proto->dest_size;
+	while (ret == -1 && errno == EAGAIN)
+	{
+		ret =recvfrom(proto->serverfd, buf, len, flags,
+					(struct sockaddr *)&proto->dest_addr, &dest_size);
+	}
+	if (ret < 0)
+	{
+		char host[NI_MAXHOST];
+		getnameinfo((struct sockaddr *)&proto->dest_addr, dest_size,
+			host, NI_MAXHOST,
+			NULL, 0, NI_NUMERICHOST);
+		err("mpegts: receiving on %s error %m", host);
 	}
 
 	errno = 0;
@@ -272,7 +305,7 @@ static void proto_destroy(void *arg)
 	free(proto);
 }
 
-Proto_t proto_udp =
+const Proto_t proto_udp =
 {
 	.name = "udp",
 	.create = proto_create,
@@ -281,6 +314,20 @@ Proto_t proto_udp =
 	.mtu = proto_mtu,
 	.fd = proto_fd,
 	.send = proto_send,
+	.recv = proto_recv,
 	.flush = proto_flush,
 	.destroy = proto_destroy,
 };
+
+#include <dlfcn.h>
+
+static void __attribute__ ((constructor)) smpegts_init()
+{
+	fastvideo_proto_append_t _fastvideo_proto_append;
+	void *hdl = dlopen(NULL, RTLD_NOW);
+	_fastvideo_proto_append = dlsym(hdl, "fastvideo_proto_append");
+	if (_fastvideo_proto_append)
+	{
+		_fastvideo_proto_append(&proto_udp);
+	}
+}

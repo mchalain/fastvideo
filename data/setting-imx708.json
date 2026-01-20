@@ -1,0 +1,153 @@
+[
+  {
+    "name": ["cam-imx708","imx708_wide_noir"],
+    "controls": [
+      {
+        "name": "Exposure",
+        "id": 9963793,
+        "value": 1367
+      },{
+        "name": "Horizontal Flip",
+        "id": 9963796,
+        "value": false
+      },{
+        "name": "Vertical Flip",
+        "id": 9963797,
+        "value": false
+      },{
+        "name": "Wide Dynamic Range",
+        "id": 10094869,
+        "value": false
+      },{
+        "name": "Camera Orientation",
+        "id": 10094882,
+        "value": 2,
+        "value_show": "External"
+      },{
+        "name": "Camera Sensor Rotation",
+        "id": 10094883,
+        "value": 180
+      },{
+        "name": "Vertical Blanking",
+        "id": 10356993,
+        "value": 1198
+      },{
+        "name": "Horizontal Blanking",
+        "id": 10356994,
+        "read-only": true,
+        "value": 5520
+      },{
+        "name": "Analogue Gain",
+        "id": 10356995,
+        "value": 112
+      },{
+        "name": "Red Pixel Value",
+        "id": 10356996,
+        "value": 4095
+      },{
+        "name": "Green (Red) Pixel Value",
+        "id": 10356997,
+        "value": 4095
+      },{
+        "name": "Blue Pixel Value",
+        "id": 10356998,
+        "value": 4095
+      },{
+        "name": "Green (Blue) Pixel Value",
+        "id": 10356999,
+        "value": 4095
+      },{
+        "name": "Notify Gains",
+        "id": 10357001,
+        "value": -1
+      },{
+        "name": "Link Frequency",
+        "id": 10422529,
+        "read-only": true,
+        "value": 0,
+        "value_show": 450000000
+      },{
+        "name": "Pixel Rate",
+        "id": 10422530,
+        "read-only": true,
+        "value": 585600000
+      },{
+        "name": "Test Pattern",
+        "id": 10422531,
+        "value": 0,
+        "value_show": "Disabled"
+      },{
+        "name": "Digital Gain",
+        "id": 10422533,
+        "value": 256
+      }
+    ]
+  },{
+    "name": ["cam-imx708","dw9807 10-000c"],
+    "controls": [
+      {
+        "name": "Focus, Absolute",
+        "id": 10094858,
+        "value": 452
+      }
+    ]
+  },{
+    "name": ["isp-in","bcm2835-isp0-output0"],
+    "controls": [
+      {
+        "name": "Red Balance",
+        "id": 9963790,
+        "value": 997
+      },{
+        "name": "Blue Balance",
+        "id": 9963791,
+        "value": 2114
+      },{
+        "name": "colour_correction_matrix",
+        "id": 9968097,
+        "value": [    1,    0,    0,    0,  248,    5,    0,    0,  232,    3,    0,    0,   22,  255,  255,  255,  232,    3,    0,    0,  218,  254,  255,  255,  232,    3,    0,    0,  105,  254,  255,  255,  232,    3,    0,    0,   10,    7,    0,    0,  232,    3,    0,    0,  117,  254,  255,  255,  232,    3,    0,    0,  203,  255,  255,  255,  232,    3,    0,    0,  200,  253,  255,  255,  232,    3,    0,    0,   85,    6,    0,    0,  232,    3,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0
+        ]
+      },{
+        "name": "lens_shading",
+        "id": 9968098,
+        "value": [    1,    0,    0,    0,   64,    0,    0,    0,   37,    0,    0,    0,   37,    0,    0,    0,   22,    0,    0,    0,   20,    0,    0,    0,    0,    0,    0,    0,    1,    0,    0,    0,    7,    0,    0,    0
+        ]
+      },{
+        "name": "black_level",
+        "id": 9968099,
+        "value": [    1,    0,    0,    0,    0,   16,    0,   16,    0,   16,  147,  225
+        ]
+      },{
+        "name": "green_equalisation",
+        "id": 9968100,
+        "value": [    1,    0,    0,    0,  241,    0,    0,    0,    3,    0,    0,    0,  232,    3,    0,    0
+        ]
+      },{
+        "name": "gamma",
+        "id": 9968101,
+        "value": [    1,    0,    0,    0,    0,    0,    0,    4,    0,    8,    0,   12,    0,   16,    0,   20,    0,   24,    0,   28,    0,   32,    0,   36,    0,   40,    0,   44,    0,   48,    0,   52,    0,   56,    0,   60,    0,   64,    0,   72,    0,   80,    0,   88,    0,   96,    0,  104,    0,  112,    0,  120,    0,  128,    0,  144,    0,  160,    0,  176,    0,  192,    0,  208,    0,  224,    0,  240,  255,  255,    0,    0,  176,   19,  122,   36,   68,   48,  208,   59,  131,   70,   54,   81,  162,   90,  235,  100,  203,  109,   56,  118,   52,  126,   24,  134,  128,  141,  130,  148,  193,  154,  150,  160,   97,  171,  162,  180,  155,  188,  225,  195,   59,  202,  141,  207,  249,  211,   83,  216,  117,  224,  179,  230,  222,  235,  195,  240,   86,  245,  162,  249,  109,  253,  255,  255
+        ]
+      },{
+        "name": "denoise",
+        "id": 9968102,
+        "value": [    1,    0,    0,    0,    0,    0,    0,    0,  142,   16,    0,    0,  232,    3,    0,    0,  238,    2,    0,    0,  232,    3,    0,    0
+        ]
+      },{
+        "name": "sharpen",
+        "id": 9968103,
+        "value": [    1,    0,    0,    0,  220,    5,    0,    0,  232,    3,    0,    0,  244,    1,    0,    0,  232,    3,    0,    0,  250,    0,    0,    0,  232,    3,    0,    0
+        ]
+      },{
+        "name": "defective_pixel_correction",
+        "id": 9968104,
+        "value": [    1,    0,    0,    0,    1,    0,    0,    0
+        ]
+      },{
+        "name": "colour_denoise",
+        "id": 9968105,
+        "value": [    0,    0,    0,    0,  188,   24,   97,  247
+        ]
+      }
+    ]
+  }
+]

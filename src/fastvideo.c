@@ -81,7 +81,7 @@ static int _config_createdevice(void *data, const char *name, const char *type, 
 		if (! strcmp(ops->name, type))
 		{
 			DeviceConf_t *devconfig = NULL;
-			devconfig = config_create(name, ops, config);
+			devconfig = config_create(name, fastvideo->name, ops, config);
 			if (devconfig)
 			{
 				if (devconfig->ops.loadconfiguration)
@@ -127,6 +127,10 @@ int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 	{
 		inconfig->height = outconfig->height = 480;
 	}
+	if (inconfig->stride)
+		outconfig->stride = inconfig->stride;
+	else if (outconfig->stride)
+		inconfig->stride = outconfig->stride;
 	if (inconfig->modifiers && !outconfig->modifiers)
 		outconfig->modifiers = inconfig->modifiers;
 	else if (outconfig->modifiers && !inconfig->modifiers)
@@ -170,6 +174,7 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 			err("%s buffer queuing error %m", output->config->name);
 			return -1;
 		}
+		dbg("buffer lost from %s", output->config->name);
 		/// push back the buffer to the input device because the ouput is not ready to manage it
 		input->ops->queue(input->dev, index, mem, bytesused, flags);
 	}
@@ -536,7 +541,7 @@ int main(int argc, char * const argv[])
 		warn("pipe %s => %s ready", input->config->name, output->config->name);
 	}
 
-	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner);
+	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, NULL);
 
 	if ((mode & MODE_INITIALIZE) == 0)
 		main_loop(pipes);
