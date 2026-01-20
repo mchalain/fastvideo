@@ -537,7 +537,7 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 		err = glGetError();
 		if (err != GL_NO_ERROR)
 		{
-			err("segl: program[%d] Framebuffer access error", programid);
+			err("segl: program[%d] Framebuffer access error %#x", programid, err);
 		}
 	}
 	else
