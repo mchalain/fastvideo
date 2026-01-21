@@ -223,10 +223,16 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 
 	const EGLNative_t * native = config->native;
 	if (type == device_transfer && config->export && config->export->native)
-		config->native = _segl_get_native(config->export->native);
+	{
+		warn("segl: native changed from %s to %s", native->name, config->export->native);
+		native = _segl_get_native(config->export->native);
+	}
 
 	if (native == NULL)
+	{
+		err("segl: native is not available");
 		return NULL;
+	}
 	ndisplay = native->display(config);
 	if (EGL_CAST(EGLint,ndisplay) == EGL_UNKNOWN)
 		return NULL;
@@ -862,6 +868,7 @@ DeviceConf_t * segl_createconfig(const char *name)
 	devconfig->parent.ops.loadconfiguration = segl_loadjsonconfiguration;
 #endif
 	devconfig->export = NULL;
+	devconfig->native = _natives[0];
 	return (DeviceConf_t *)devconfig;
 }
 
@@ -907,10 +914,10 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	if (native && json_is_string(native))
 	{
 		const char *value = json_string_value(native);
-		config->native = _segl_get_native(value);
-		if (config->native == NULL)
+		const EGLNative_t *native = _segl_get_native(value);
+		if (native != NULL)
 		{
-			err("segl: naive %s not found", value);
+			config->native = native;
 		}
 	}
 	json_t *device = json_object_get(jconfig, "device");
