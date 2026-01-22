@@ -91,6 +91,7 @@ struct EGLConfig_s
 	EGLConfig_Program_t *programs;
 	const EGLExport_t *export;
 	int type;
+	int mode;
 };
 
 typedef struct EGL_s EGL_t;

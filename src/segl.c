@@ -15,6 +15,8 @@
 
 #define TEST_TEXTURE_FORMAT 0
 
+#define SEGL_NOPROGRAM 0x01
+
 #define segl_dbg(...)
 
 EXT_API int segl_start(EGL_t *dev);
@@ -869,6 +871,8 @@ DeviceConf_t * segl_createconfig(const char *name)
 #endif
 	devconfig->export = NULL;
 	devconfig->native = _natives[0];
+	if (strstr(name, "noprogram") != NULL)
+		devconfig->mode |= SEGL_NOPROGRAM;
 	return (DeviceConf_t *)devconfig;
 }
 
@@ -903,8 +907,10 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	for (int i = 0; i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
 	{
 		const EGLProg_ops_t *prog_ops = _prog_ops[i];
-		if (prog_ops)
+		if (prog_ops && !(config->mode & SEGL_NOPROGRAM))
+		{
 			prog_ops->loadjsonconfiguration(&config->programs, jprograms);
+		}
 	}
 	json_t *native = json_object_get(jconfig, "native");
 	if (native && json_is_array(native))
