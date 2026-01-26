@@ -1709,6 +1709,15 @@ DeviceConf_t * sv4l2_createconfig(const char *name)
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sv4l2_loadjsonconfiguration;
 #endif
+	devconfig->fps = -1;
+	const char *opts = strchr(name, ':');
+	const char *fps = NULL;
+	if (opts)
+		fps = strstr(opts, "fps=");
+	if (fps)
+	{
+		devconfig->fps = strtol(fps + 4, NULL, 10);
+	}
 	return (DeviceConf_t *)devconfig;
 }
 
@@ -2120,13 +2129,11 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 		fps = json_object_get(definition, "fps");
 		mode = json_object_get(definition, "mode");
 	}
-	if (fps && json_is_integer(fps))
+	if (fps && !config->fps && json_is_integer(fps))
 	{
 		int value = json_integer_value(fps);
 		config->fps = value;
 	}
-	else
-		config->fps = -1;
 	if (mode && json_is_string(mode))
 	{
 		const char *value = json_string_value(mode);
@@ -2172,6 +2179,10 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevices, const char *na
 	int subdev_id = 0;
 	if (subdevices && json_is_array(subdevices))
 	{
+		size_t namelen = 0;
+		const char* options = strchr(name, ':');
+		if (options)
+			namelen = options - name;
 		json_t *subdevice = NULL;
 		int index = 0;
 		json_t *jlastname = NULL;
@@ -2188,7 +2199,8 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevices, const char *na
 					json_array_foreach(jname, i, it)
 					{
 						if (json_is_string(it) &&
-							!strcmp(json_string_value(it), name))
+							((namelen && !strncmp(json_string_value(it), name, namelen)) ||
+							!strcmp(json_string_value(it), name)))
 						{
 							jname = it;
 							break;
@@ -2196,7 +2208,8 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevices, const char *na
 					}
 				}
 				if (jname && json_is_string(jname) &&
-					!strcmp(json_string_value(jname), name) &&
+					((namelen && !strncmp(json_string_value(jname), name, namelen)) ||
+					!strcmp(json_string_value(jname), name)) &&
 					json_is_object(subdevice))
 				{
 					json_t *jdisable = json_object_get(subdevice, "disable");
