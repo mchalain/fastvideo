@@ -705,9 +705,19 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	dbg("segl: open (%s) %s", device, gbm_device_get_backend_name(gbm));
 
 	uint32_t defaultfourcc = 0;
+#if 0
 	/// The screen format doesn't depend on the texture format
-	//uint32_t requestfourcc = config->parent.fourcc;
+	uint32_t requestfourcc = config->parent.fourcc;
+#endif
 	uint32_t requestfourcc = FOURCC_XR24;
+#if 0
+	/// The screen may accept but the GPU may not accpet another value
+	if (config->transfer.fourcc)
+		requestfourcc = config->transfer.fourcc;
+#else
+	if (config->transfer.fourcc && requestfourcc != config->transfer.fourcc)
+		warn("segl: the gpu runs with %.4s format", &requestfourcc);
+#endif
 	uint32_t fourcc = 0;
 	dbg("segl: screen formats (search %.4s):", &requestfourcc);
 	for (int i = 0; i < sizeof(g_formats)/sizeof(*g_formats); i++)
