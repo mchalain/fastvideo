@@ -1159,6 +1159,18 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 			control.size = queryctrl->elem_size * queryctrl->elems;
 		else
 			control.size = sizeof(string);
+		/// fix error on some drivers (raspberry as example)
+		if (control.size == 0)
+		{
+			for (int i = 0; i < queryctrl->nr_of_dims; i++)
+			{
+				control.size += queryctrl->dims[i];
+			}
+		}
+		if (control.size == 0)
+		{
+			control.size = queryctrl->nr_of_dims * ( 1 + (queryctrl->type - V4L2_CTRL_TYPE_U8) * 2);
+		}
 		control.p_u8 = value;
 	}
 	if (control.size == 0)
@@ -1187,6 +1199,8 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 	 * Syscall param ioctl(VKI_V4L2_G_EXT_CTRLS).controls[].ptr[] points to unaddressable byte(s)
 	 */
 	control.value = 0;
+	if (queryctrl->flags & V4L2_CTRL_FLAG_HAS_PAYLOAD)
+		control.p_u8 = string;
 	if ((queryctrl->type != V4L2_CTRL_TYPE_BUTTON) &&
 		(queryctrl->type != V4L2_CTRL_TYPE_CTRL_CLASS) &&
 		ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls))
@@ -1235,7 +1249,7 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 	struct v4l2_query_ext_ctrl queryctrl = {0};
 	queryctrl.id = id;
 	void *retvalue = NULL;
-	int ret = ioctl(ctrlfd, VIDIOC_QUERYCTRL, &queryctrl);
+	int ret = ioctl(ctrlfd, VIDIOC_QUERY_EXT_CTRL, &queryctrl);
 	if (ret != 0)
 	{
 		retvalue = (void *)(long)-1;
@@ -1256,14 +1270,6 @@ void * sv4l2_control(V4L2_t *dev, int id, void *value)
 	if (queryctrl.flags & V4L2_CTRL_FLAG_DISABLED)
 	{
 		err("sv4l2: control %d disabled", id);
-		return 0;
-	}
-	/**
-	 * TODO extend the controls
-	 */
-	if (queryctrl.flags & V4L2_CTRL_FLAG_HAS_PAYLOAD)
-	{
-		err("sv4l2: control %d with payload unsupported", id);
 		return 0;
 	}
 	retvalue =  _sv4l2_control(ctrlfd, id, value, &queryctrl);
@@ -1899,7 +1905,9 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 		int value = json_integer_value(jvalue);
 		value = (long)sv4l2_control(dev, ctrl->id, (void*)(long)value);
 		if (value != -1)
-			warn("%s => %d", ctrl->name, value);
+			warn("%s (%#x) => %d", ctrl->name, ctrl->type, value);
+		else
+			warn("%s (%#x) not supported", ctrl->name, ctrl->type);
 		return value;
 	}
 	return -1;
@@ -2011,6 +2019,23 @@ static int _v4l2_loadjsoncontrol(V4L2_t *dev, json_t *control)
 	{
 		int value = json_is_true(jvalue);
 		if (sv4l2_control(dev, json_integer_value(jid), (void*)(long)value) != (void*)(long)-1)
+		{
+			ret = 1;
+		}
+	}
+	else if (jvalue && json_is_array(jvalue) && json_array_size(jvalue) < 1024)
+	{
+		char value[1024];
+		int index = 0;
+		json_t *jentry = NULL;
+		json_array_foreach(jvalue, index, jentry)
+		{
+			if (!json_is_integer(jentry))
+				break;
+			value[index] = json_integer_value(jentry) & 0xFF;
+		}
+
+		if (index && sv4l2_control(dev, json_integer_value(jid), (void*)value) != (void*)(long)-1)
 		{
 			ret = 1;
 		}
