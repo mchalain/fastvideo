@@ -1,3 +1,4 @@
+HAVE_WAYLAND=$(sort $(HAVE_WAYLAND_EGL) $(HAVE_WAYLAND_PROTOCOLS))
 lib-y+=fastvideo
 fastvideo_SOURCES+=sfastvideo.c
 fastvideo_SOURCES+=sproto_udp.c
@@ -18,16 +19,17 @@ fastvideo_SOURCES-$(HAVE_EGL)+=segl_offscreen.c
 fastvideo_SOURCES-$(HAVE_EGL)+=segl_gles2.c
 fastvideo_SOURCES-$(HAVE_GBM)+=segl_drm.c
 fastvideo_SOURCES-$(HAVE_X11)+=segl_x11.c
-fastvideo_SOURCES-$(HAVE_WAYLAND_EGL)+=segl_wayland.c
+fastvideo_SOURCES-$(HAVE_WAYLAND)+=segl_wayland.c
 fastvideo_SOURCES-$(HAVE_EGL)+=segl_exportpixels.c
 fastvideo_SOURCES-$(IMAGEMESA)+=segl_exportimagemesa.c
-fastvideo_GENERATED-$(HAVE_WAYLAND_EGL)+=xdg-shell-protocol.c
+fastvideo_GENERATED-$(HAVE_WAYLAND)+=xdg-shell-protocol.c
 fastvideo_LIBS+=dl
 fastvideo_LIBRARY-$(DRM)+=libdrm
 fastvideo_LIBRARY-$(EGL)+=glesv2
 fastvideo_LIBRARY-$(EGL)+=egl
 fastvideo_LIBRARY-$(EGL)+=gbm
 fastvideo_LIBRARY-$(EGL)+=x11
+fastvideo_LIBRARY-$(EGL)+=wayland-protocols
 fastvideo_LIBRARY-$(EGL)+=wayland-egl
 fastvideo_PKGCONFIG+=fastvideo
 
