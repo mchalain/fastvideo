@@ -374,6 +374,12 @@ DeviceConf_t * sv4l2_subdev_createconfig(const char *name)
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sv4l2_subdev_loadjsonconfiguration;
 #endif
+	devconfig->fps = -1;
+	const char *fps = strstr(name, "fps=");
+	if (fps)
+	{
+		devconfig->fps = strtol(fps + 4, NULL, 10);
+	}
 	return (DeviceConf_t *)devconfig;
 }
 

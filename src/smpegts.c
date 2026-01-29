@@ -636,7 +636,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	}
 #else
 	/// frame rate 30 fps clock 90kHz
-	pcr = dev->pcr + 90000 / 30;
+	pcr = dev->pcr + 90000 / dev->config->periodic;
 	dev->header.afi |= 0x2;
 #endif
 	ssize_t mtu = dev->proto->mtu(dev->protoctx);
