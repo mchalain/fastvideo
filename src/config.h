@@ -83,7 +83,7 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition);
 int scommon_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devconfig);
 
 typedef struct FastVideoDevice_ops_s FastVideoDevice_ops_t;
-DeviceConf_t *config_create(const char *name, const char *optarg, FastVideoDevice_ops_t *ops, void *entry);
+DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *entry);
 
 int config_isnamed(DeviceConf_t *devconfig, const char *name);
 

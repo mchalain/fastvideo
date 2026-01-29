@@ -70,26 +70,26 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 		return 0;
 	if (width && json_is_object(width))
 		width = json_object_get(width, "value");
-	if (width && json_is_integer(width))
+	if (width && !config->width && json_is_integer(width))
 		config->width = json_integer_value(width);
 	if (height && json_is_object(height))
 		height = json_object_get(height, "value");
-	if (height && json_is_integer(height))
+	if (height && !config->height && json_is_integer(height))
 		config->height = json_integer_value(height);
 	if (stride && json_is_object(stride))
 		stride = json_object_get(stride, "value");
-	if (stride && json_is_integer(stride))
+	if (stride && !config->stride && json_is_integer(stride))
 		config->stride = json_integer_value(stride);
 	if (fourcc && json_is_object(fourcc))
 		fourcc = json_object_get(fourcc, "value");
-	if (fourcc && json_is_string(fourcc))
+	if (fourcc && !config->fourcc && json_is_string(fourcc))
 	{
 		const char *value = json_string_value(fourcc);
 		config->fourcc = FOURCC(value[0], value[1], value[2], value[3]);
 	}
 	if (modifiers && json_is_object(modifiers))
 		modifiers = json_object_get(modifiers, "value");
-	if (modifiers && json_is_integer(modifiers))
+	if (modifiers && !config->modifiers && json_is_integer(modifiers))
 		config->modifiers = json_integer_value(modifiers);
 	return 0;
 }
@@ -223,15 +223,46 @@ int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data,
 	return ret;
 }
 
-DeviceConf_t *config_create(const char *name, const char *optarg, FastVideoDevice_ops_t *ops, void *entry)
+DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *entry)
 {
 	DeviceConf_t *devconfig = NULL;
-	devconfig = ops->createconfig(optarg);
+	if (ops->createconfig)
+		devconfig = ops->createconfig(name);
 	if (devconfig)
 	{
 		devconfig->name = name;
 		devconfig->type = ops->name;
 		devconfig->entry = entry;
+		const char *opts = strchr(name, ':');
+		const char *width = NULL;
+		const char *height = NULL;
+		const char *stride = NULL;
+		const char *fourcc = NULL;
+		if (opts)
+		{
+			const char *width = strstr(opts, "width=");
+			const char *height = strstr(opts, "height=");
+			const char *stride = strstr(opts, "stride=");
+			const char *fourcc = strstr(opts, "fourcc=");
+		}
+		if (width)
+		{
+			devconfig->width = strtol(width + 6, NULL, 10);
+		}
+		if (height)
+		{
+			devconfig->height = strtol(height + 7, NULL, 10);
+		}
+		if (stride)
+		{
+			devconfig->stride = strtol(stride + 7, NULL, 10);
+		}
+		if (fourcc)
+		{
+			const char *end = strchr(fourcc + 7, ',');
+			if (! end || (end - fourcc - 7) > 3)
+				devconfig->fourcc = FOURCC(fourcc[7], fourcc[8], fourcc[9], fourcc[10]);
+		}
 	}
 	return devconfig;
 }

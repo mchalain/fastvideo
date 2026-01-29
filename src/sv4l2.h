@@ -7,10 +7,6 @@
 #include "fastvideo.h"
 #include "config.h"
 
-#define MODE_VERBOSE 0x01
-#define MODE_INTERACTIVE 0x04
-#define MODE_SHOT 0x08
-
 #define MAX_SUBDEVS 4
 #define MAX_SUBDEVPADS 10
 #define CAMERACONFIG(config, defaultdevice) config = { \
@@ -22,7 +18,7 @@
  * @param device the device path as "/dev/video0".
  * @param transfer the callback may be used with sv4l2_loop function.
  * @param fd the file descriptor from another V4L2_t object.
- * @param mode a bits field build with MODE_VERBOSE, MODE_INTERACTIVE...
+ * @param mode a bits field build with MODE_CAPTURE, MODE_OUTPUT, MODE_META...
  * @param fps the number of frames per second, positive value for more than 1 fps,
  * negative value if one frame in more than 1 second
  */

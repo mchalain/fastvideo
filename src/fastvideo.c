@@ -20,7 +20,11 @@
 
 #define MODE_DAEMONIZE 0x01
 #define MODE_INITIALIZE 0x02
+#define MODE_VERBOSE 0x04
 //#define DISABLE_TRANSFER
+unsigned int _mode = 0;
+
+#define verbose_warn(f,...) do{if ((_mode & MODE_VERBOSE) != 0) warn(f,  ##__VA_ARGS__);} while(0)
 
 typedef struct FastVideoPipe_s FastVideoPipe_t;
 struct FastVideoPipe_s
@@ -81,7 +85,7 @@ static int _config_createdevice(void *data, const char *name, const char *type, 
 		if (! strcmp(ops->name, type))
 		{
 			DeviceConf_t *devconfig = NULL;
-			devconfig = config_create(name, fastvideo->name, ops, config);
+			devconfig = config_create(fastvideo->name, ops, config);
 			if (devconfig)
 			{
 				if (devconfig->ops.loadconfiguration)
@@ -256,7 +260,7 @@ int main_loop(FastVideoList_t *pipes)
 			int nread = read(timerfd, &exp, sizeof(uint64_t));
 			if (nread == sizeof(uint64_t))
 			{
-				warn("fastvideo(%d): %d fps", getpid(), count);
+				verbose_warn("fastvideo(%d): %d fps", getpid(), count);
 				count = 0;
 			}
 			ret--;
@@ -405,7 +409,6 @@ int main(int argc, char * const argv[])
 	const char *transfer = "passthrough";
 	int width = 640;
 	int height = 480;
-	unsigned int mode = 0;
 	const char *logfile = "-";
 	const char *cwd = NULL;
 	FastVideoList_t *pipes = NULL;
@@ -416,7 +419,7 @@ int main(int argc, char * const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:t:j:w:h:DP:L:W:I");
+		opt = getopt(argc, argv, "i:o:t:j:w:h:DP:L:W:Iv");
 		switch (opt)
 		{
 			case 'i':
@@ -451,10 +454,13 @@ int main(int argc, char * const argv[])
 				height = strtol(optarg, NULL, 10);
 			break;
 			case 'D':
-				mode |= MODE_DAEMONIZE;
+				_mode |= MODE_DAEMONIZE;
 			break;
 			case 'I':
-				mode |= MODE_INITIALIZE;
+				_mode |= MODE_INITIALIZE;
+			break;
+			case 'v':
+				_mode |= MODE_VERBOSE;
 			break;
 			case 'L':
 				logfile = optarg;
@@ -538,12 +544,12 @@ int main(int argc, char * const argv[])
 		}
 		if (ret)
 			return -1;
-		warn("pipe %s => %s ready", input->config->name, output->config->name);
+		verbose_warn("pipe %s => %s ready", input->config->name, output->config->name);
 	}
 
-	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, NULL);
+	daemonize((_mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, NULL);
 
-	if ((mode & MODE_INITIALIZE) == 0)
+	if ((_mode & MODE_INITIALIZE) == 0)
 		main_loop(pipes);
 
 	killdaemon(pidfile);
