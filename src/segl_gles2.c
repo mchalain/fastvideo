@@ -147,7 +147,7 @@ static void display_log(GLuint instance)
 	glGetProgramiv(instance, GL_INFO_LOG_LENGTH, &logSize);
 	if (!logSize)
 	{
-		err("no log");
+		err("segl: no log");
 		return;
 	}
 	log = (GLchar*)malloc(logSize);
@@ -241,7 +241,8 @@ static GLuint loadShader(GLenum shadertype, const char *shaderfile, const char *
 		if (shaderSourceDyn == NULL)
 			return 0;
 		shaderSource = shaderSourceDyn;
-		segl_dbg("load dynamic shader:\n%s<=", shaderSource);
+		warn("segl: load dynamic shader %s", shaderfile);
+		segl_dbg("segl: load dynamic shader:\n%s<=", shaderSource);
 	}
 	else
 	{
@@ -282,10 +283,11 @@ static GLuint loadShaders(GLenum shadertype, const char *shaderfiles[MAX_SHADERS
 		shaderSizes[i] = readFile(shaderfiles[i], &shaderSources[i]);
 		if (shaderSources[i] == NULL)
 		{
-			err("shader %s not loaded", shaderfiles[i]);
+			err("segl: shader %s not loaded", shaderfiles[i]);
 			break;
 		}
-		segl_dbg("load dynamic shader:\n%s<=", shaderSources[i]);
+		warn("segl: load dynamic shader %s", shaderfiles[i]);
+		segl_dbg("segl: load dynamic shader:\n%s<=", shaderSources[i]);
 		nbShaderSources++;
 	}
 	glShaderSource(shaderID, nbShaderSources, (const char *const*)shaderSources, shaderSizes);
