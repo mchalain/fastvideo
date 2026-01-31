@@ -365,6 +365,9 @@ static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADER
 GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height)
 {
 	GLuint programID = 0;
+	warn("segl: GPU %s %s", glGetString(GL_VENDOR), glGetString(GL_RENDERER));
+	warn("segl: %s", glGetString(GL_VERSION));
+	warn("segl: %s", glGetString(GL_SHADING_LANGUAGE_VERSION));
 	if (config)
 		programID = buildProgramm(config->vertex, config->fragments);
 	else
