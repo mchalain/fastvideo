@@ -231,7 +231,7 @@ int main(int argc, char * const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "j:J:L:W:IDP:");
+		opt = getopt(argc, argv, "j:J:s:L:W:IDP:");
 		switch (opt)
 		{
 			case 'j':
@@ -239,6 +239,9 @@ int main(int argc, char * const argv[])
 			break;
 			case 'J':
 				settings = fastvideolist_insert(settings, optarg);
+			break;
+			case 's':
+				serverpath = optarg;
 			break;
 			case 'L':
 				logfile = optarg;
