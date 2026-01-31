@@ -37,6 +37,14 @@
 		"disable": true,
 		"vertex": "data/simplevertex.glsl",
 		"fragment": "data/simplefragment.glsl"
+	},{
+		"disable": true,
+		"vertex": "ShaderToy/vertex.glsl",
+		"fragment": ["ShaderToy/fragment.glsl","ShaderToy/Image.glsl"]
+	},{
+		"disable": false,
+		"vertex": "ShaderToy/vertex.glsl",
+		"fragment": ["ShaderToy/fragment.glsl","ShaderToy/Funny.glsl"]
 	}],
 	"end":true
 },{
