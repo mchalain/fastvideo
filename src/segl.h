@@ -126,8 +126,6 @@ struct EGLExport_s
 
 typedef void (*segl_export_append_t)(EGLExport_t *export);
 
-extern const GLchar *defaulttexturename;
-
 typedef GLProgram_t *(*glprog_create_t)(EGLConfig_Program_t *config, GLuint width, GLuint height);
 typedef int (*glprog_setup_t)(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out);
 typedef GL_Buffer_t *(*glbuffer_create_t)(GLProgram_t *program, uint32_t fourcc);

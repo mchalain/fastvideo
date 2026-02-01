@@ -870,6 +870,18 @@ static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jc
 	{
 		return -1;
 	}
+	json_t *name = json_object_get(jconfig, "name");
+	if (name && json_is_string(name))
+	{
+		const char *value = json_string_value(name);
+		config->name = value;
+	}
+	json_t *tex_name = json_object_get(jconfig, "tex_name");
+	if (tex_name && json_is_string(tex_name))
+	{
+		const char *value = json_string_value(tex_name);
+		config->tex_name = value;
+	}
 	json_t *vertex = json_object_get(jconfig, "vertex");
 	if (vertex && json_is_string(vertex))
 	{
