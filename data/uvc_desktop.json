@@ -33,6 +33,11 @@
 		"export": "imagemesa",
 		"end":true
 	},
+	"programs": [{
+		"disable": true,
+		"vertex": "data/simplevertex.glsl",
+		"fragment": "data/simplefragment.glsl"
+	}],
 	"end":true
 },{
 	"name":"convert",

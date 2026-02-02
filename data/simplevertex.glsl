@@ -6,7 +6,7 @@ varying vec2 resolution;
 
 void main (void)
 {
-	texUV = (vec2(0.5, 0.5) + vPosition.xy / 2.0);
-	resolution = vResolution.zw;
-	gl_Position = vMove * vec4(vPosition,1.);
+	texUV = (vec2(0.5, 0.5) - vPosition.xy / 2.0);
+	resolution = vResolution.xy;
+	gl_Position = vec4(vPosition,1.);
 }
