@@ -338,6 +338,19 @@
     "name": ["gpu"],
     "type": "gpu",
     "native": ["x11","wayland","drm"],
+    "device": "/dev/dri/card0",
+    "end": true
+  },
+  {
+    "name": ["gpu-isp"],
+    "type": "gpu",
+    "native": ["x11","wayland","drm"],
+    "device": "/dev/dri/card0",
+    "programs":[{
+      "disable": false,
+      "vertex": "data/simplevertex.glsl",
+      "fragment": "data/debayer.glsl"
+    }],
     "end": true
   }
 ]

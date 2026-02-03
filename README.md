@@ -492,6 +492,8 @@ The fastvideo application is ready to set the rp1 but the data generator is miss
 Fastvideo may use the camera in raw mode. The video stream is Bayer images, and the output needs to be monochrome.
 A Bayer image displayed as monochrome is blurred. A solution is to use a monochrone camera.
 
+Into the "data" directory a **debayer.glsl** program allows to use the GPU as ISP. Its usage is available into the "raspi5cam.json" file.
+
 It is mandatory to set the media to manage the stream inside the rp1 frontend. The rpi5cam-setup.sh tool may help:
 ```shell
 pi@mistral:~/fastvideo $ ./utils/rpi5cam-setup.sh auto
@@ -525,13 +527,13 @@ $ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-ov9281.
 ### Raspberry Camera HQ (imx477)
 
 ```shell
-$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx477 -o gpu -D
+$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx477 -o gpu-isp -D
 $ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-imx477.json
 ```
 
 ### Raspberry Camera GS (imx296)
 
 ```shell
-$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx296 -o gpu -D
+$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx296 -t toR16 -o gpu-isp -D
 $ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-imx296.json
 ```
