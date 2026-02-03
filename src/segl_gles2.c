@@ -378,7 +378,7 @@ static GLfloat *_movestatic(GLfloat * ctx)
 	}
 	return ctx;
 }
-static GLfloat *(*_move)(GLfloat * ctx) = _movestatic;
+static GLfloat *(*_move)(GLfloat * ctx) = NULL;
 
 static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint width, GLuint height)
 {
@@ -497,8 +497,14 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	glActiveTexture(GL_TEXTURE0);
 
 	GLuint moveID = glGetUniformLocation(program->ID, "vMove");
-	program->movectx = program->move(NULL);
-	glUniformMatrix4fv(moveID, 1, GL_FALSE, program->movectx);
+	void *movectx = _movestatic(NULL);
+	glUniformMatrix4fv(moveID, 1, GL_FALSE, movectx);
+	free(movectx);
+	if (program->move)
+	{
+		program->movectx = program->move(program->movectx);
+		glUniformMatrix4fv(moveID, 1, GL_FALSE, program->movectx);
+	}
 
 	GLuint resolutionID = glGetUniformLocation(program->ID, "vResolution");
 	glUniform4f(resolutionID, (GLfloat)program->width, (GLfloat)program->height, 1 / (GLfloat)program->width, 1 / (GLfloat)program->height);
@@ -628,8 +634,11 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(buffer->textype, buffer->texture);
-	GLuint moveID = glGetUniformLocation(program->ID, "vMove");
-	glUniformMatrix4fv(moveID, 1, GL_FALSE, program->move(program->movectx));
+	if (program->move)
+	{
+		GLuint moveID = glGetUniformLocation(program->ID, "vMove");
+		glUniformMatrix4fv(moveID, 1, GL_FALSE, program->move(program->movectx));
+	}
 	for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = uniform->next)
 	{
 		glprog_setuniform(program, uniform);
