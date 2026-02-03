@@ -367,7 +367,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	const EGLProg_ops_t *prog_ops = _prog_ops[0];
 	for (int i = 0; config->programs && i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
 	{
-		if (_prog_ops[i] && strcmp(_prog_ops[i]->name, config->programs->name))
+		if (_prog_ops[i] && strcmp(_prog_ops[i]->name, config->programs->type))
 		{
 			prog_ops = _prog_ops[i];
 			break;
@@ -893,9 +893,11 @@ static const EGLNative_t *_segl_get_native(const char *name)
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 
-int segl_loadjsonsettings(EGL_t *dev, void *jconfig)
+int segl_loadjsonsettings(EGL_t *dev, void *entry)
 {
-	return dev->program_ops->loadjsonsetting(dev->programs, jconfig);
+	json_t *jconfig = entry;
+	json_t *jprograms = json_object_get(jconfig, "programs");
+	return dev->program_ops->loadjsonsetting(dev->programs, jprograms);
 }
 
 int segl_loadjsonconfiguration(void *arg, void *entry)
@@ -912,6 +914,7 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 			prog_ops->loadjsonconfiguration(&config->programs, jprograms);
 		}
 	}
+
 	json_t *native = json_object_get(jconfig, "native");
 	if (native && json_is_array(native))
 	{
@@ -1017,7 +1020,7 @@ const FastVideoDevice_ops_t segl_ops = {
 	.createconfig = segl_createconfig,
 	.create = (FastVideoDevice_create_t)segl_create,
 	.duplicate = (FastVideoDevice_duplicate_t)segl_duplicate,
-	.loadsettings = (FastVideoDevice_loadsettings_t)NULL,
+	.loadsettings = (FastVideoDevice_loadsettings_t)segl_loadjsonsettings,
 	.requestbuffer = (FastVideoDevice_requestbuffer_t)segl_requestbuffer,
 	.eventfd = (FastVideoDevice_eventfd_t)segl_fd,
 	.start = (FastVideoDevice_start_t)segl_start,

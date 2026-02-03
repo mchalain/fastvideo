@@ -438,18 +438,6 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	GLuint resolutionID = glGetUniformLocation(program->ID, "vResolution");
 	glUniform4f(resolutionID, (GLfloat)program->width, (GLfloat)program->height, 1 / (GLfloat)program->width, 1 / (GLfloat)program->height);
 
-	GLProgram_Uniform_t *uniform = program->controls;
-	while (uniform)
-	{
-		GLProgram_Uniform_t *next = uniform->next;
-		glprog_setuniform(program, uniform);
-		if (program->next == NULL)
-			_glprog_uniform_destroy(uniform);
-		uniform = next;
-	}
-	if (program->next == NULL)
-		program->controls = NULL;
-
 	glBindVertexArrayOES(0);
 	if (config && config->next)
 	{
@@ -577,14 +565,9 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 	glBindTexture(buffer->textype, buffer->texture);
 	GLuint moveID = glGetUniformLocation(program->ID, "vMove");
 	glUniformMatrix4fv(moveID, 1, GL_FALSE, program->move(program->movectx));
-	GLProgram_Uniform_t *uniform = program->controls;
-	while (uniform)
+	for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = uniform->next)
 	{
-		GLProgram_Uniform_t *next = uniform->next;
 		glprog_setuniform(program, uniform);
-		if (program->next == NULL)
-			_glprog_uniform_destroy(uniform);
-		uniform = next;
 	}
 	if (program->next == NULL)
 		program->controls = NULL;
@@ -717,7 +700,7 @@ static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform)
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 
-static void _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue, unsigned char nbentries, Uniform_Type_e type)
+static void _glprog_uniform_setarray(GLProgram_Uniform_t *uniform, json_t *jvalue, unsigned char nbentries, Uniform_Type_e type)
 {
 	if (type == Uniform_FLOAT_e)
 		uniform->value = calloc(nbentries, sizeof(GLfloat));
@@ -735,6 +718,72 @@ static void _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalu
 	}
 }
 
+static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue)
+{
+	int ret = -1;
+	if (jvalue && json_is_number(jvalue))
+	{
+		switch (uniform->type)
+		{
+		case Uniform_INT_e:
+			uniform->value = malloc(sizeof(GLint));
+			*(GLint *)uniform->value = json_integer_value(jvalue);
+			ret = 0;
+		break;
+		case Uniform_FLOAT_e:
+			uniform->value = malloc(sizeof(GLfloat));
+			*(GLfloat *)uniform->value = json_real_value(jvalue);
+			ret = 0;
+		break;
+		default:
+			err("segl: settings mal formatted");
+		}
+	}
+	if (jvalue && json_is_array(jvalue))
+	{
+		switch (uniform->type)
+		{
+		case Uniform_FVEC2_e:
+			_glprog_uniform_setarray(uniform, jvalue, 2, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		case Uniform_FVEC3_e:
+			_glprog_uniform_setarray(uniform, jvalue, 3, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		case Uniform_FVEC4_e:
+			_glprog_uniform_setarray(uniform, jvalue, 4, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		case Uniform_IVEC2_e:
+			_glprog_uniform_setarray(uniform, jvalue, 2, Uniform_INT_e);
+			ret = 0;
+		break;
+		case Uniform_IVEC3_e:
+			_glprog_uniform_setarray(uniform, jvalue, 3, Uniform_INT_e);
+			ret = 0;
+		break;
+		case Uniform_IVEC4_e:
+			_glprog_uniform_setarray(uniform, jvalue, 4, Uniform_INT_e);
+			ret = 0;
+		break;
+		case Uniform_MAT2_e:
+			_glprog_uniform_setarray(uniform, jvalue, 2 * 2, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		case Uniform_MAT3_e:
+			_glprog_uniform_setarray(uniform, jvalue, 3 * 3, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		case Uniform_MAT4_e:
+			_glprog_uniform_setarray(uniform, jvalue, 4 * 4, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		}
+	}
+	return ret;
+}
+
 static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 {
 	json_t *jsetting = setting;
@@ -745,6 +794,7 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 		uniform->name = json_string_value(jname);
 	}
 	json_t *jtype = json_object_get(jsetting, "type");
+	uniform->type = Uniform_UNKNOWN_e;
 	if (jtype && json_is_string(jtype))
 	{
 		const char *value = json_string_value(jtype);
@@ -771,57 +821,6 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 		else if (!strcmp(value, "mat4"))
 			uniform->type = Uniform_MAT4_e;
 	}
-	json_t *jvalue = json_object_get(jsetting, "value");
-	if (jvalue && json_is_number(jvalue))
-	{
-		switch (uniform->type)
-		{
-		case Uniform_INT_e:
-			uniform->value = malloc(sizeof(GLint));
-			*(GLint *)uniform->value = json_integer_value(jvalue);
-		break;
-		case Uniform_FLOAT_e:
-			uniform->value = malloc(sizeof(GLfloat));
-			*(GLfloat *)uniform->value = json_real_value(jvalue);
-		break;
-		default:
-			err("segl: settings mal formatted");
-			uniform->type = Uniform_UNKNOWN_e;
-		}
-	}
-	if (jvalue && json_is_array(jvalue))
-	{
-		switch (uniform->type)
-		{
-		case Uniform_FVEC2_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 2, Uniform_FLOAT_e);
-		break;
-		case Uniform_FVEC3_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 3, Uniform_FLOAT_e);
-		break;
-		case Uniform_FVEC4_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 4, Uniform_FLOAT_e);
-		break;
-		case Uniform_IVEC2_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 2, Uniform_INT_e);
-		break;
-		case Uniform_IVEC3_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 3, Uniform_INT_e);
-		break;
-		case Uniform_IVEC4_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 4, Uniform_INT_e);
-		break;
-		case Uniform_MAT2_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 2 * 2, Uniform_FLOAT_e);
-		break;
-		case Uniform_MAT3_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 3 * 3, Uniform_FLOAT_e);
-		break;
-		case Uniform_MAT4_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 4 * 4, Uniform_FLOAT_e);
-		break;
-		}
-	}
 	if (uniform->type == Uniform_UNKNOWN_e)
 	{
 		free(uniform);
@@ -830,37 +829,83 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 	return uniform;
 }
 
-int glprog_loadjsonsetting(GLProgram_t *program, void *entry)
+static int _glprog_setcontrols(GLProgram_t *program, json_t *jsettings)
 {
-	json_t *jsettings = entry;
 	if (jsettings && json_is_array(jsettings))
 	{
 		json_t *jsetting = NULL;
 		int i = 0;
 		json_array_foreach(jsettings, i, jsetting)
 		{
-			GLProgram_Uniform_t *uniform = _glprog_uniform_create(jsetting);
-			if (uniform)
+			json_t *jname = json_object_get(jsetting, "name");
+			if (!jname || ! json_is_string(jname))
 			{
-				uniform->next = program->controls;
-				program->controls = uniform;
+				continue;
+			}
+			for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = uniform->next)
+			{
+				if (!strcasecmp(json_string_value(jname), uniform->name))
+				{
+					json_t *jvalue = json_object_get(jsetting, "value");
+					_glprog_uniform_setvalue(uniform, jvalue);
+				}
 			}
 		}
 	}
 	else if (jsettings && json_is_object(jsettings))
 	{
-		GLProgram_Uniform_t *uniform = _glprog_uniform_create(jsettings);
-		if (uniform)
+		json_t *jname = json_object_get(jsettings, "name");
+		if (jname && json_is_string(jname))
 		{
-			while (program)
+			for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = uniform->next)
 			{
-				uniform->next = program->controls;
-				program->controls = uniform;
-				program = program->next;
+				if (!strcasecmp(json_string_value(jname), uniform->name))
+				{
+					json_t *jvalue = json_object_get(jsettings, "value");
+					_glprog_uniform_setvalue(uniform, jvalue);
+				}
 			}
 		}
 	}
 	return 0;
+}
+
+static int _glprog_loadjsonsetting(GLProgram_t *programs, json_t *jprogram)
+{
+	int ret = -1;
+	for (GLProgram_t *program = programs; program; program = program->next)
+	{
+		json_t *jname = json_object_get(jprogram, "name");
+		const EGLConfig_Program_t *config = program->config;
+		if (config && config->name && jname && json_is_string(jname) &&
+			strcasecmp(json_string_value(jname), config->name) != 0)
+		{
+			continue;
+		}
+		json_t *jcontrols = json_object_get(jprogram, "controls");
+		ret = _glprog_setcontrols(program, jcontrols);
+	}
+	return ret;
+}
+
+int glprog_loadjsonsetting(GLProgram_t *programs, void *entry)
+{
+	int ret = -1;
+	json_t *jsetting = entry;
+	if (jsetting && json_is_array(jsetting))
+	{
+		int index;
+		json_t *jprogram;
+		json_array_foreach(jsetting, index, jprogram)
+		{
+			_glprog_loadjsonsetting(programs, jprogram);
+		}
+	}
+	if (jsetting && json_is_object(jsetting))
+	{
+		_glprog_loadjsonsetting(programs, jsetting);
+	}
+	return ret;
 }
 
 static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jconfig)
@@ -957,7 +1002,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 			if (previous)
 				previous->next = config;
 			previous = config;
-			config->name = gles2_ops.name;
+			config->type = gles2_ops.name;
 		}
 	}
 	else if (jconfig && json_is_object(jconfig))

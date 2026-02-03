@@ -70,6 +70,7 @@ typedef struct EGLConfig_Program_s EGLConfig_Program_t;
 struct EGLConfig_Program_s
 {
 	const char *name;
+	const char *type;
 	const char *vertex;
 	const char *fragments[MAX_SHADERS];
 	const char *tex_name;
