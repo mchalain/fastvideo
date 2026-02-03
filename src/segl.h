@@ -145,6 +145,7 @@ struct EGLProg_ops_s
 {
 	const char *name;
 	glprog_create_t create;
+	glprog_create_t create_controler;
 	glprog_setup_t setup;
 	struct {
 		glbuffer_create_t create;

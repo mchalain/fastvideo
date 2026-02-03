@@ -1,4 +1,7 @@
 #include <string.h>
+#include <sys/shm.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -377,6 +380,74 @@ static GLfloat *_movestatic(GLfloat * ctx)
 }
 static GLfloat *(*_move)(GLfloat * ctx) = _movestatic;
 
+static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint width, GLuint height)
+{
+	void *uniform_data = NULL;
+	if (config)
+	{
+		size_t size = 0;
+		for (GLProgram_Uniform_t *uniform = config->controls; uniform; uniform = uniform->next)
+		{
+			size += _glprog_uniform_size(uniform);
+		}
+		const char *keyname = "/tmp/program.shm";
+		int ret = access(keyname, F_OK|R_OK|W_OK);
+		if (ret)
+		{
+			int fd = creat(keyname, 0644);
+			close(fd);
+		}
+		int shmid;
+		key_t key;
+		key = ftok(keyname, 'R');
+		if (size > 0 && key != -1)
+		{
+			uniform_data = (void *)-1;
+			shmid = shmget(key, size, IPC_CREAT|SHM_R|SHM_W);
+			if (shmid > 0)
+			{
+				uniform_data = shmat(shmid, NULL, 0);
+			}
+			if (uniform_data == (void *)-1)
+			{
+				err("segl: memory allocation error %m");
+				size = 0;
+				uniform_data = NULL;
+			}
+		}
+		off_t offset = 0;
+		for (GLProgram_Uniform_t *uniform = config->controls; uniform && offset < size; uniform = uniform->next)
+		{
+			int size = _glprog_uniform_size(uniform);
+			uniform->value = uniform_data + offset;
+			offset += size;
+		}
+	}
+	GLProgram_t *program = calloc(1, sizeof(*program));
+	program->in_texturename = defaulttexturename;
+	program->move = _move;
+	program->config = config;
+	program->controls_data = uniform_data;
+	if (config)
+		program->controls = config->controls;
+	if (config && config->tex_name)
+		program->in_texturename = config->tex_name;
+
+	program->width = width;
+	program->height = height;
+	return program;
+}
+
+GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, GLuint width, GLuint height)
+{
+	GLProgram_t *program = _glprog_create_controler(config, width, height);
+	if (config && config->next)
+	{
+		program->next = glprog_create_controler(config->next, width, height);
+	}
+	return program;
+}
+
 GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height)
 {
 	GLuint programID = 0;
@@ -391,35 +462,11 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	{
 		return NULL;
 	}
-	size_t size = 0;
-	for (GLProgram_Uniform_t *uniform = config->controls; uniform; uniform = uniform->next)
-	{
-		size += _glprog_uniform_size(uniform);
-	}
-	void *uniform_data = NULL;
-	if (size > 0)
-		uniform_data = calloc(1, size);
-	off_t offset = 0;
-	for (GLProgram_Uniform_t *uniform = config->controls; uniform && offset < size; uniform = uniform->next)
-	{
-		int size = _glprog_uniform_size(uniform);
-		uniform->value = uniform_data + offset;
-		offset += size;
-	}
 
-	GLProgram_t *program = calloc(1, sizeof(*program));
+	GLProgram_t *program = _glprog_create_controler(config, width, height);
+	if (! program)
+		return NULL;
 	program->ID = programID;
-	program->in_texturename = defaulttexturename;
-	program->move = _move;
-	program->config = config;
-	program->controls_data = uniform_data;
-	if (config)
-		program->controls = config->controls;
-	if (config && config->tex_name)
-		program->in_texturename = config->tex_name;
-
-	program->width = width;
-	program->height = height;
 
 	glEnable(GL_TEXTURE_EXTERNAL_OES);
 
@@ -587,8 +634,6 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 	{
 		glprog_setuniform(program, uniform);
 	}
-	if (program->next == NULL)
-		program->controls = NULL;
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
 
@@ -706,7 +751,7 @@ void glprog_destroy(GLProgram_t *program)
 		glDeleteTextures(1, &program->out.texture);
 	}
 	if (program->controls_data)
-		free(program->controls_data);
+		shmdt(program->controls_data);
 	free(program->config);
 	free(program);
 }
@@ -1101,6 +1146,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 EGLProg_ops_t gles2_ops = {
 	.name = "gles2",
 	.create = glprog_create,
+	.create_controler = glprog_create_controler,
 	.setup = glprog_setup,
 	.buffer = {
 		.create = gltexture_create,

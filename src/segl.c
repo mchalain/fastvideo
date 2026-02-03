@@ -210,8 +210,43 @@ static int _egl_configinfo(EGLDisplay eglDisplay, EGLConfig eglConfig)
 }
 #endif
 
+static EGL_t *_egl_create(const char *devicename, device_type_e type, EGLConfig_t *config)
+{
+	uint32_t width = config->parent.width;
+	uint32_t height = config->parent.height;
+
+	const EGLProg_ops_t *prog_ops = _prog_ops[0];
+	for (int i = 0; config->programs && i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
+	{
+		if (_prog_ops[i] && strcmp(_prog_ops[i]->name, config->programs->type))
+		{
+			prog_ops = _prog_ops[i];
+			break;
+		}
+	}
+	GLProgram_t *programs = NULL;
+	if (type == device_control)
+		programs = prog_ops->create_controler(config->programs, width, height);
+	else
+		programs = prog_ops->create(config->programs, width, height);
+	if (programs == NULL)
+		return NULL;
+
+	EGL_t *dev = calloc(1, sizeof(*dev));
+	dev->config = config;
+	dev->program_ops = prog_ops;
+	dev->programs = programs;
+
+	dev->curbufferid = -1;
+	dev->type = type;
+	warn("segl: create device %lux%lu %.4s", width, height, &dev->config->parent.fourcc);
+	return dev;
+}
+
 EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig_t *config)
 {
+	if (type == device_control)
+		return _egl_create(devicename, type, config);
 	if (type != device_output && type != device_transfer)
 	{
 		err("segl: %s bad device type", config->parent.name);
@@ -364,34 +399,19 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	dbg("segl: swap interval %d", minswapinterval);
 	eglSwapInterval(eglDisplay, minswapinterval);
 
-	const EGLProg_ops_t *prog_ops = _prog_ops[0];
-	for (int i = 0; config->programs && i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
+	EGL_t *dev = _egl_create(devicename, type, config);
+	if (dev)
 	{
-		if (_prog_ops[i] && strcmp(_prog_ops[i]->name, config->programs->type))
-		{
-			prog_ops = _prog_ops[i];
-			break;
-		}
+		dev->egldisplay = eglDisplay;
+		dev->eglconfig = eglConfigs[configid];
+		dev->eglcontext = eglContext;
+		dev->eglsurface = eglSurface;
+
+		dev->native = native;
+		dev->native_window = nwindow;
+		dev->native_display = ndisplay;
+		dev->curbufferid = -1;
 	}
-	GLProgram_t *programs = prog_ops->create(config->programs, width, height);
-	if (programs == NULL)
-		return NULL;
-
-	EGL_t *dev = calloc(1, sizeof(*dev));
-	dev->config = config;
-	dev->native = native;
-	dev->egldisplay = eglDisplay;
-	dev->eglconfig = eglConfigs[configid];
-	dev->eglcontext = eglContext;
-	dev->eglsurface = eglSurface;
-	dev->program_ops = prog_ops;
-	dev->programs = programs;
-
-	dev->native_window = nwindow;
-	dev->native_display = ndisplay;
-	dev->curbufferid = -1;
-	dev->type = type;
-	warn("segl: create device %s %lux%lu %.4s", native->name, width, height, &dev->config->parent.fourcc);
 	return dev;
 }
 
