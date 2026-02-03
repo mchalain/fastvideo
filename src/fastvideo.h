@@ -68,6 +68,7 @@ FastVideoList_t *fastvideolist_down(FastVideoList_t *list);
 FastVideoList_t *fastvideolist_push(FastVideoList_t *list, FastVideoList_t *newentry);
 FastVideoList_t *fastvideolist_poplast(FastVideoList_t *list, FastVideoList_t **entry);
 FastVideoList_t *fastvideolist_pop(FastVideoList_t *list, FastVideoList_t **entry);
+void *fastvideolist_get(FastVideoList_t *list);
 void *fastvideolist_next(FastVideoList_t *list);
 void *fastvideolist_previous(FastVideoList_t *list);
 int fastvideolist_islast(FastVideoList_t *list, void *entity);

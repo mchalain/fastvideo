@@ -165,6 +165,14 @@ int fastvideolist_isfirst(FastVideoList_t *list, void *entity)
 	return 0;
 }
 
+void *fastvideolist_get(FastVideoList_t *list)
+{
+	if (list == NULL)
+		return NULL;
+
+	return list->entity;
+}
+
 void *fastvideolist_next(FastVideoList_t *list)
 {
 	if (list == NULL)
