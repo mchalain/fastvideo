@@ -35,6 +35,7 @@ struct GLProgram_Uniform_s
 };
 
 static GLProgram_Uniform_t * _glprog_uniform_create(void *setting);
+static int _glprog_uniform_size(GLProgram_Uniform_t *uniform);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
 
@@ -56,6 +57,7 @@ struct GLProgram_s
 	uint32_t width;
 	uint32_t height;
 	uint32_t fourcc;
+	void *controls_data;
 	GLProgram_Uniform_t *controls;
 };
 
@@ -389,12 +391,28 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	{
 		return NULL;
 	}
+	size_t size = 0;
+	for (GLProgram_Uniform_t *uniform = config->controls; uniform; uniform = uniform->next)
+	{
+		size += _glprog_uniform_size(uniform);
+	}
+	void *uniform_data = NULL;
+	if (size > 0)
+		uniform_data = calloc(1, size);
+	off_t offset = 0;
+	for (GLProgram_Uniform_t *uniform = config->controls; uniform && offset < size; uniform = uniform->next)
+	{
+		int size = _glprog_uniform_size(uniform);
+		uniform->value = uniform_data + offset;
+		offset += size;
+	}
 
 	GLProgram_t *program = calloc(1, sizeof(*program));
 	program->ID = programID;
 	program->in_texturename = defaulttexturename;
 	program->move = _move;
 	program->config = config;
+	program->controls_data = uniform_data;
 	if (config)
 		program->controls = config->controls;
 	if (config && config->tex_name)
@@ -687,6 +705,8 @@ void glprog_destroy(GLProgram_t *program)
 		glDeleteFramebuffers(1, &program->fbo);
 		glDeleteTextures(1, &program->out.texture);
 	}
+	if (program->controls_data)
+		free(program->controls_data);
 	free(program->config);
 	free(program);
 }
@@ -702,10 +722,16 @@ static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform)
 
 static void _glprog_uniform_setarray(GLProgram_Uniform_t *uniform, json_t *jvalue, unsigned char nbentries, Uniform_Type_e type)
 {
-	if (type == Uniform_FLOAT_e)
+	if (!uniform->value && type == Uniform_FLOAT_e)
+	{
+		err("segl: memory allocation error");
 		uniform->value = calloc(nbentries, sizeof(GLfloat));
-	if (type == Uniform_INT_e)
+	}
+	if (!uniform->value && type == Uniform_INT_e)
+	{
+		err("segl: memory allocation error");
 		uniform->value = calloc(nbentries, sizeof(GLint));
+	}
 	GLfloat *fvalues = uniform->value;
 	GLint *ivalues = uniform->value;
 	for (int i = 0; i < nbentries; i++)
@@ -718,20 +744,65 @@ static void _glprog_uniform_setarray(GLProgram_Uniform_t *uniform, json_t *jvalu
 	}
 }
 
+static int _glprog_uniform_size(GLProgram_Uniform_t *uniform)
+{
+	int ret = -1;
+	switch (uniform->type)
+	{
+	case Uniform_INT_e:
+		ret = sizeof(GLint);
+	break;
+	case Uniform_FLOAT_e:
+		ret = sizeof(GLfloat);
+	break;
+	case Uniform_FVEC2_e:
+		ret = sizeof(GLfloat) * 2;
+	break;
+	case Uniform_FVEC3_e:
+		ret = sizeof(GLfloat) * 3;
+	break;
+	case Uniform_FVEC4_e:
+		ret = sizeof(GLfloat) * 4;
+	break;
+	case Uniform_IVEC2_e:
+		ret = sizeof(GLint) * 2;
+	break;
+	case Uniform_IVEC3_e:
+		ret = sizeof(GLint) * 3;
+	break;
+	case Uniform_IVEC4_e:
+		ret = sizeof(GLint) * 4;
+	break;
+	case Uniform_MAT2_e:
+		ret = sizeof(GLfloat) * 2 * 2;
+	break;
+	case Uniform_MAT3_e:
+		ret = sizeof(GLfloat) * 3 * 3;
+	break;
+	case Uniform_MAT4_e:
+		ret = sizeof(GLfloat) * 4 * 4;
+	break;
+	}
+	return ret;
+}
+
 static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue)
 {
 	int ret = -1;
+	if (!uniform->value)
+	{
+		err("segl: memory allocation error");
+		uniform->value = malloc(_glprog_uniform_size(uniform));
+	}
 	if (jvalue && json_is_number(jvalue))
 	{
 		switch (uniform->type)
 		{
 		case Uniform_INT_e:
-			uniform->value = malloc(sizeof(GLint));
 			*(GLint *)uniform->value = json_integer_value(jvalue);
 			ret = 0;
 		break;
 		case Uniform_FLOAT_e:
-			uniform->value = malloc(sizeof(GLfloat));
 			*(GLfloat *)uniform->value = json_real_value(jvalue);
 			ret = 0;
 		break;
