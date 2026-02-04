@@ -240,10 +240,10 @@ DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *
 		const char *fourcc = NULL;
 		if (opts)
 		{
-			const char *width = strstr(opts, "width=");
-			const char *height = strstr(opts, "height=");
-			const char *stride = strstr(opts, "stride=");
-			const char *fourcc = strstr(opts, "fourcc=");
+			width = strstr(opts, "width=");
+			height = strstr(opts, "height=");
+			stride = strstr(opts, "stride=");
+			fourcc = strstr(opts, "fourcc=");
 		}
 		if (width)
 		{
