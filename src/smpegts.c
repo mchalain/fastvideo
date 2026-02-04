@@ -717,7 +717,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 #if PES_PTSDTS_ENABLE
 			/// this extend the latency in all cases ?
 			pcr += 90; /// 90 ticks means 1ms
-			if (dev->pes_header.ptsi & 0x03)
+			if (dev->pes_header.ptsi & 0x02)
 			{
 				dev->pes_header.opt.dts[0] = ((pcr >> 30 & 0x07) << 1) | 0x01 | 0x10;
 				dev->pes_header.opt.dts[1] = (pcr >> 23 & 0x7f);
@@ -725,11 +725,14 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 				dev->pes_header.opt.dts[3] = (pcr >> 7 & 0x7f);
 				dev->pes_header.opt.dts[4] = ((pcr & 0x7f) << 1) | 0x01;
 			}
-			dev->pes_header.opt.pts[0] = ((pcr >> 30 & 0x07) << 1) | 0x01 | (dev->pes_header.ptsi << 4);
-			dev->pes_header.opt.pts[1] = (pcr >> 23 & 0x7f);
-			dev->pes_header.opt.pts[2] = ((pcr >> 15 & 0x7f) << 1) | 0x01;
-			dev->pes_header.opt.pts[3] = (pcr >> 7 & 0x7f);
-			dev->pes_header.opt.pts[4] = ((pcr & 0x7f) << 1) | 0x01;
+			if (dev->pes_header.ptsi & 0x01)
+			{
+				dev->pes_header.opt.pts[0] = ((pcr >> 30 & 0x07) << 1) | 0x01 | (dev->pes_header.ptsi << 4);
+				dev->pes_header.opt.pts[1] = (pcr >> 23 & 0x7f);
+				dev->pes_header.opt.pts[2] = ((pcr >> 15 & 0x7f) << 1) | 0x01;
+				dev->pes_header.opt.pts[3] = (pcr >> 7 & 0x7f);
+				dev->pes_header.opt.pts[4] = ((pcr & 0x7f) << 1) | 0x01;
+			}
 #endif
 			/// sizeof(dev->pes_header) returns 20 instead 19 (alignment error)
 			//ret = dev->proto->send(dev->protoctx, &dev->pes_header, sizeof(dev->pes_header), flags);
@@ -827,7 +830,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 #if 0
 	dev->pes_header.ptsi = 0x3;
 #else
-	dev->pes_header.ptsi = 0x1;
+	dev->pes_header.ptsi = 0x2;
 #endif
 #endif
 	dev->pes_header.hlen = sizeof(dev->pes_header.opt);
