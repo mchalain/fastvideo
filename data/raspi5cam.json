@@ -1,12 +1,12 @@
 [
   {
-    "name": ["isp-in","isp0-in","pispbe-input"],
+    "name": ["pisp-in","pisp0-in","pispbe-input"],
     "type": "v4l2",
     "device": "/dev/video20",
     "end": true
   },
   {
-    "name": ["isp-out","ips-out0","ips0-out0","pispbe-output0"],
+    "name": ["pisp-out","pips-out0","pips0-out0","pispbe-output0"],
     "type": "v4l2",
     "device": "/dev/video24",
     "definition": {
@@ -17,7 +17,7 @@
     "end": true
   },
   {
-    "name": ["isp-out1","isp0-out1","pispbe-output1"],
+    "name": ["pisp-out1","pisp0-out1","pispbe-output1"],
     "type": "v4l2",
     "device": "/dev/video25",
     "definition": {
@@ -28,7 +28,7 @@
     "end": true
   },
   {
-    "name": ["isp-config","isp0-config","pispbe-config"],
+    "name": ["pisp-config","pisp0-config","pispbe-config"],
     "type": "v4l2",
     "device": "/dev/video25",
     "definition": {
