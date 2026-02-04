@@ -1,6 +1,6 @@
 [
   {
-    "name": ["cam-imx708","imx708_wide_noir"],
+    "name": ["raw-imx708","cam-imx708","imx708_wide_noir"],
     "controls": [
       {
         "name": "Exposure",
@@ -8,10 +8,12 @@
         "value": 1367
       },{
         "name": "Horizontal Flip",
+	"disable": true,
         "id": 9963796,
         "value": false
       },{
         "name": "Vertical Flip",
+	"disable": true,
         "id": 9963797,
         "value": false
       },{
@@ -20,11 +22,13 @@
         "value": false
       },{
         "name": "Camera Orientation",
+	"read-only": true,
         "id": 10094882,
         "value": 2,
         "value_show": "External"
       },{
         "name": "Camera Sensor Rotation",
+	"read-only": true,
         "id": 10094883,
         "value": 180
       },{

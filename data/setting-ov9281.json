@@ -1,6 +1,6 @@
 [
   {
-    "name": ["cam-ov9281","ov9281 10-0036"],
+    "name": ["raw-ov9281","cam-ov9281","ov9281 10-0036"],
     "controls": [{
         "name":"Analogue Gain",
         "id": 10356995,
@@ -11,11 +11,13 @@
         "value":920
       },{
         "name":"Vertical Flip",
+	"disable": true,
         "id": 9963797,
         "comment": "true value fail the startup",
         "value": false
       },{
         "name":"Horizontal Flip",
+	"disable": true,
         "id": 9963796,
         "comment": "true value fail the startup",
         "value": false
