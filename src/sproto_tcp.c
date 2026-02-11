@@ -281,9 +281,13 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 	/// server mode and no client are connected
 	if (proto->clientfd == -1)
 		return len;
+	int sflags = 1;
+	if (flags & Proto_More)
+		sflags = 0;
+	setsockopt(proto->clientfd, IPPROTO_TCP, TCP_NODELAY, (char *) &sflags, sizeof(int));
 	if (len == 0)
 		warn("tcp: send empty packet");
-	int sflags = MSG_NOSIGNAL;
+	sflags = MSG_NOSIGNAL;
 	if (flags & Proto_More)
 		sflags |= MSG_MORE;
 	while (ret == -1 && errno == EAGAIN)
