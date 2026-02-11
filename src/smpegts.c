@@ -1115,6 +1115,12 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 		uint32_t value = json_integer_value(maxclients);
 		config->maxclients = value;
 	}
+	json_t *mode = json_object_get(jconfig, "mode");
+	if (mode && json_is_string(mode))
+	{
+		const char *value = json_string_value(mode);
+		config->mode = value;
+	}
 	json_t *proto = json_object_get(jconfig, "proto");
 	if (proto == NULL)
 		proto = json_object_get(jconfig, "protocol");
