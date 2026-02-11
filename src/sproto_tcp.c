@@ -239,6 +239,8 @@ static int proto_connect_server(void *arg)
 
 	/// this is currently a blocked socket
 	proto->clientfd = accept(proto->serverfd, NULL, 0);
+	if (proto->clientfd > 0)
+		warn("tcp: new connection");
 	if (proto->clientfd > 0 && proto->mode & Proto_TCP_Http)
 	{
 		const char buf[] = "HTTP/1.1 200 OK\r\n\
@@ -273,19 +275,25 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 		proto_connect_server(arg);
 	else if (proto->clientfd == -1)
 	{
-		warn("no client connected");
+		warn("tcp: no client connected");
 		return -1;
 	}
 	/// server mode and no client are connected
 	if (proto->clientfd == -1)
 		return len;
 	if (len == 0)
-		warn("send empty packet");
+		warn("tcp: send empty packet");
+	int sflags = MSG_NOSIGNAL;
+	if (flags & Proto_More)
+		sflags |= MSG_MORE;
 	while (ret == -1 && errno == EAGAIN)
-		ret = send(proto->clientfd, buf, len, 0);
+		ret = send(proto->clientfd, buf, len, sflags);
 	if (ret < 0)
 	{
-		err("mpegts: sending on tcp error %m");
+		if (errno == ECONNRESET || errno == EPIPE)
+			warn("tcp: connection closed");
+		else
+			err("tcp: sending error %m");
 		close(proto->clientfd);
 		proto->clientfd = -1;
 		if (proto->serverfd > 0)
@@ -303,13 +311,14 @@ static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 	ssize_t ret = -1;
 	if (proto->clientfd == -1)
 	{
-		warn("no client connected");
+		warn("tcp: no client connected");
 		return -1;
 	}
-	ret = recv(proto->clientfd, buf, len, 0);
+	int sflags = MSG_NOSIGNAL;
+	ret = recv(proto->clientfd, buf, len, sflags);
 	if (ret < 0 && errno != EAGAIN)
 	{
-		err("mpegts: receiving on tcp error %m");
+		err("tcp: receiving error %m");
 		close(proto->clientfd);
 		proto->clientfd = -1;
 		if (proto->serverfd > 0)
