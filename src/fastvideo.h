@@ -131,6 +131,7 @@ enum Proto_Flags_e
 {
 	Proto_Flush = 0,
 	Proto_More,
+	Proto_Started = 0x02,
 };
 
 typedef struct Proto_s Proto_t;

@@ -644,6 +644,8 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	{
 		int paddinglength = 0;
 		Proto_Flags_t flags = Proto_More;
+		if (! dev->header.pusi)
+			flags |= Proto_Started;
 		size_t buflength; /// the length of buffer to send with this ts packet
 		/// the packet must contain 188 bytes even when the payload is smaller
 		buflength = dev->packetlen;
