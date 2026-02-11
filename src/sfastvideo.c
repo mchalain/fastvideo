@@ -88,7 +88,7 @@ FastVideoList_t *fastvideolist_pop(FastVideoList_t *list, FastVideoList_t **entr
 	if (current == list->last)
 		list->last = current->previous;
 	if (entry)
-		(*entry)->previous = (*entry)->next = NULL;
+		(*entry)->previous = (*entry)->next = (*entry)->last = (*entry)->iterator = NULL;
 	if (current == list)
 		list = NULL;
 	return list;
