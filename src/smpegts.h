@@ -16,6 +16,7 @@ struct MPEG_TSConf_s
 			const char *host;
 			int port;
 			int maxclients;
+			const char *mode;
 		};
 		Proto_Config_t protoconf;
 	};

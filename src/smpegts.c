@@ -644,6 +644,8 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	{
 		int paddinglength = 0;
 		Proto_Flags_t flags = Proto_More;
+		if (! dev->header.pusi)
+			flags |= Proto_Started;
 		size_t buflength; /// the length of buffer to send with this ts packet
 		/// the packet must contain 188 bytes even when the payload is smaller
 		buflength = dev->packetlen;
@@ -698,7 +700,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			{
 				buflength -= ret;
 				mtu -= ret;
-				if (mtu < 2 * dev->packetlen)
+				if (mtu < dev->packetlen)
 					flags = 0;
 				if (paddinglength > dev->packetlen - sizeof(dev->header) - 1) /// see the declaration of "padding"
 				{
@@ -717,7 +719,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 #if PES_PTSDTS_ENABLE
 			/// this extend the latency in all cases ?
 			pcr += 90; /// 90 ticks means 1ms
-			if (dev->pes_header.ptsi & 0x03)
+			if (dev->pes_header.ptsi & 0x02)
 			{
 				dev->pes_header.opt.dts[0] = ((pcr >> 30 & 0x07) << 1) | 0x01 | 0x10;
 				dev->pes_header.opt.dts[1] = (pcr >> 23 & 0x7f);
@@ -725,11 +727,14 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 				dev->pes_header.opt.dts[3] = (pcr >> 7 & 0x7f);
 				dev->pes_header.opt.dts[4] = ((pcr & 0x7f) << 1) | 0x01;
 			}
-			dev->pes_header.opt.pts[0] = ((pcr >> 30 & 0x07) << 1) | 0x01 | (dev->pes_header.ptsi << 4);
-			dev->pes_header.opt.pts[1] = (pcr >> 23 & 0x7f);
-			dev->pes_header.opt.pts[2] = ((pcr >> 15 & 0x7f) << 1) | 0x01;
-			dev->pes_header.opt.pts[3] = (pcr >> 7 & 0x7f);
-			dev->pes_header.opt.pts[4] = ((pcr & 0x7f) << 1) | 0x01;
+			if (dev->pes_header.ptsi & 0x01)
+			{
+				dev->pes_header.opt.pts[0] = ((pcr >> 30 & 0x07) << 1) | 0x01 | (dev->pes_header.ptsi << 4);
+				dev->pes_header.opt.pts[1] = (pcr >> 23 & 0x7f);
+				dev->pes_header.opt.pts[2] = ((pcr >> 15 & 0x7f) << 1) | 0x01;
+				dev->pes_header.opt.pts[3] = (pcr >> 7 & 0x7f);
+				dev->pes_header.opt.pts[4] = ((pcr & 0x7f) << 1) | 0x01;
+			}
 #endif
 			/// sizeof(dev->pes_header) returns 20 instead 19 (alignment error)
 			//ret = dev->proto->send(dev->protoctx, &dev->pes_header, sizeof(dev->pes_header), flags);
@@ -740,7 +745,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 		{
 			buflength -= ret;
 			mtu -= ret;
-			if (mtu < 2 * dev->packetlen)
+			if (mtu < dev->packetlen)
 				flags = 0;
 			ret = dev->proto->send(dev->protoctx, buffer, buflength, flags);
 		}
@@ -827,7 +832,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 #if 0
 	dev->pes_header.ptsi = 0x3;
 #else
-	dev->pes_header.ptsi = 0x1;
+	dev->pes_header.ptsi = 0x2;
 #endif
 #endif
 	dev->pes_header.hlen = sizeof(dev->pes_header.opt);
@@ -1112,6 +1117,12 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 	{
 		uint32_t value = json_integer_value(maxclients);
 		config->maxclients = value;
+	}
+	json_t *mode = json_object_get(jconfig, "mode");
+	if (mode && json_is_string(mode))
+	{
+		const char *value = json_string_value(mode);
+		config->mode = value;
 	}
 	json_t *proto = json_object_get(jconfig, "proto");
 	if (proto == NULL)
