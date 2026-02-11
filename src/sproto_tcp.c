@@ -22,6 +22,8 @@
 #define IP_HEADER_LENGTH 20
 #define UDP_HEADER_LENGTH 8
 
+#define Proto_TCP_Http 0x01
+
 typedef struct Proto_TCP_s Proto_TCP_t;
 struct Proto_TCP_s
 {
@@ -31,6 +33,7 @@ struct Proto_TCP_s
 	struct sockaddr_storage dest_addr;
 	socklen_t dest_size;
 	size_t mtu;
+	int mode;
 };
 
 static socklen_t _proto_interface(Proto_Config_t *config, struct sockaddr_storage *address)
@@ -204,6 +207,8 @@ static void *_proto_create(Proto_Config_t *config, int (*_bind)(int sock, struct
 static void *proto_create_server(Proto_Config_t *config)
 {
 	Proto_TCP_t *proto = _proto_create(config, _proto_bindserver);
+	if (config->mode && strstr(config->mode, "http"))
+		proto->mode |= Proto_TCP_Http;
 	proto->serverfd = proto->sock;
 	proto->clientfd = -1;
 	return proto;
@@ -234,6 +239,28 @@ static int proto_connect_server(void *arg)
 
 	/// this is currently a blocked socket
 	proto->clientfd = accept(proto->serverfd, NULL, 0);
+	if (proto->clientfd > 0 && proto->mode & Proto_TCP_Http)
+	{
+		const char buf[] = "HTTP/1.1 200 OK\r\n\
+Server: "PACKAGE_NAME"/"PACKAGE_VERSION"\r\n\
+Cache-Control: no-cache,no-store,max-age=0,must-revalidate\r\n\
+Pragma: no-cache\r\n\
+Expires: 0\r\n\
+X-Content-Type-Options: nosniff\r\n\
+X-Frame-Options: SAMEORIGIN\r\n\
+Referrer-Policy: origin-when-cross-origin\r\n\
+Access-Control-Allow-Origin: *\r\n\
+Content-Type: video/mp2t\r\n\
+Connection: Close\r\n\
+";
+		int sflag = 1;
+		setsockopt(proto->clientfd, IPPROTO_TCP, TCP_NODELAY, (char *) &sflag, sizeof(int));
+		size_t len = sizeof(buf);
+		int flags = MSG_NOSIGNAL;
+		int ret = send(proto->clientfd, buf, len, flags);
+		if (ret > 0)
+			warn("tcp: send HTTP response");
+	}
 	return 0;
 }
 

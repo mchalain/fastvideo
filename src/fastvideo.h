@@ -123,6 +123,7 @@ struct Proto_Config_s
 	const char *host;
 	int port;
 	int maxclients;
+	const char *mode;
 };
 
 typedef enum Proto_Flags_e Proto_Flags_t;

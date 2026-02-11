@@ -19,6 +19,7 @@ struct FileConfig_s
 			const char *filename;
 			int port;
 			int maxclients;
+			const char *mode;
 		};
 		Proto_Config_t protoconf;
 	};
