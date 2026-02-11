@@ -12,6 +12,12 @@ unixclient_SOURCES+=$(srcdir)src/client.c
 unixclient_CFLAGS+=-I$(srcdir)src
 unixclient_LDFLAGS+=-L$(builddir)src
 
+bin-y+=unixproxy
+unixproxy_SOURCES+=unixproxy.c
+unixproxy_SOURCES+=$(srcdir)src/client.c
+unixproxy_CFLAGS+=-I$(srcdir)src
+unixproxy_LDFLAGS+=-L$(builddir)src
+
 data-y+=rpi3cam-setup.sh
 data-y+=rpi5cam-setup.sh
 
