@@ -698,7 +698,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			{
 				buflength -= ret;
 				mtu -= ret;
-				if (mtu < 2 * dev->packetlen)
+				if (mtu < dev->packetlen)
 					flags = 0;
 				if (paddinglength > dev->packetlen - sizeof(dev->header) - 1) /// see the declaration of "padding"
 				{
@@ -743,7 +743,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 		{
 			buflength -= ret;
 			mtu -= ret;
-			if (mtu < 2 * dev->packetlen)
+			if (mtu < dev->packetlen)
 				flags = 0;
 			ret = dev->proto->send(dev->protoctx, buffer, buflength, flags);
 		}
