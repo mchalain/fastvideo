@@ -12,8 +12,8 @@ typedef struct client_s client_t;
 typedef struct server_s server_t;
 
 typedef void *(*client_create_t)(void *data, client_t *clt, int fd);
-typedef int (*client_receive_t)(void *data, client_t *clt, const char *buffer, size_t length);
-typedef int (*client_receivefd_t)(void *data, client_t *clt, int fd);
+typedef ssize_t (*client_receive_t)(void *data, client_t *clt, const char *buffer, size_t length);
+typedef ssize_t (*client_receivefd_t)(void *data, client_t *clt, int fd);
 typedef void (*client_close_t)(void *data, client_t *clt);
 
 #ifdef __UNIXSOCKET_INTERNAL__

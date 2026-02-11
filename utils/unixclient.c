@@ -14,7 +14,7 @@ struct app_s
 	int fd;
 };
 
-int _client_receive(void *data, client_t *clt, const char *buffer, size_t length)
+ssize_t _client_receive(void *data, client_t *clt, const char *buffer, size_t length)
 {
 	app_t *app = (app_t *)data;
 	//dbg("recieve %lu bytes", length);

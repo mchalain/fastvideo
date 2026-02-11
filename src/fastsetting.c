@@ -180,7 +180,7 @@ int _runcmd(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 	return ret;
 }
 
-int _server_control(void *data, client_t *clt, const char *buffer, size_t length)
+ssize_t _server_control(void *data, client_t *clt, const char *buffer, size_t length)
 {
 	int ret = -1;
 	dbg("receive: %.*s", length, buffer);
@@ -199,7 +199,7 @@ int _server_control(void *data, client_t *clt, const char *buffer, size_t length
 	return ret;
 }
 #else
-int _server_control(void *data, client_t *clt, const char *buffer, size_t length)
+ssize_t _server_control(void *data, client_t *clt, const char *buffer, size_t length)
 {
 	return 0;
 }

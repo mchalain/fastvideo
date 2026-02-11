@@ -14,7 +14,7 @@
 #define MODE_DAEMONIZE 0x01
 #define MODE_KILLDAEMON 0x02
 
-static int _client_receive(void *arg, client_t *clt, const char *buffer, size_t length)
+static ssize_t _client_receive(void *arg, client_t *clt, const char *buffer, size_t length)
 {
 	return 0;
 }

@@ -263,7 +263,7 @@ static int _client_receive_loadsetting(fastsetting_t *data, client_t *clt, json_
 	return 0;
 }
 
-static int _client_receive(void *arg, client_t *clt, const char *buffer, size_t length)
+static ssize_t _client_receive(void *arg, client_t *clt, const char *buffer, size_t length)
 {
 	fastsetting_t *data = arg;
 	dbg("receive %d: %.*s", length, length, buffer);

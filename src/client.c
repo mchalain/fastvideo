@@ -64,22 +64,22 @@ ssize_t client_receive(client_t *client)
 	msg.msg_iovlen = 1;
 
 	ret = recvmsg(client->sock, &msg, MSG_CMSG_CLOEXEC);
-	if (ret < 1)
+	if (ret < 0)
 	{
-		warn("client: goodbye %p", client);
+		warn("client: goodbye %p %m", client);
 		return -1;
 	}
 	buffer[ret] = 0;
-	if (client->ops.receive)
-		client->ops.receive(client->data, client, buffer, ret);
+	if (ret > 0 && client->ops.receive)
+		ret = client->ops.receive(client->data, client, buffer, ret);
 
 	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
 	if (cmsg != NULL)
 	{
 		unsigned char *mdata = CMSG_DATA(cmsg);
 		int fd = *((int*) mdata);
-		if (client->ops.receivefd)
-			client->ops.receivefd(client->data, client, fd);
+		if (ret > 0 && client->ops.receivefd)
+			ret = client->ops.receivefd(client->data, client, fd);
 	}
 	return ret;
 }
