@@ -317,12 +317,10 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 {
 	int pad = 0;
 	int ctrlfd = -1;
-	if (config->device)
-		ctrlfd = open(config->device, O_RDWR, 0);
-	if (ctrlfd < 0 && devicename)
-	{
-		ctrlfd = open(devicename, O_RDWR, 0);
-	}
+	const char *device = devicename;
+	if (config && config->device)
+		device = config->device;
+	ctrlfd = open(device, O_RDWR, 0);
 	if (ctrlfd < 0)
 	{
 		err("sv4l2: subdevice %s not exist", config->device);
@@ -331,6 +329,7 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 	if (config->parent.fourcc && !config->fmtbus[0])
 		config->fmtbus[0] = sv4l2_subdev_translate_fmtbus(ctrlfd, config->parent.fourcc);
 
+	dbg("sv4l2: try subdevice %s %d", device, ctrlfd);
 	V4L2_t *subdev = sv4l2_subdev_create2(ctrlfd, devicename, type, config);
 	if (subdev == NULL)
 	{
