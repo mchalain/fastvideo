@@ -2,6 +2,7 @@
 #include <sys/shm.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -26,6 +27,7 @@ typedef enum{
 	Uniform_MAT2_e,
 	Uniform_MAT3_e,
 	Uniform_MAT4_e,
+	Uniform_FUNC_e,
 } Uniform_Type_e;
 
 typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
@@ -34,6 +36,7 @@ struct GLProgram_Uniform_s
 	const char *name;
 	Uniform_Type_e type;
 	void *value;
+	void *data;
 	GLProgram_Uniform_t *next;
 };
 
@@ -388,7 +391,9 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint
 		size_t size = 0;
 		for (GLProgram_Uniform_t *uniform = config->controls; uniform; uniform = uniform->next)
 		{
-			size += _glprog_uniform_size(uniform);
+			int usize = _glprog_uniform_size(uniform);
+			if (usize > 0)
+				size += usize;
 		}
 		const char *keyname = "/tmp/program.shm";
 		int ret = access(keyname, F_OK|R_OK|W_OK);
@@ -419,8 +424,11 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint
 		for (GLProgram_Uniform_t *uniform = config->controls; uniform && offset < size; uniform = uniform->next)
 		{
 			int size = _glprog_uniform_size(uniform);
-			uniform->value = uniform_data + offset;
-			offset += size;
+			if (size > 0)
+			{
+				uniform->value = uniform_data + offset;
+				offset += size;
+			}
 		}
 	}
 	GLProgram_t *program = calloc(1, sizeof(*program));
@@ -743,6 +751,13 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 		glUniformMatrix4fv(loc, 1, GL_FALSE, uniform->value);
 	}
 	break;
+	case Uniform_FUNC_e:
+	{
+		GLint loc = glGetUniformLocation(program->ID, uniform->name);
+		GLfloat (*func)(GLProgram_Uniform_t *uniform) = uniform->value;
+		glUniform1f(loc, func(uniform));
+	}
+	break;
 	default:
 		err("segl: Uniform type invalid");
 		return -1;
@@ -769,6 +784,23 @@ static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform)
 {
 	free(uniform->value);
 	free(uniform);
+}
+
+typedef GLfloat (*GLProgram_Uniform_func_t)(GLProgram_Uniform_t *uniform);
+static GLfloat _time(GLProgram_Uniform_t *uniform)
+{
+	int t = time(NULL);
+	int t0 = (int)(long)uniform->data;
+	if (t0 == 0)
+		uniform->data = (void*)(long)t;
+	return (GLfloat)(t - t0);
+}
+
+static GLfloat _frame(GLProgram_Uniform_t *uniform)
+{
+	int f = (int)(long)uniform->data;
+	uniform->data = (void*)(long)++f;
+	return (GLfloat)f;
 }
 
 #ifdef HAVE_JANSSON
@@ -846,7 +878,9 @@ static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue
 	if (!uniform->value)
 	{
 		err("segl: memory allocation error");
-		uniform->value = malloc(_glprog_uniform_size(uniform));
+		int size = _glprog_uniform_size(uniform);
+		if (size > 0)
+			uniform->value = malloc(size);
 	}
 	if (jvalue && json_is_number(jvalue))
 	{
@@ -945,6 +979,21 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 			uniform->type = Uniform_MAT3_e;
 		else if (!strcmp(value, "mat4"))
 			uniform->type = Uniform_MAT4_e;
+		else if (!strcmp(value, "func"))
+		{
+			uniform->type = Uniform_FUNC_e;
+			/// function are not modifiable with setting
+			json_t *jvalue = json_object_get(jsetting, "value");
+			if (jvalue && json_is_string(jvalue))
+			{
+				const char *value = NULL;
+				value = json_string_value(jvalue);
+				if (!strncasecmp(value, "time", 4))
+					uniform->value = _time;
+				else if (!strncasecmp(value, "frames", 6))
+					uniform->value = _frame;
+			}
+		}
 	}
 	if (uniform->type == Uniform_UNKNOWN_e)
 	{
