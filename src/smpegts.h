@@ -13,7 +13,7 @@ struct MPEG_TSConf_s
 	union {
 		struct {
 			DeviceConf_t parent;
-			const char *host;
+			char *host;
 			int port;
 			int maxclients;
 			const char *mode;

@@ -344,7 +344,7 @@ DeviceConf_t *mpegts_createconfig(const char *name)
 {
 	MPEG_TSConf_t *config = calloc(1, sizeof(*config));
 	config->parent.fourcc = FOURCC_H264;
-	config->host = default_addr;
+	config->host = NULL;
 	config->port = 1024;
 	config->pid = 0x41;
 	config->maxclients = 5;
@@ -352,6 +352,23 @@ DeviceConf_t *mpegts_createconfig(const char *name)
 #ifdef HAVE_JANSSON
 	config->parent.ops.loadconfiguration = mpegts_loadjsonconfiguration;
 #endif
+	char *hostname = strchr(name, ':');
+	if (hostname)
+	{
+		hostname++;
+		if (hostname[0] == '/' && hostname[1] == '/')
+		{
+			hostname = strdup(hostname + 2);
+			config->host = hostname;
+			char *port = strchr(hostname, ':');
+			if (port)
+			{
+				*port = '\0';
+				port++;
+				config->port = atoi(port);
+			}
+		}
+	}
 	return &config->parent;
 }
 
@@ -789,7 +806,6 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	if (ret < 0 && errno != EAGAIN)
 	{
 		dev->proto->close(dev->protoctx);
-		err("mpegts: send error %m");
 	}
 	else
 	{
@@ -814,6 +830,8 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	const Proto_t *proto = &proto_udp;
 	if (config && config->proto)
 		proto = config->proto;
+	if (config->host == NULL)
+		config->host = strdup(default_addr);
 	void *protoctx = proto->create(&config->protoconf);
 	if (protoctx == NULL)
 		return NULL;
@@ -1071,6 +1089,8 @@ EXT_API void mpegts_destroy(Dev_t *dev)
 	if (dumpfd > 0)
 		close(dumpfd);
 #endif
+	free(dev->config->host);
+	free(dev->config);
 	free(dev);
 }
 
@@ -1082,13 +1102,13 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 
 	MPEG_TSConf_t *config = (MPEG_TSConf_t *)arg;
 	json_t *host = json_object_get(jconfig, "host");
-	if (host && json_is_string(host))
+	if (! config->host && host && json_is_string(host))
 	{
 		const char *value = json_string_value(host);
-		config->host = value;
+		config->host = strdup(value);
 	}
 	json_t *port = json_object_get(jconfig, "port");
-	if (port && json_is_integer(port))
+	if (! config->port && port && json_is_integer(port))
 	{
 		int value = json_integer_value(port);
 		config->port = value;
