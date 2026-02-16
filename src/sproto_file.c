@@ -44,7 +44,7 @@ static void *proto_create(Proto_Config_t *config)
 		}
 		else
 		{
-			err("sproto: host must contain at least a directory");
+			err("file: host (%s) must contain at least a directory", host);
 			free(host);
 			return NULL;
 		}
@@ -57,7 +57,7 @@ static void *proto_create(Proto_Config_t *config)
 	}
 	if (rootfd < 0)
 	{
-		err("sfile: directory %s not found", host);
+		err("file: directory %s not found", host);
 		free(host);
 		return NULL;
 	}
@@ -101,10 +101,10 @@ static int proto_connect_fifo(void *arg)
 	if (fstatat(proto->rootfd, proto->filename, &sb, 0) &&
 		(sb.st_mode & S_IFMT != S_IFIFO))
 	{
-		err("sfproto: file %s is not a named pipe", proto->filename);
+		err("file: file %s is not a named pipe", proto->filename);
 		return -1;
 	}
-	warn("sfile: wait fifo %s", proto->filename);
+	warn("file: wait fifo %s", proto->filename);
 	proto->fd[0] = openat(proto->rootfd, proto->filename, O_TRUNC | O_RDWR, 0644);
 	if (proto->fd[0] < 0)
 		return -1;

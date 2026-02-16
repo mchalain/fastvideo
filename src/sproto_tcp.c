@@ -77,7 +77,7 @@ static socklen_t _proto_interface(Proto_Config_t *config, struct sockaddr_storag
 									 sizeof(struct sockaddr_in6),
 			   host, NI_MAXHOST,
 			   NULL, 0, NI_NUMERICHOST);
-			dbg("mpegts: interface %s %s %s %d", ifa_main->ifa_name, family == AF_INET?"IPv4": family == AF_INET6?"IPv6":"???", host, ntohs(((struct sockaddr_in *)saddr)->sin_port));
+			dbg("tcp: interface %s %s %s %d", ifa_main->ifa_name, family == AF_INET?"IPv4": family == AF_INET6?"IPv6":"???", host, ntohs(((struct sockaddr_in *)saddr)->sin_port));
 			ret = 0;
 			break;
 		}
@@ -105,7 +105,7 @@ static socklen_t _proto_address(Proto_Config_t *config, struct sockaddr_storage 
 	if (config->host == NULL)
 		return -1;
 	if (getaddrinfo(config->host, NULL, &hints, &result))
-		err("mpegts: config error %m");
+		err("tcp: config error %m");
 	rp = result;
 	if (rp == NULL)
 	{
@@ -174,14 +174,14 @@ static void *_proto_create(Proto_Config_t *config, int (*_bind)(int sock, struct
 		return NULL;
 
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *)&(int){ 1 }, sizeof(int)) < 0)
-			warn("smpegts: setsockopt(SO_REUSEADDR) failed");
+			warn("tcp: setsockopt(SO_REUSEADDR) failed");
 #ifdef SO_REUSEPORT
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (void *)&(int){ 1 }, sizeof(int)) < 0)
-			warn("smpegts: setsockopt(SO_REUSEPORT) failed");
+			warn("tcp: setsockopt(SO_REUSEPORT) failed");
 #endif
 	if (_bind  && _bind(sock, (struct sockaddr*)&address, addresslen))
 	{
-		err("smpegts: connection %s:%d error %m", config->host, config->port);
+		err("tcp: connection %s:%d error %m", config->host, config->port);
 		close(sock);
 		return NULL;
 	}
@@ -191,7 +191,6 @@ static void *_proto_create(Proto_Config_t *config, int (*_bind)(int sock, struct
 	ifr.ifr_addr.sa_family = address.ss_family;
 	if (ioctl(sock, SIOCGIFMTU, &ifr) != -1)
 		mtu = ifr.ifr_mtu;
-	warn("smpegts: tcp to %s:%d", config->host, config->port);
 
 	int flags;
 	flags = fcntl(sock, F_GETFL, 0);
@@ -211,6 +210,7 @@ static void *proto_create_server(Proto_Config_t *config)
 		proto->mode |= Proto_TCP_Http;
 	proto->serverfd = proto->sock;
 	proto->clientfd = -1;
+	warn("tcp: server on %s:%d", config->host, config->port);
 	return proto;
 }
 
@@ -219,6 +219,7 @@ static void *proto_create_client(Proto_Config_t *config)
 	Proto_TCP_t *proto = _proto_create(config, _proto_bindserver);
 	proto->clientfd = proto->sock;
 	proto->serverfd = -1;
+	warn("tcp: client to %s:%d", config->host, config->port);
 	return proto;
 }
 

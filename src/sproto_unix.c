@@ -56,10 +56,10 @@ static void *proto_create(Proto_Config_t *config)
 		return NULL;
 
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *)&(int){ 1 }, sizeof(int)) < 0)
-			warn("smpegts: setsockopt(SO_REUSEADDR) failed");
+			warn("unix: setsockopt(SO_REUSEADDR) failed");
 #ifdef SO_REUSEPORT
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (void *)&(int){ 1 }, sizeof(int)) < 0)
-			warn("smpegts: setsockopt(SO_REUSEPORT) failed");
+			warn("unix: setsockopt(SO_REUSEPORT) failed");
 #endif
 
 	struct sockaddr_un addr;
@@ -73,7 +73,7 @@ static void *proto_create(Proto_Config_t *config)
 
 	if (status)
 	{
-		err("smpegts: network error %m");
+		err("unix: network error %m");
 		close(sock);
 		return NULL;
 	}
@@ -88,7 +88,7 @@ static void *proto_create(Proto_Config_t *config)
 	proto->config = config;
 	proto->mtu = mtu - IP_HEADER_LENGTH - TCP_HEADER_LENGTH; /// maxsize of tcp/ip header
 	proto->mtu = 7 * 188 + 1;
-	warn("smpegts: unix to %s (mtu %lu)", config->host, proto->mtu);
+	warn("unix: unix to %s (mtu %lu)", config->host, proto->mtu);
 	proto->serverfd = sock;
 	for (int i = 0 ; i < config->maxclients; i++)
 	{
@@ -107,12 +107,12 @@ static void *proto_thread(void *arg)
 	int sock = 0;
 	struct sockaddr_storage addr;
 	int addrsize = sizeof(addr);
-	dbg("smpegts: server running %d", proto->serverfd);
+	dbg("unix: server running %d", proto->serverfd);
 	while ((sock = accept(proto->serverfd, NULL, NULL)) > 0)
 	{
 		if (sock > 0)
 		{
-			dbg("smpegts: new client");
+			dbg("unix: new client");
 			int flags;
 			flags = fcntl(sock, F_GETFL, 0);
 			fcntl(sock, F_SETFL, flags | O_NONBLOCK);
@@ -126,14 +126,14 @@ static void *proto_thread(void *arg)
 				{
 					clt->fd = sock;
 					proto->clients = fastvideolist_push(proto->clients, client);
-					dbg("smpegts: client registered");
+					dbg("unix: client registered");
 				}
 			}
 		}
 		else if (!proto->serverfd)
 			break;
 	}
-	dbg("accept end %m");
+	dbg("unix: accept end %m");
 	return NULL;
 }
 
@@ -142,7 +142,7 @@ static int proto_connect(void *arg)
 	Proto_UNIX_t *proto = (Proto_UNIX_t *)arg;
 	if (proto->serverfd == -1)
 		return -1;
-	dbg("smpegts: max %d clients", proto->config->maxclients);
+	dbg("unix: max %d clients", proto->config->maxclients);
 	if (listen(proto->serverfd, proto->config->maxclients))
 		return -1;
 	pthread_attr_t attr;
@@ -201,7 +201,7 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 				FastVideoList_t *client = NULL;
 				proto->clients = fastvideolist_pop(proto->clients, &client);
 				proto->clientspool = fastvideolist_push(proto->clientspool, client);
-				dbg("smpegts: client disconnected %p %m %d", client, ret);
+				dbg("unix: client disconnected %p %m %d", client, ret);
 				errno = 0;
 				ret = 0;
 			}

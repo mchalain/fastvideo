@@ -64,7 +64,7 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 									 sizeof(struct sockaddr_in6),
 			   host, NI_MAXHOST,
 			   NULL, 0, NI_NUMERICHOST);
-			dbg("mpegts: interface %s %s %s %d", ifa_main->ifa_name, family == AF_INET?"IPv4": family == AF_INET6?"IPv6":"???", host, sock);
+			dbg("udp: interface %s %s %s %d", ifa_main->ifa_name, family == AF_INET?"IPv4": family == AF_INET6?"IPv6":"???", host, sock);
 			break;
 		}
 	}
@@ -80,39 +80,40 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 	{
 		if (! ifa_main->ifa_flags & IFF_MULTICAST)
 		{
-			err("smpegts: udp multicast interface not supported");
+			err("udp: udp multicast interface not supported");
 			return -1;
 		}
 
 		// Set the outgoing interface to DEFAULT
 		status = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_IF, saddr, saddrlen);
 		if (status != 0)
-			warn("smpegts: not allowed to change interface");
+			warn("udp: not allowed to change interface");
 
 		unsigned char ttl = 3;
 		// Set multicast packet TTL to 3; default TTL is 1
 		status = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl,
 						sizeof(unsigned char));
 		if (status != 0)
-			warn("smpegts: not allowed to set TTL");
+			warn("udp: not allowed to set TTL");
 
 		unsigned char one = 1;
 		// send multicast traffic to myself too
 		status = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, &one,
 						sizeof(unsigned char));
 		if (status != 0)
-			warn("smpegts: not allowed to make a loop on data sending");
+			warn("udp: not allowed to make a loop on data sending");
+		warn("udp: multicast address");
 	}
 	else if (htonl(longaddress) > 0xff000000)
 	{
 		if (! ifa_main->ifa_flags & IFF_BROADCAST)
 		{
-			err("smpegts: udp broadcast interface not supported");
+			err("udp: udp broadcast interface not supported");
 			return -1;
 		}
 		status = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (void *)&(int){ 1 }, sizeof(int));
 		if (status == -1)
-			err("smpegts: udp broadcast error %m");
+			err("udp: udp broadcast error %m");
 	}
 	else
 		status = 0;
@@ -134,7 +135,7 @@ static void *proto_create(Proto_Config_t *config)
 	hints.ai_protocol = IPPROTO_UDP;
 
 	if (getaddrinfo(config->host, NULL, &hints, &result))
-		err("mpegts: config error %m");
+		err("udp: config error %m");
 	rp = result;
 	if (rp == NULL)
 	{
@@ -164,17 +165,17 @@ static void *proto_create(Proto_Config_t *config)
 
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *)&(int){ 1 }, sizeof(int))
 < 0)
-			warn("smpegts: setsockopt(SO_REUSEADDR) failed");
+			warn("udp: setsockopt(SO_REUSEADDR) failed");
 #ifdef SO_REUSEPORT
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (void *)&(int){ 1 }, sizeof(int))
 < 0)
-			warn("smpegts: setsockopt(SO_REUSEPORT) failed");
+			warn("udp: setsockopt(SO_REUSEPORT) failed");
 #endif
 	int status = proto_bindinterface(sock, family, longaddress);
 
 	if (status)
 	{
-		err("smpegts: network error %m");
+		err("udp: network error %m");
 		close(sock);
 		return NULL;
 	}
@@ -184,7 +185,7 @@ static void *proto_create(Proto_Config_t *config)
 	ifr.ifr_addr.sa_family = family;
 	if (ioctl(sock, SIOCGIFMTU, &ifr) != -1)
 		mtu = ifr.ifr_mtu;
-	warn("smpegts: udp to %s %d", config->host, config->port);
+	warn("udp: udp to %s %d", config->host, config->port);
 
 	int flags;
 	flags = fcntl(sock, F_GETFL, 0);
@@ -215,7 +216,7 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 	ssize_t ret = -1;
 	errno = EAGAIN;
 	if (len == 0)
-		warn("send empty packet");
+		warn("udp: send empty packet");
 	int flags = MSG_NOSIGNAL;
 	if (pflags & Proto_More)
 		flags |= MSG_MORE;
@@ -226,11 +227,11 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 	}
 	if (ret < 0)
 	{
-		char host[NI_MAXHOST];
+		char host[NI_MAXHOST]= {0};
 		getnameinfo((struct sockaddr *)&proto->dest_addr, proto->dest_size,
 			host, NI_MAXHOST,
 			NULL, 0, NI_NUMERICHOST);
-		err("mpegts: sending on %s error %m", host);
+		err("udp: sending on %s error %m", host);
 	}
 
 	errno = 0;
@@ -256,7 +257,7 @@ static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 		getnameinfo((struct sockaddr *)&proto->dest_addr, dest_size,
 			host, NI_MAXHOST,
 			NULL, 0, NI_NUMERICHOST);
-		err("mpegts: receiving on %s error %m", host);
+		err("udp: receiving on %s error %m", host);
 	}
 
 	errno = 0;
