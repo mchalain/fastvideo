@@ -6,12 +6,20 @@
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include "fastvideo.h"
 #include "config.h"
 #include "smpegts.h"
 #include "log.h"
 
+#define HLS_HEADER "#EXTM3U\n\
+#EXT-X-VERSION:3\n\
+#EXT-X-TARGETDURATION:%f\n"
+#define HLS_ENTRY "#EXTINF:%d.%d\n"
+#define HLS_FOOTER "#EXT-X-ENDLIST\n"
+
+#define Proto_FILE_Hls 0x010001
 typedef struct Proto_FILE_s Proto_FILE_t;
 struct Proto_FILE_s
 {
@@ -23,7 +31,22 @@ struct Proto_FILE_s
 	char filename[64];
 	int fileid;
 	size_t mtu;
+	int mode;
+	int hlsfd;
+	struct timespec hlstp;
 };
+
+struct timespec *timespec_subs( struct timespec *a, struct timespec *b)
+{
+	a->tv_sec -= b->tv_sec;
+	a->tv_nsec -= b->tv_nsec;
+	if (a->tv_nsec < 0)
+	{
+		a->tv_nsec = 1000000000 - a->tv_nsec;
+		a->tv_sec--;
+	}
+	return a;
+}
 
 static void *proto_create(Proto_Config_t *config)
 {
@@ -65,7 +88,28 @@ static void *proto_create(Proto_Config_t *config)
 	proto->config = config;
 	proto->mtu = mtu;
 	proto->rootfd = rootfd;
-	if (filename)
+	if (config->mode && !strncasecmp(config->mode, "hls", 3))
+		proto->mode |= Proto_FILE_Hls;
+	if (proto->mode & Proto_FILE_Hls)
+	{
+		int fd = 0;
+		const char* path = "stream.m3u8";
+		if (filename && strstr(filename, ".m3u"))
+			path = filename;
+		if (!faccessat(proto->rootfd, path, F_OK, AT_EACCESS))
+			unlinkat(proto->rootfd, filename, 0);
+		fd = openat(proto->rootfd, path, O_CREAT | O_RDWR, 0644);
+		if (fd > 0)
+		{
+			proto->maxfiles = config->maxclients;
+			proto->hlsfd = fd;
+			clock_gettime(CLOCK_TAI, &proto->hlstp);
+			dprintf(proto->hlsfd, HLS_HEADER, 10.0);
+		}
+		else
+			proto->mode &= ~Proto_FILE_Hls;
+	}
+	else if (filename)
 	{
 		snprintf(proto->filename, sizeof(proto->filename) - 1, filename);
 		proto->maxfiles = 1;
@@ -123,6 +167,17 @@ static int proto_connect_reg(void *arg)
 	{
 		unlinkat(proto->rootfd, proto->filename, 0);
 	}
+	if (proto->mode & Proto_FILE_Hls)
+	{
+		size_t length = 0;
+		length = strlen(HLS_FOOTER);
+		struct timespec tp;
+		clock_gettime(CLOCK_TAI, &tp);
+		timespec_subs(&tp, &proto->hlstp);
+		dprintf(proto->hlsfd, HLS_ENTRY, tp.tv_sec, tp.tv_nsec / 10000000);
+		dprintf(proto->hlsfd, "%s\n", proto->filename);
+		clock_gettime(CLOCK_TAI, &proto->hlstp);
+	}
 #ifdef O_TMPFILE
 	proto->fd[newfd] = open(config->host, O_TMPFILE | O_RDWR, 0644);
 #else
@@ -136,7 +191,7 @@ static int proto_connect_reg(void *arg)
 	}
 	proto->currentfd = newfd;
 	proto->fileid++;
-	proto->fileid %= proto->maxfiles;
+
 	return 0;
 }
 
@@ -195,6 +250,10 @@ static void proto_close(void *arg)
 static void proto_destroy(void *arg)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
+	if (proto->hlsfd)
+	{
+		close(proto->hlsfd);
+	}
 	free(proto);
 }
 
