@@ -642,6 +642,7 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(buffer->textype, buffer->texture);
+
 	if (program->move)
 	{
 		GLuint moveID = glGetUniformLocation(program->ID, "vMove");
