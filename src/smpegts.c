@@ -344,7 +344,7 @@ DeviceConf_t *mpegts_createconfig(const char *name)
 {
 	MPEG_TSConf_t *config = calloc(1, sizeof(*config));
 	config->parent.fourcc = FOURCC_H264;
-	config->host = default_addr;
+	config->host = NULL;
 	config->port = 1024;
 	config->pid = 0x41;
 	config->maxclients = 5;
@@ -352,6 +352,23 @@ DeviceConf_t *mpegts_createconfig(const char *name)
 #ifdef HAVE_JANSSON
 	config->parent.ops.loadconfiguration = mpegts_loadjsonconfiguration;
 #endif
+	char *hostname = strchr(name, ':');
+	if (hostname)
+	{
+		hostname++;
+		if (hostname[0] == '/' && hostname[1] == '/')
+		{
+			hostname = strdup(hostname + 2);
+			config->host = hostname;
+			char *port = strchr(hostname, ':');
+			if (port)
+			{
+				*port = '\0';
+				port++;
+				config->port = atoi(port);
+			}
+		}
+	}
 	return &config->parent;
 }
 
@@ -644,6 +661,8 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	{
 		int paddinglength = 0;
 		Proto_Flags_t flags = Proto_More;
+		if (! dev->header.pusi)
+			flags |= Proto_Started;
 		size_t buflength; /// the length of buffer to send with this ts packet
 		/// the packet must contain 188 bytes even when the payload is smaller
 		buflength = dev->packetlen;
@@ -717,19 +736,25 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 #if PES_PTSDTS_ENABLE
 			/// this extend the latency in all cases ?
 			pcr += 90; /// 90 ticks means 1ms
-			if (dev->pes_header.ptsi & 0x03)
+			int nibble = 0x00;
+			if (dev->pes_header.ptsi & 0x02)
 			{
-				dev->pes_header.opt.dts[0] = ((pcr >> 30 & 0x07) << 1) | 0x01 | 0x10;
-				dev->pes_header.opt.dts[1] = (pcr >> 23 & 0x7f);
-				dev->pes_header.opt.dts[2] = ((pcr >> 15 & 0x7f) << 1) | 0x01;
-				dev->pes_header.opt.dts[3] = (pcr >> 7 & 0x7f);
-				dev->pes_header.opt.dts[4] = ((pcr & 0x7f) << 1) | 0x01;
+				nibble |= 0x01;
+				dev->pes_header.opt.dts[0] = (nibble << 4) | ((dev->pcr >> 30 & 0x07) << 1) | 0x1;
+				dev->pes_header.opt.dts[1] = (dev->pcr >> 22 & 0xff);
+				dev->pes_header.opt.dts[2] = ((dev->pcr >> 15 & 0x7f) << 1) | 0x1;
+				dev->pes_header.opt.dts[3] = (dev->pcr >> 7 & 0xff);
+				dev->pes_header.opt.dts[4] = ((dev->pcr & 0x7f) << 1) | 0x1;
 			}
-			dev->pes_header.opt.pts[0] = ((pcr >> 30 & 0x07) << 1) | 0x01 | (dev->pes_header.ptsi << 4);
-			dev->pes_header.opt.pts[1] = (pcr >> 23 & 0x7f);
-			dev->pes_header.opt.pts[2] = ((pcr >> 15 & 0x7f) << 1) | 0x01;
-			dev->pes_header.opt.pts[3] = (pcr >> 7 & 0x7f);
-			dev->pes_header.opt.pts[4] = ((pcr & 0x7f) << 1) | 0x01;
+			if (dev->pes_header.ptsi & 0x01)
+			{
+				nibble |= 0x10;
+				dev->pes_header.opt.pts[0] = (nibble << 4) | ((pcr >> 30 & 0x07) << 1) | 0x1;
+				dev->pes_header.opt.pts[1] = (pcr >> 22 & 0xff);
+				dev->pes_header.opt.pts[2] = ((pcr >> 15 & 0x7f) << 1) | 0x1;
+				dev->pes_header.opt.pts[3] = (pcr >> 7 & 0xff);
+				dev->pes_header.opt.pts[4] = ((pcr & 0x7f) << 1) | 0x1;
+			}
 #endif
 			/// sizeof(dev->pes_header) returns 20 instead 19 (alignment error)
 			//ret = dev->proto->send(dev->protoctx, &dev->pes_header, sizeof(dev->pes_header), flags);
@@ -781,7 +806,6 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	if (ret < 0 && errno != EAGAIN)
 	{
 		dev->proto->close(dev->protoctx);
-		err("mpegts: send error %m");
 	}
 	else
 	{
@@ -806,6 +830,8 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	const Proto_t *proto = &proto_udp;
 	if (config && config->proto)
 		proto = config->proto;
+	if (config->host == NULL)
+		config->host = strdup(default_addr);
 	void *protoctx = proto->create(&config->protoconf);
 	if (protoctx == NULL)
 		return NULL;
@@ -824,11 +850,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	dev->pes_header.str_id = 0xe0;
 	dev->pes_header.mark = 0x2;
 #if PES_PTSDTS_ENABLE
-#if 0
 	dev->pes_header.ptsi = 0x3;
-#else
-	dev->pes_header.ptsi = 0x1;
-#endif
 #endif
 	dev->pes_header.hlen = sizeof(dev->pes_header.opt);
 
@@ -1001,7 +1023,7 @@ EXT_API int mpegts_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags
 	for (int i = 0; i < dev->nbuffers; i++)
 	{
 		id = dev->currentid + i;
-		id %= dev->currentid;
+		id %= dev->nbuffers;
 		if (dev->buffers[id].state == ready)
 			break;
 		id = -1;
@@ -1067,6 +1089,8 @@ EXT_API void mpegts_destroy(Dev_t *dev)
 	if (dumpfd > 0)
 		close(dumpfd);
 #endif
+	free(dev->config->host);
+	free(dev->config);
 	free(dev);
 }
 
@@ -1078,13 +1102,13 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 
 	MPEG_TSConf_t *config = (MPEG_TSConf_t *)arg;
 	json_t *host = json_object_get(jconfig, "host");
-	if (host && json_is_string(host))
+	if (! config->host && host && json_is_string(host))
 	{
 		const char *value = json_string_value(host);
-		config->host = value;
+		config->host = strdup(value);
 	}
 	json_t *port = json_object_get(jconfig, "port");
-	if (port && json_is_integer(port))
+	if (! config->port && port && json_is_integer(port))
 	{
 		int value = json_integer_value(port);
 		config->port = value;
@@ -1112,6 +1136,12 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 	{
 		uint32_t value = json_integer_value(maxclients);
 		config->maxclients = value;
+	}
+	json_t *mode = json_object_get(jconfig, "mode");
+	if (mode && json_is_string(mode))
+	{
+		const char *value = json_string_value(mode);
+		config->mode = value;
 	}
 	json_t *proto = json_object_get(jconfig, "proto");
 	if (proto == NULL)

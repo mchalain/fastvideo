@@ -19,10 +19,17 @@
 #define IP_HEADER_LENGTH 20
 #define TCP_HEADER_LENGTH 60
 
+#define UNIX_PACKETIZER 1
+
 typedef struct Client_s Client_t;
 struct Client_s
 {
 	int fd;
+	enum {
+		e_connected,
+		e_started,
+		e_slow,
+	} state;
 };
 
 typedef struct Proto_UNIX_s Proto_UNIX_t;
@@ -49,10 +56,10 @@ static void *proto_create(Proto_Config_t *config)
 		return NULL;
 
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *)&(int){ 1 }, sizeof(int)) < 0)
-			warn("smpegts: setsockopt(SO_REUSEADDR) failed");
+			warn("unix: setsockopt(SO_REUSEADDR) failed");
 #ifdef SO_REUSEPORT
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (void *)&(int){ 1 }, sizeof(int)) < 0)
-			warn("smpegts: setsockopt(SO_REUSEPORT) failed");
+			warn("unix: setsockopt(SO_REUSEPORT) failed");
 #endif
 
 	struct sockaddr_un addr;
@@ -66,7 +73,7 @@ static void *proto_create(Proto_Config_t *config)
 
 	if (status)
 	{
-		err("smpegts: network error %m");
+		err("unix: network error %m");
 		close(sock);
 		return NULL;
 	}
@@ -80,14 +87,15 @@ static void *proto_create(Proto_Config_t *config)
 	Proto_UNIX_t *proto = calloc(1, sizeof(*proto));
 	proto->config = config;
 	proto->mtu = mtu - IP_HEADER_LENGTH - TCP_HEADER_LENGTH; /// maxsize of tcp/ip header
-	warn("smpegts: unix to %s (mtu %lu)", config->host, proto->mtu);
+	proto->mtu = 7 * 188 + 1;
+	warn("unix: unix to %s (mtu %lu)", config->host, proto->mtu);
 	proto->serverfd = sock;
 	for (int i = 0 ; i < config->maxclients; i++)
 	{
 		Client_t *clt = calloc(1, sizeof(*clt));
 		proto->clientspool = fastvideolist_append(proto->clientspool, clt);
 	}
-#ifdef UNIX_PACKETIZER
+#if UNIX_PACKETIZER
 	proto->packet = malloc(proto->mtu);
 #endif
 	return proto;
@@ -99,26 +107,33 @@ static void *proto_thread(void *arg)
 	int sock = 0;
 	struct sockaddr_storage addr;
 	int addrsize = sizeof(addr);
-	dbg("smpegts: server running %d", proto->serverfd);
+	dbg("unix: server running %d", proto->serverfd);
 	while ((sock = accept(proto->serverfd, NULL, NULL)) > 0)
 	{
 		if (sock > 0)
 		{
-			dbg("smpegts: new client");
+			dbg("unix: new client");
+			int flags;
+			flags = fcntl(sock, F_GETFL, 0);
+			fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+
 			FastVideoList_t *client = NULL;
 			proto->clientspool = fastvideolist_poplast(proto->clientspool, &client);
 			if (client)
 			{
-				Client_t *clt = fastvideolist_next(client);
-				clt->fd = sock;
-				proto->clients = fastvideolist_push(proto->clients, client);
-				dbg("smpegts: client registered");
+				Client_t *clt = fastvideolist_get(client);
+				if (clt)
+				{
+					clt->fd = sock;
+					proto->clients = fastvideolist_push(proto->clients, client);
+					dbg("unix: client registered");
+				}
 			}
 		}
 		else if (!proto->serverfd)
 			break;
 	}
-	dbg("accept end %m");
+	dbg("unix: accept end %m");
 	return NULL;
 }
 
@@ -127,7 +142,7 @@ static int proto_connect(void *arg)
 	Proto_UNIX_t *proto = (Proto_UNIX_t *)arg;
 	if (proto->serverfd == -1)
 		return -1;
-	dbg("smpegts: max %d clients", proto->config->maxclients);
+	dbg("unix: max %d clients", proto->config->maxclients);
 	if (listen(proto->serverfd, proto->config->maxclients))
 		return -1;
 	pthread_attr_t attr;
@@ -142,30 +157,34 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 	Proto_UNIX_t *proto = (Proto_UNIX_t *)arg;
 	ssize_t ret = 0;
 
-#ifdef UNIX_PACKETIZER
+#if UNIX_PACKETIZER
 	errno = 0;
-	if (proto->offset + len > proto->mtu)
+	if (proto->offset + len >= proto->mtu)
 	{
 		len = proto->mtu - proto->offset;
-		errno = EPIPE;
-		flags = 0;
+		pflags &= ~Proto_More;
 	}
-	if (len > 0)
-	{
-		memcpy(proto->packet + proto->offset, buf, len);
-		proto->offset += len;
-	}
-	if (pflags == Proto_More)
+	memcpy(proto->packet + proto->offset, buf, len);
+	proto->offset += len;
+	ret = len;
+	if ((pflags & Proto_More) == 0)
 #endif
 	{
 		int flags = MSG_NOSIGNAL;
+#if UNIX_PACKETIZER
+		flags |= MSG_DONTWAIT;
+#else
 		if (pflags & Proto_More)
 			flags |= MSG_MORE;
+#endif
 
 		fastvideolist_first(proto->clients);
-		for (Client_t *clt = fastvideolist_next(proto->clients); clt != NULL; clt = fastvideolist_next(proto->clients))
+		for (Client_t *clt = fastvideolist_next(proto->clients); clt != NULL && proto->offset > 0; clt = fastvideolist_next(proto->clients))
 		{
-#ifdef UNIX_PACKETIZER
+			if (clt->state == e_connected && pflags & Proto_Started)
+				continue;
+			clt->state = e_started;
+#if UNIX_PACKETIZER
 			ret = send(clt->fd, proto->packet, proto->offset, flags);
 #else
 			ret = send(clt->fd, buf, len, flags);
@@ -182,14 +201,14 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 				FastVideoList_t *client = NULL;
 				proto->clients = fastvideolist_pop(proto->clients, &client);
 				proto->clientspool = fastvideolist_push(proto->clientspool, client);
-				dbg("smpegts: client disconnected %p", client);
+				dbg("unix: client disconnected %p %m %d", client, ret);
+				errno = 0;
+				ret = 0;
 			}
 		}
-		if (ret == 0)
+		if (ret >= 0)
 			ret = len;
-		if (ret < 0)
-			errno = EAGAIN;
-#ifdef UNIX_PACKETIZER
+#if UNIX_PACKETIZER
 		proto->offset = 0;
 #endif
 	}
@@ -202,16 +221,16 @@ static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 {
 	Proto_UNIX_t *proto = (Proto_UNIX_t *)arg;
 	ssize_t ret = 0;
-	/// Only one client may send data
+	/// Only one client may receive data
 	fastvideolist_first(proto->clients);
-	Client_t *clt = fastvideolist_next(proto->clients);
+	Client_t *clt = fastvideolist_get(proto->clients);
 	ret = recv(clt->fd, buf, len, 0);
 	return ret;
 }
 
 static void proto_flush(void *arg)
 {
-#ifdef UNIX_PACKETIZER
+#if UNIX_PACKETIZER
 	proto_send(arg, NULL, 0, 0);
 #endif
 }
@@ -236,15 +255,14 @@ static void proto_close(void *arg)
 		proto->clients = fastvideolist_poplast(proto->clients, &client);
 		if (client)
 		{
-			Client_t *clt = fastvideolist_next(client);
+			Client_t *clt = fastvideolist_get(client);
+			if (clt == NULL)
+				break;
 			close(clt->fd);
 			clt->fd = -1;
 			proto->clientspool = fastvideolist_push(proto->clientspool, client);
 		}
 	} while (client);
-
-	shutdown(proto->serverfd, SHUT_RDWR);
-	close(proto->serverfd);
 }
 
 static void proto_destroy(void *arg)
@@ -259,7 +277,9 @@ static void proto_destroy(void *arg)
 			free(fastvideolist_next(client));
 		}
 	} while (client);
-#ifdef UNIX_PACKETIZER
+	shutdown(proto->serverfd, SHUT_RDWR);
+	close(proto->serverfd);
+#if UNIX_PACKETIZER
 	free(proto->packet);
 #endif
 	free(proto);
