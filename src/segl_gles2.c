@@ -1,4 +1,8 @@
 #include <string.h>
+#include <sys/shm.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <time.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -23,6 +27,7 @@ typedef enum{
 	Uniform_MAT2_e,
 	Uniform_MAT3_e,
 	Uniform_MAT4_e,
+	Uniform_FUNC_e,
 } Uniform_Type_e;
 
 typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
@@ -31,10 +36,12 @@ struct GLProgram_Uniform_s
 	const char *name;
 	Uniform_Type_e type;
 	void *value;
+	void *data;
 	GLProgram_Uniform_t *next;
 };
 
 static GLProgram_Uniform_t * _glprog_uniform_create(void *setting);
+static int _glprog_uniform_size(GLProgram_Uniform_t *uniform);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
 
@@ -48,12 +55,15 @@ struct GLProgram_s
 	GLuint ID;
 	GLuint vertexArrayID;
 	GLuint vertexBufferObject[3];
+	GLfloat *movectx;
+	GLfloat *(*move)(GLfloat *);
 	const char *in_texturename;
 	GL_Buffer_t out;
 	GLuint fbo;
 	uint32_t width;
 	uint32_t height;
 	uint32_t fourcc;
+	void *controls_data;
 	GLProgram_Uniform_t *controls;
 };
 
@@ -362,9 +372,96 @@ static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADER
 	return programID;
 }
 
+static GLfloat *_movestatic(GLfloat * ctx)
+{
+	if (ctx == NULL)
+	{
+		ctx = calloc(16, sizeof(GLfloat));
+		ctx[0] = ctx[5] = ctx[10] = ctx[15] = 1.0;
+	}
+	return ctx;
+}
+static GLfloat *(*_move)(GLfloat * ctx) = NULL;
+
+static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint width, GLuint height)
+{
+	void *uniform_data = NULL;
+	if (config)
+	{
+		size_t size = 0;
+		for (GLProgram_Uniform_t *uniform = config->controls; uniform; uniform = uniform->next)
+		{
+			int usize = _glprog_uniform_size(uniform);
+			if (usize > 0)
+				size += usize;
+		}
+		const char *keyname = "/tmp/program.shm";
+		int ret = access(keyname, F_OK|R_OK|W_OK);
+		if (ret)
+		{
+			int fd = creat(keyname, 0644);
+			close(fd);
+		}
+		int shmid;
+		key_t key;
+		key = ftok(keyname, 'R');
+		if (size > 0 && key != -1)
+		{
+			uniform_data = (void *)-1;
+			shmid = shmget(key, size, IPC_CREAT|SHM_R|SHM_W);
+			if (shmid > 0)
+			{
+				uniform_data = shmat(shmid, NULL, 0);
+			}
+			if (uniform_data == (void *)-1)
+			{
+				err("segl: memory allocation error %m");
+				size = 0;
+				uniform_data = NULL;
+			}
+		}
+		off_t offset = 0;
+		for (GLProgram_Uniform_t *uniform = config->controls; uniform && offset < size; uniform = uniform->next)
+		{
+			int size = _glprog_uniform_size(uniform);
+			if (size > 0)
+			{
+				uniform->value = uniform_data + offset;
+				offset += size;
+			}
+		}
+	}
+	GLProgram_t *program = calloc(1, sizeof(*program));
+	program->in_texturename = defaulttexturename;
+	program->move = _move;
+	program->config = config;
+	program->controls_data = uniform_data;
+	if (config)
+		program->controls = config->controls;
+	if (config && config->tex_name)
+		program->in_texturename = config->tex_name;
+
+	program->width = width;
+	program->height = height;
+	return program;
+}
+
+GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, GLuint width, GLuint height)
+{
+	GLProgram_t *program = _glprog_create_controler(config, width, height);
+	if (config && config->next)
+	{
+		program->next = glprog_create_controler(config->next, width, height);
+	}
+	return program;
+}
+
 GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height)
 {
 	GLuint programID = 0;
+	warn("segl: GPU %s %s", glGetString(GL_VENDOR), glGetString(GL_RENDERER));
+	warn("segl: %s", glGetString(GL_VERSION));
+	warn("segl: %s", glGetString(GL_SHADING_LANGUAGE_VERSION));
 	if (config)
 		programID = buildProgramm(config->vertex, config->fragments);
 	else
@@ -374,17 +471,10 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 		return NULL;
 	}
 
-	GLProgram_t *program = calloc(1, sizeof(*program));
+	GLProgram_t *program = _glprog_create_controler(config, width, height);
+	if (! program)
+		return NULL;
 	program->ID = programID;
-	program->in_texturename = defaulttexturename;
-	program->config = config;
-	if (config)
-		program->controls = config->controls;
-	if (config && config->tex_name)
-		program->in_texturename = config->tex_name;
-
-	program->width = width;
-	program->height = height;
 
 	glEnable(GL_TEXTURE_EXTERNAL_OES);
 
@@ -414,20 +504,18 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	glUniform1i(texMap, 0); // GL_TEXTURE0
 	glActiveTexture(GL_TEXTURE0);
 
+	GLuint moveID = glGetUniformLocation(program->ID, "vMove");
+	void *movectx = _movestatic(NULL);
+	glUniformMatrix4fv(moveID, 1, GL_FALSE, movectx);
+	free(movectx);
+	if (program->move)
+	{
+		program->movectx = program->move(program->movectx);
+		glUniformMatrix4fv(moveID, 1, GL_FALSE, program->movectx);
+	}
+
 	GLuint resolutionID = glGetUniformLocation(program->ID, "vResolution");
 	glUniform4f(resolutionID, (GLfloat)program->width, (GLfloat)program->height, 1 / (GLfloat)program->width, 1 / (GLfloat)program->height);
-
-	GLProgram_Uniform_t *uniform = program->controls;
-	while (uniform)
-	{
-		GLProgram_Uniform_t *next = uniform->next;
-		glprog_setuniform(program, uniform);
-		if (program->next == NULL)
-			_glprog_uniform_destroy(uniform);
-		uniform = next;
-	}
-	if (program->next == NULL)
-		program->controls = NULL;
 
 	glBindVertexArrayOES(0);
 	if (config && config->next)
@@ -554,17 +642,15 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(buffer->textype, buffer->texture);
-	GLProgram_Uniform_t *uniform = program->controls;
-	while (uniform)
+	if (program->move)
 	{
-		GLProgram_Uniform_t *next = uniform->next;
-		glprog_setuniform(program, uniform);
-		if (program->next == NULL)
-			_glprog_uniform_destroy(uniform);
-		uniform = next;
+		GLuint moveID = glGetUniformLocation(program->ID, "vMove");
+		glUniformMatrix4fv(moveID, 1, GL_FALSE, program->move(program->movectx));
 	}
-	if (program->next == NULL)
-		program->controls = NULL;
+	for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = uniform->next)
+	{
+		glprog_setuniform(program, uniform);
+	}
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
 
@@ -665,6 +751,13 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 		glUniformMatrix4fv(loc, 1, GL_FALSE, uniform->value);
 	}
 	break;
+	case Uniform_FUNC_e:
+	{
+		GLint loc = glGetUniformLocation(program->ID, uniform->name);
+		GLfloat (*func)(GLProgram_Uniform_t *uniform) = uniform->value;
+		glUniform1f(loc, func(uniform));
+	}
+	break;
 	default:
 		err("segl: Uniform type invalid");
 		return -1;
@@ -681,6 +774,8 @@ void glprog_destroy(GLProgram_t *program)
 		glDeleteFramebuffers(1, &program->fbo);
 		glDeleteTextures(1, &program->out.texture);
 	}
+	if (program->controls_data)
+		shmdt(program->controls_data);
 	free(program->config);
 	free(program);
 }
@@ -691,15 +786,38 @@ static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform)
 	free(uniform);
 }
 
+typedef GLfloat (*GLProgram_Uniform_func_t)(GLProgram_Uniform_t *uniform);
+static GLfloat _time(GLProgram_Uniform_t *uniform)
+{
+	int t = time(NULL);
+	int t0 = (int)(long)uniform->data;
+	if (t0 == 0)
+		uniform->data = (void*)(long)t;
+	return (GLfloat)(t - t0);
+}
+
+static GLfloat _frame(GLProgram_Uniform_t *uniform)
+{
+	int f = (int)(long)uniform->data;
+	uniform->data = (void*)(long)++f;
+	return (GLfloat)f;
+}
+
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 
-static void _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue, unsigned char nbentries, Uniform_Type_e type)
+static void _glprog_uniform_setarray(GLProgram_Uniform_t *uniform, json_t *jvalue, unsigned char nbentries, Uniform_Type_e type)
 {
-	if (type == Uniform_FLOAT_e)
+	if (!uniform->value && type == Uniform_FLOAT_e)
+	{
+		err("segl: memory allocation error");
 		uniform->value = calloc(nbentries, sizeof(GLfloat));
-	if (type == Uniform_INT_e)
+	}
+	if (!uniform->value && type == Uniform_INT_e)
+	{
+		err("segl: memory allocation error");
 		uniform->value = calloc(nbentries, sizeof(GLint));
+	}
 	GLfloat *fvalues = uniform->value;
 	GLint *ivalues = uniform->value;
 	for (int i = 0; i < nbentries; i++)
@@ -712,6 +830,119 @@ static void _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalu
 	}
 }
 
+static int _glprog_uniform_size(GLProgram_Uniform_t *uniform)
+{
+	int ret = -1;
+	switch (uniform->type)
+	{
+	case Uniform_INT_e:
+		ret = sizeof(GLint);
+	break;
+	case Uniform_FLOAT_e:
+		ret = sizeof(GLfloat);
+	break;
+	case Uniform_FVEC2_e:
+		ret = sizeof(GLfloat) * 2;
+	break;
+	case Uniform_FVEC3_e:
+		ret = sizeof(GLfloat) * 3;
+	break;
+	case Uniform_FVEC4_e:
+		ret = sizeof(GLfloat) * 4;
+	break;
+	case Uniform_IVEC2_e:
+		ret = sizeof(GLint) * 2;
+	break;
+	case Uniform_IVEC3_e:
+		ret = sizeof(GLint) * 3;
+	break;
+	case Uniform_IVEC4_e:
+		ret = sizeof(GLint) * 4;
+	break;
+	case Uniform_MAT2_e:
+		ret = sizeof(GLfloat) * 2 * 2;
+	break;
+	case Uniform_MAT3_e:
+		ret = sizeof(GLfloat) * 3 * 3;
+	break;
+	case Uniform_MAT4_e:
+		ret = sizeof(GLfloat) * 4 * 4;
+	break;
+	}
+	return ret;
+}
+
+static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue)
+{
+	int ret = -1;
+	if (!uniform->value)
+	{
+		err("segl: memory allocation error");
+		int size = _glprog_uniform_size(uniform);
+		if (size > 0)
+			uniform->value = malloc(size);
+	}
+	if (jvalue && json_is_number(jvalue))
+	{
+		switch (uniform->type)
+		{
+		case Uniform_INT_e:
+			*(GLint *)uniform->value = json_integer_value(jvalue);
+			ret = 0;
+		break;
+		case Uniform_FLOAT_e:
+			*(GLfloat *)uniform->value = json_real_value(jvalue);
+			ret = 0;
+		break;
+		default:
+			err("segl: settings mal formatted");
+		}
+	}
+	if (jvalue && json_is_array(jvalue))
+	{
+		switch (uniform->type)
+		{
+		case Uniform_FVEC2_e:
+			_glprog_uniform_setarray(uniform, jvalue, 2, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		case Uniform_FVEC3_e:
+			_glprog_uniform_setarray(uniform, jvalue, 3, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		case Uniform_FVEC4_e:
+			_glprog_uniform_setarray(uniform, jvalue, 4, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		case Uniform_IVEC2_e:
+			_glprog_uniform_setarray(uniform, jvalue, 2, Uniform_INT_e);
+			ret = 0;
+		break;
+		case Uniform_IVEC3_e:
+			_glprog_uniform_setarray(uniform, jvalue, 3, Uniform_INT_e);
+			ret = 0;
+		break;
+		case Uniform_IVEC4_e:
+			_glprog_uniform_setarray(uniform, jvalue, 4, Uniform_INT_e);
+			ret = 0;
+		break;
+		case Uniform_MAT2_e:
+			_glprog_uniform_setarray(uniform, jvalue, 2 * 2, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		case Uniform_MAT3_e:
+			_glprog_uniform_setarray(uniform, jvalue, 3 * 3, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		case Uniform_MAT4_e:
+			_glprog_uniform_setarray(uniform, jvalue, 4 * 4, Uniform_FLOAT_e);
+			ret = 0;
+		break;
+		}
+	}
+	return ret;
+}
+
 static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 {
 	json_t *jsetting = setting;
@@ -722,6 +953,7 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 		uniform->name = json_string_value(jname);
 	}
 	json_t *jtype = json_object_get(jsetting, "type");
+	uniform->type = Uniform_UNKNOWN_e;
 	if (jtype && json_is_string(jtype))
 	{
 		const char *value = json_string_value(jtype);
@@ -747,56 +979,20 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 			uniform->type = Uniform_MAT3_e;
 		else if (!strcmp(value, "mat4"))
 			uniform->type = Uniform_MAT4_e;
-	}
-	json_t *jvalue = json_object_get(jsetting, "value");
-	if (jvalue && json_is_number(jvalue))
-	{
-		switch (uniform->type)
+		else if (!strcmp(value, "func"))
 		{
-		case Uniform_INT_e:
-			uniform->value = malloc(sizeof(GLint));
-			*(GLint *)uniform->value = json_integer_value(jvalue);
-		break;
-		case Uniform_FLOAT_e:
-			uniform->value = malloc(sizeof(GLfloat));
-			*(GLfloat *)uniform->value = json_real_value(jvalue);
-		break;
-		default:
-			err("segl: settings mal formatted");
-			uniform->type = Uniform_UNKNOWN_e;
-		}
-	}
-	if (jvalue && json_is_array(jvalue))
-	{
-		switch (uniform->type)
-		{
-		case Uniform_FVEC2_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 2, Uniform_FLOAT_e);
-		break;
-		case Uniform_FVEC3_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 3, Uniform_FLOAT_e);
-		break;
-		case Uniform_FVEC4_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 4, Uniform_FLOAT_e);
-		break;
-		case Uniform_IVEC2_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 2, Uniform_INT_e);
-		break;
-		case Uniform_IVEC3_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 3, Uniform_INT_e);
-		break;
-		case Uniform_IVEC4_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 4, Uniform_INT_e);
-		break;
-		case Uniform_MAT2_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 2 * 2, Uniform_FLOAT_e);
-		break;
-		case Uniform_MAT3_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 3 * 3, Uniform_FLOAT_e);
-		break;
-		case Uniform_MAT4_e:
-			_glprog_uniform_setvalue(uniform, jvalue, 4 * 4, Uniform_FLOAT_e);
-		break;
+			uniform->type = Uniform_FUNC_e;
+			/// function are not modifiable with setting
+			json_t *jvalue = json_object_get(jsetting, "value");
+			if (jvalue && json_is_string(jvalue))
+			{
+				const char *value = NULL;
+				value = json_string_value(jvalue);
+				if (!strncasecmp(value, "time", 4))
+					uniform->value = _time;
+				else if (!strncasecmp(value, "frames", 6))
+					uniform->value = _frame;
+			}
 		}
 	}
 	if (uniform->type == Uniform_UNKNOWN_e)
@@ -807,37 +1003,83 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 	return uniform;
 }
 
-int glprog_loadjsonsetting(GLProgram_t *program, void *entry)
+static int _glprog_setcontrols(GLProgram_t *program, json_t *jsettings)
 {
-	json_t *jsettings = entry;
 	if (jsettings && json_is_array(jsettings))
 	{
 		json_t *jsetting = NULL;
 		int i = 0;
 		json_array_foreach(jsettings, i, jsetting)
 		{
-			GLProgram_Uniform_t *uniform = _glprog_uniform_create(jsetting);
-			if (uniform)
+			json_t *jname = json_object_get(jsetting, "name");
+			if (!jname || ! json_is_string(jname))
 			{
-				uniform->next = program->controls;
-				program->controls = uniform;
+				continue;
+			}
+			for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = uniform->next)
+			{
+				if (!strcasecmp(json_string_value(jname), uniform->name))
+				{
+					json_t *jvalue = json_object_get(jsetting, "value");
+					_glprog_uniform_setvalue(uniform, jvalue);
+				}
 			}
 		}
 	}
 	else if (jsettings && json_is_object(jsettings))
 	{
-		GLProgram_Uniform_t *uniform = _glprog_uniform_create(jsettings);
-		if (uniform)
+		json_t *jname = json_object_get(jsettings, "name");
+		if (jname && json_is_string(jname))
 		{
-			while (program)
+			for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = uniform->next)
 			{
-				uniform->next = program->controls;
-				program->controls = uniform;
-				program = program->next;
+				if (!strcasecmp(json_string_value(jname), uniform->name))
+				{
+					json_t *jvalue = json_object_get(jsettings, "value");
+					_glprog_uniform_setvalue(uniform, jvalue);
+				}
 			}
 		}
 	}
 	return 0;
+}
+
+static int _glprog_loadjsonsetting(GLProgram_t *programs, json_t *jprogram)
+{
+	int ret = -1;
+	for (GLProgram_t *program = programs; program; program = program->next)
+	{
+		json_t *jname = json_object_get(jprogram, "name");
+		const EGLConfig_Program_t *config = program->config;
+		if (config && config->name && jname && json_is_string(jname) &&
+			strcasecmp(json_string_value(jname), config->name) != 0)
+		{
+			continue;
+		}
+		json_t *jcontrols = json_object_get(jprogram, "controls");
+		ret = _glprog_setcontrols(program, jcontrols);
+	}
+	return ret;
+}
+
+int glprog_loadjsonsetting(GLProgram_t *programs, void *entry)
+{
+	int ret = -1;
+	json_t *jsetting = entry;
+	if (jsetting && json_is_array(jsetting))
+	{
+		int index;
+		json_t *jprogram;
+		json_array_foreach(jsetting, index, jprogram)
+		{
+			_glprog_loadjsonsetting(programs, jprogram);
+		}
+	}
+	if (jsetting && json_is_object(jsetting))
+	{
+		_glprog_loadjsonsetting(programs, jsetting);
+	}
+	return ret;
 }
 
 static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jconfig)
@@ -846,6 +1088,18 @@ static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jc
 	if (disable && json_is_boolean(disable) && json_is_true(disable))
 	{
 		return -1;
+	}
+	json_t *name = json_object_get(jconfig, "name");
+	if (name && json_is_string(name))
+	{
+		const char *value = json_string_value(name);
+		config->name = value;
+	}
+	json_t *tex_name = json_object_get(jconfig, "tex_name");
+	if (tex_name && json_is_string(tex_name))
+	{
+		const char *value = json_string_value(tex_name);
+		config->tex_name = value;
 	}
 	json_t *vertex = json_object_get(jconfig, "vertex");
 	if (vertex && json_is_string(vertex))
@@ -922,7 +1176,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 			if (previous)
 				previous->next = config;
 			previous = config;
-			config->name = gles2_ops.name;
+			config->type = gles2_ops.name;
 		}
 	}
 	else if (jconfig && json_is_object(jconfig))
@@ -950,6 +1204,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 EGLProg_ops_t gles2_ops = {
 	.name = "gles2",
 	.create = glprog_create,
+	.create_controler = glprog_create_controler,
 	.setup = glprog_setup,
 	.buffer = {
 		.create = gltexture_create,
