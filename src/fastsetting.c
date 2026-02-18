@@ -27,6 +27,8 @@
 #define MODE_INITIALIZE 0x02
 //#define DISABLE_TRANSFER
 
+static FastVideoList_t *_settings = NULL;
+
 int _createdevices(void *data, const char *name, const char *type, void *config)
 {
 	FastVideoList_t **devices = data;
@@ -103,6 +105,30 @@ int _loadsetting(FastVideoList_t *devices, client_t *clt, json_t *jsetting)
 	return ret;
 }
 
+int _reset(FastVideoList_t *devices, client_t *clt, json_t *jnone)
+{
+	for (const char *configfile = fastvideolist_next(_settings); configfile != NULL; configfile = fastvideolist_next(_settings))
+	{
+		FILE *cf = fopen(configfile, "r");
+		if (cf == NULL)
+		{
+			err("config %s error %m", configfile);
+			return -1;
+		}
+		json_t *jsettings;
+		json_error_t error;
+		jsettings = json_loadf(cf, 0, &error);
+		if (! jsettings || !(json_is_object(jsettings) || json_is_array(jsettings)))
+		{
+			err("config %s:%d error %s", configfile, error.line, error.text);
+			return -1;
+		}
+		warn("load json file %s", configfile);
+		_loadsetting(devices, clt, jsettings);
+	}
+	return 0;
+}
+
 int _capabilities(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 {
 	int ret = 0;
@@ -165,6 +191,8 @@ int _runcmd(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 			ret = _loadsetting(devices, clt, jdata);
 		else if (!strcmp(json_string_value(jcmd), "capabilities"))
 			ret = _capabilities(devices, clt, jdata);
+		else if (!strcmp(json_string_value(jcmd), "reset"))
+			ret = _reset(devices, clt, jdata);
 		else
 		{
 			char cmd_unkonwn[64] = {0};
@@ -222,7 +250,6 @@ int main(int argc, char * const argv[])
 	unsigned int mode = 0;
 	const char *logfile = "-";
 	const char *cwd = NULL;
-	FastVideoList_t *settings = NULL;
 
 #ifdef V4L2_SUBDEV
 	fastvideodevice_ops_append(&subdev_ops);
@@ -238,7 +265,7 @@ int main(int argc, char * const argv[])
 				configfile = optarg;
 			break;
 			case 'J':
-				settings = fastvideolist_insert(settings, optarg);
+				_settings = fastvideolist_insert(_settings, optarg);
 			break;
 			case 's':
 				serverpath = optarg;
@@ -299,26 +326,8 @@ int main(int argc, char * const argv[])
 			}
 		}
 	}
-	for (const char *configfile = fastvideolist_next(settings); configfile != NULL; configfile = fastvideolist_next(settings))
-	{
-		FILE *cf = fopen(configfile, "r");
-		if (cf == NULL)
-		{
-			err("config %s error %m", configfile);
-			return -1;
-		}
-		json_t *jsettings;
-		json_error_t error;
-		jsettings = json_loadf(cf, 0, &error);
-		if (! jsettings || !(json_is_object(jsettings) || json_is_array(jsettings)))
-		{
-			err("config %s:%d error %s", configfile, error.line, error.text);
-			return -1;
-		}
-		warn("load json file %s", configfile);
-		_loadsetting(devices, NULL, jsettings);
+	_reset(devices, NULL, NULL);
 
-	}
 	if ((mode & MODE_INITIALIZE) == 0)
 	{
 		server_t *server = server_create(serverpath, 2);
