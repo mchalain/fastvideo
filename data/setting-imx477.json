@@ -1,6 +1,6 @@
 [
   {
-    "name": ["cam-imx477","imx477 10-001a"],
+    "name": ["raw-imx477","cam-imx477","imx477 10-001a"],
     "controls": [
       {
         "name": "Exposure",
@@ -8,23 +8,27 @@
         "value": 1516
       },
       {
+        "disable": true,
         "name": "Horizontal Flip",
         "id": 9963796,
         "value": false
       },
       {
+        "disable": true,
         "name": "Vertical Flip",
         "id": 9963797,
         "value": false
       },
       {
         "name": "Camera Orientation",
+        "read-only": true,
         "id": 10094882,
         "value": 2,
         "value_show": "External"
       },
       {
         "name": "Camera Sensor Rotation",
+        "read-only": true,
         "id": 10094883,
         "value": 180
       },
@@ -71,6 +75,7 @@
       },
       {
         "name": "Pixel Rate",
+        "read-only": true,
         "id": 10422530,
         "value": 840000000
       },

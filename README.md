@@ -492,6 +492,29 @@ The fastvideo application is ready to set the rp1 but the data generator is miss
 Fastvideo may use the camera in raw mode. The video stream is Bayer images, and the output needs to be monochrome.
 A Bayer image displayed as monochrome is blurred. A solution is to use a monochrone camera.
 
+Into the "data" directory a **debayer.glsl** program allows to use the GPU as ISP. Its usage is available into the "raspi5cam.json" file.
+
+It is mandatory to set the media to manage the stream inside the rp1 frontend. The rpi5cam-setup.sh tool may help:
+```shell
+pi@mistral:~/fastvideo $ ./utils/rpi5cam-setup.sh auto
+Media : /dev/media0
+current 2028x1520 change (y/N)?
+current fmt SRGGB12_1X12 of imx477 10-001a (16). Change it (y/N)?
+current fmt SRGGB16_1X16 of pisp-fe. Change it (y/N):
+disable the pisp_fe (y/N)y
+fmt image SRGGB16_1X16
+subdev format code 0x3020/0x3012 SRGGB16_1X16 => output fourcc RG16
+Change fourcc ? [y/N]
+0: media topology
+1: Image device configuration
+2: try to stream into file
+3: take a picture
+your choice ?
+Device set to /dev/video4
+```
+
+To the question **disable the pisp_fe** the answer **must** be **y**.
+
 ### Camera ov9281
 
 The ov9281 is a global shutter monochrome camera. The output is Y10 1920x1080 at 120 fps.
@@ -499,4 +522,18 @@ The ov9281 is a global shutter monochrome camera. The output is Y10 1920x1080 at
 ```shell
 $ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-ov9281 -o gpu -D
 $ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-ov9281.json
+```
+
+### Raspberry Camera HQ (imx477)
+
+```shell
+$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx477 -o gpu-isp -D
+$ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-imx477.json
+```
+
+### Raspberry Camera GS (imx296)
+
+```shell
+$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx296 -t toR16 -o gpu-isp -D
+$ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-imx296.json
 ```

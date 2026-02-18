@@ -1,12 +1,12 @@
 [
   {
-    "name": ["isp-in","isp0-in","pispbe-input"],
+    "name": ["pisp-in","pisp0-in","pispbe-input"],
     "type": "v4l2",
     "device": "/dev/video20",
     "end": true
   },
   {
-    "name": ["isp-out","ips-out0","ips0-out0","pispbe-output0"],
+    "name": ["pisp-out","pips-out0","pips0-out0","pispbe-output0"],
     "type": "v4l2",
     "device": "/dev/video24",
     "definition": {
@@ -17,7 +17,7 @@
     "end": true
   },
   {
-    "name": ["isp-out1","isp0-out1","pispbe-output1"],
+    "name": ["pisp-out1","pisp0-out1","pispbe-output1"],
     "type": "v4l2",
     "device": "/dev/video25",
     "definition": {
@@ -28,7 +28,7 @@
     "end": true
   },
   {
-    "name": ["isp-config","isp0-config","pispbe-config"],
+    "name": ["pisp-config","pisp0-config","pispbe-config"],
     "type": "v4l2",
     "device": "/dev/video25",
     "definition": {
@@ -168,7 +168,7 @@
         "end": true
       },
       {
-        "name": ["raw-imx708","imx708_wide_noir"],
+        "name": ["raw","raw-imx708","imx708_wide_noir"],
         "type": "subv4l",
         "disable": false,
         "device": "/dev/v4l-subdev2",
@@ -181,7 +181,7 @@
         }
       },
       {
-        "name": ["raw-imx708","dw9807 10-000c"],
+        "name": ["raw","raw-imx708","dw9807 10-000c"],
         "type": "subv4l",
         "disable": false,
         "device": "/dev/v4l-subdev3",
@@ -190,7 +190,7 @@
         }
       },
       {
-        "name": ["raw-imx296","imx296 6-001a"],
+        "name": ["raw","raw-imx296","imx296 6-001a"],
         "type": "subv4l",
         "disable": false,
         "device": "/dev/v4l-subdev2",
@@ -203,7 +203,7 @@
         }
       },
       {
-        "name": ["raw-imx477","imx477 6-001a"],
+        "name": ["raw","raw-imx477","imx477 6-001a"],
         "type": "subv4l",
         "disable": false,
         "device": "/dev/v4l-subdev2",
@@ -216,7 +216,7 @@
         }
       },
       {
-        "name": ["raw-ov9281","ov9281 4-0060"],
+        "name": ["raw","raw-ov9281","ov9281 4-0060"],
         "type": "subv4l",
         "disable": false,
         "device": "/dev/v4l-subdev2",
@@ -235,6 +235,7 @@
     "name": ["cam","cam-imx708","cam-imx296","cam-imx477","rp1-cfe-fe_image0"],
     "type": "v4l2",
     "device": "/dev/video4",
+    "disable": true,
     "subdevices": [
       {
         "name": ["cam-imx296","cam-imx708","pisp-fe"],
@@ -305,7 +306,7 @@
     ]
   },
   {
-    "name": "Y16toR16",
+    "name": "toR16",
     "type": "passthrough",
     "transfer": {
       "fourcc": "R16 "
@@ -337,6 +338,19 @@
     "name": ["gpu"],
     "type": "gpu",
     "native": ["x11","wayland","drm"],
+    "device": "/dev/dri/card0",
+    "end": true
+  },
+  {
+    "name": ["gpu-isp"],
+    "type": "gpu",
+    "native": ["x11","wayland","drm"],
+    "device": "/dev/dri/card0",
+    "programs":[{
+      "disable": false,
+      "vertex": "data/simplevertex.glsl",
+      "fragment": "data/debayer.glsl"
+    }],
     "end": true
   }
 ]

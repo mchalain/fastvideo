@@ -1,25 +1,29 @@
 [
   {
-    "name": ["cam-imx296","imx296 10-001a"],
+    "name": ["raw-imx296","cam-imx296","imx296 10-001a"],
     "controls": [
       {
         "name": "Exposure",
         "id": 9963793,
         "value": 2244
       },{
+        "disable":true,
         "name": "Horizontal Flip",
         "id": 9963796,
         "value": false
       },{
+        "disable":true,
         "name": "Vertical Flip",
         "id": 9963797,
         "value": false
       },{
+        "read-only":true,
         "name": "Camera Orientation",
         "id": 10094882,
         "value": 2,
         "value_show": "External"
       },{
+        "read-only":true,
         "name": "Camera Sensor Rotation",
         "id": 10094883,
         "value": 180
@@ -28,6 +32,7 @@
         "id": 10356993,
         "value": 1161
       },{
+        "read-only":true,
         "name": "Horizontal Blanking",
         "id": 10356994,
         "value": 304
@@ -36,6 +41,7 @@
         "id": 10356995,
         "value": 839
       },{
+        "read-only":true,
         "name": "Pixel Rate",
         "id": 10422530,
         "value": 118800000
