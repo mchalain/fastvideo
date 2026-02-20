@@ -442,8 +442,8 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint
 	program->controls_data = uniform_data;
 	if (config)
 		program->controls = config->controls;
-	if (config && config->tex_name)
-		program->in_texturename = config->tex_name;
+	if (config && config->texture.name)
+		program->in_texturename = config->texture.name;
 
 	program->width = width;
 	program->height = height;
@@ -601,6 +601,7 @@ GL_Buffer_t *gltexture_create(GLProgram_t *program, uint32_t fourcc)
 	GL_Buffer_t *glbuffer = calloc(1, sizeof(*glbuffer));
 	glbuffer->texture = dma_texture;
 	glbuffer->textype = textype;
+	glbuffer->name = program->in_texturename;
 
 	return glbuffer;
 }
@@ -622,7 +623,6 @@ void gltexture_destroy(GL_Buffer_t *glbuffer)
 
 int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 {
-	static int programid = 0;
 	GLenum err = 0;
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	if (program->fbo  > 0)
@@ -634,7 +634,7 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 		err = glGetError();
 		if (err != GL_NO_ERROR)
 		{
-			err("segl: program[%d] Framebuffer access error %#x", programid, err);
+			err("segl: program[%s] Framebuffer access error %#x", program->out.name, err);
 		}
 	}
 	else
@@ -669,12 +669,10 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 		}
 		//glFramebufferTexture2D to disable the texture is an invalid operation
 	}
-	programid++;
 	if (program->next)
 	{
 		return glprog_run(program->next, &program->out);
 	}
-	programid = 0;
 	return 0;
 }
 
@@ -1104,6 +1102,29 @@ int glprog_loadjsonsetting(GLProgram_t *programs, void *entry)
 	return ret;
 }
 
+static int _glprog_loadjsontexture(EGLConfig_Program_t *config, json_t *texture)
+{
+	json_t *source = NULL;
+	if (texture && json_is_object(texture))
+	{
+		texture = json_object_get(texture, "name");
+		source = json_object_get(texture, "src");
+	}
+	if (source && json_is_string(source))
+	{
+		const char *value = json_string_value(source);
+		config->input.src = value;
+	}
+	if (texture && json_is_string(texture))
+	{
+		const char *value = json_string_value(texture);
+		config->input.name = value;
+		if (!source)
+			config->input.src = value;
+	}
+	return 0;
+}
+
 static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jconfig)
 {
 	json_t *disable = json_object_get(jconfig, "disable");
@@ -1117,12 +1138,9 @@ static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jc
 		const char *value = json_string_value(name);
 		config->name = value;
 	}
-	json_t *tex_name = json_object_get(jconfig, "tex_name");
-	if (tex_name && json_is_string(tex_name))
-	{
-		const char *value = json_string_value(tex_name);
-		config->tex_name = value;
-	}
+	json_t *texture = json_object_get(jconfig, "texture");
+	if (texture)
+		_glprog_loadjsontexture(config, texture);
 	json_t *vertex = json_object_get(jconfig, "vertex");
 	if (vertex && json_is_string(vertex))
 	{

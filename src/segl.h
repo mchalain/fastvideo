@@ -44,6 +44,7 @@ const FourccFormat_t *fourcc_getformat(uint32_t fourcc);
 typedef struct GL_Buffer_s GL_Buffer_t;
 struct GL_Buffer_s
 {
+	const char *name;
 	EGLImageKHR image;
 	GLuint texture;
 	GLenum textype;
@@ -66,6 +67,12 @@ struct GLBuffer_s
 };
 
 typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
+typedef struct GLProgram_Input_s GLProgram_Input_t;
+struct GLProgram_Input_s {
+	const char *name;
+	const char *src;
+};
+
 typedef struct EGLConfig_Program_s EGLConfig_Program_t;
 struct EGLConfig_Program_s
 {
@@ -73,7 +80,7 @@ struct EGLConfig_Program_s
 	const char *type;
 	const char *vertex;
 	const char *fragments[MAX_SHADERS];
-	const char *tex_name;
+	GLProgram_Input_t input;
 	EGLConfig_Program_t *next;
 	GLProgram_Uniform_t *controls;
 };
