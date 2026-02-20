@@ -421,7 +421,7 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint
 			}
 		}
 		off_t offset = 0;
-		for (GLProgram_Uniform_t *uniform = config->controls; uniform && offset < size; uniform = uniform->next)
+		for (GLProgram_Uniform_t *uniform = config->controls; uniform_data && uniform && offset < size; uniform = uniform->next)
 		{
 			int size = _glprog_uniform_size(uniform);
 			if (size > 0)
@@ -701,37 +701,49 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 	case Uniform_FVEC2_e:
 	{
 		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform2fv(loc, 2, uniform->value);
+		glUniform2f(loc, ((GLfloat*)uniform->value)[0],
+						((GLfloat*)uniform->value)[1]);
 	}
 	break;
 	case Uniform_FVEC3_e:
 	{
 		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform2fv(loc, 3, uniform->value);
+		glUniform3f(loc, ((GLfloat*)uniform->value)[0],
+						((GLfloat*)uniform->value)[1],
+						((GLfloat*)uniform->value)[2]);
 	}
 	break;
 	case Uniform_FVEC4_e:
 	{
 		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform2fv(loc, 4, uniform->value);
+		glUniform4f(loc, ((GLfloat*)uniform->value)[0],
+						((GLfloat*)uniform->value)[1],
+						((GLfloat*)uniform->value)[2],
+						((GLfloat*)uniform->value)[3]);
 	}
 	break;
 	case Uniform_IVEC2_e:
 	{
 		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform2iv(loc, 2, uniform->value);
+		glUniform2i(loc, ((GLint*)uniform->value)[0],
+						((GLint*)uniform->value)[1]);
 	}
 	break;
 	case Uniform_IVEC3_e:
 	{
 		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform2iv(loc, 3, uniform->value);
+		glUniform3i(loc, ((GLint*)uniform->value)[0],
+						((GLint*)uniform->value)[1],
+						((GLint*)uniform->value)[2]);
 	}
 	break;
 	case Uniform_IVEC4_e:
 	{
 		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform2iv(loc, 4, uniform->value);
+		glUniform4i(loc, ((GLint*)uniform->value)[0],
+						((GLint*)uniform->value)[1],
+						((GLint*)uniform->value)[2],
+						((GLint*)uniform->value)[3]);
 	}
 	break;
 	case Uniform_MAT2_e:
