@@ -45,6 +45,7 @@ typedef struct GL_Buffer_s GL_Buffer_t;
 struct GL_Buffer_s
 {
 	const char *name;
+	GLint id;
 	EGLImageKHR image;
 	GLuint texture;
 	GLenum textype;

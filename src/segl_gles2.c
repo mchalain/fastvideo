@@ -58,7 +58,6 @@ struct GLProgram_s
 	GLuint vertexBufferObject[3];
 	GLfloat *movectx;
 	GLfloat *(*move)(GLfloat *);
-	const char *in_texturename;
 	GL_Buffer_t out;
 	GLuint fbo;
 	uint32_t width;
@@ -68,6 +67,7 @@ struct GLProgram_s
 	GLProgram_Uniform_t *controls;
 };
 
+const GLchar *defaultname = "display";
 const GLchar *defaulttexturename = "vTexture";
 
 //#define GLSLV300
@@ -436,14 +436,11 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint
 		}
 	}
 	GLProgram_t *program = calloc(1, sizeof(*program));
-	program->in_texturename = defaulttexturename;
 	program->move = _move;
 	program->config = config;
 	program->controls_data = uniform_data;
 	if (config)
 		program->controls = config->controls;
-	if (config && config->texture.name)
-		program->in_texturename = config->texture.name;
 
 	program->width = width;
 	program->height = height;
@@ -504,10 +501,6 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	glEnableVertexAttribArray(pos);
 	glVertexAttribPointer(pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
-	GLint texMap = glGetUniformLocation(program->ID, program->in_texturename);
-	glUniform1i(texMap, 0); // GL_TEXTURE0
-	glActiveTexture(GL_TEXTURE0);
-
 	GLuint moveID = glGetUniformLocation(program->ID, "vMove");
 	void *movectx = _movestatic(NULL);
 	glUniformMatrix4fv(moveID, 1, GL_FALSE, movectx);
@@ -554,6 +547,9 @@ static int glprog_outtexture(GLProgram_t *program, GLenum textype)
 	glTexParameterf(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	program->out.texture = texture;
 	program->out.textype = textype;
+	program->out.name = defaultname;
+	if (program->config && program->config->name)
+		program->out.name = program->config->name;
 
 	return 0;
 }
@@ -578,6 +574,8 @@ GL_Buffer_t *gltexture_create(GLProgram_t *program, uint32_t fourcc)
 {
 	GLenum textype = GL_TEXTURE_EXTERNAL_OES;
 	GLuint dma_texture;
+	glBindVertexArrayOES(program->vertexArrayID);
+	glActiveTexture(GL_TEXTURE0);
 	glGenTextures(1, &dma_texture);
 
 	glBindTexture(textype, dma_texture);
@@ -601,8 +599,14 @@ GL_Buffer_t *gltexture_create(GLProgram_t *program, uint32_t fourcc)
 	GL_Buffer_t *glbuffer = calloc(1, sizeof(*glbuffer));
 	glbuffer->texture = dma_texture;
 	glbuffer->textype = textype;
-	glbuffer->name = program->in_texturename;
 
+	glbuffer->name = defaulttexturename;
+	if (program->config && program->config->input.name)
+		glbuffer->name = program->config->input.name;
+	glbuffer->id = glGetUniformLocation(program->ID, glbuffer->name);
+	glUniform1i(glbuffer->id, 0); // GL_TEXTURE0
+
+	glBindVertexArrayOES(0);
 	return glbuffer;
 }
 
@@ -644,6 +648,7 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 	glBindVertexArrayOES(program->vertexArrayID);
 	glUseProgram(program->ID);
 
+	glUniform1i(buffer->id, 0); // GL_TEXTURE0
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(buffer->textype, buffer->texture);
 
