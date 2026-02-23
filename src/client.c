@@ -28,7 +28,7 @@ client_t *client_create(const char *path)
 	ret = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
 	if (ret == 0)
 	{
-		dbg("unix client: connected", addr.sun_path);
+		dbg("unix client: %s connected", addr.sun_path);
 		client = calloc(1, sizeof(*client));
 		client->sock = sock;
 	}

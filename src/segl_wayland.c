@@ -92,7 +92,7 @@ static int native_flush(EGLNativeWindowType native_win)
 
 static int native_sync(EGLNativeWindowType native_win)
 {
-	if (g_context.run = 0)
+	if (g_context.run == 0)
 		return -1;
 	return 0;
 }

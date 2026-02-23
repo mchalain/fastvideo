@@ -16,7 +16,6 @@ int main_loop(V4L2_t *cam, File_t *file)
 	sv4l2_ops.start(cam);
 	sfile_ops.start(file);
 	int camfd = sv4l2_ops.eventfd(cam, 0);
-	int filefd = sfile_ops.eventfd(file, 0);
 	int maxfd = camfd;
 	while (run)
 	{

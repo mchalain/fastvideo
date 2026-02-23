@@ -49,8 +49,10 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 			dev->headerlen = snprintf(dev->header, sizeof(dev->header),
 				"P7 WIDTH %.4d HEIGHT %.4d DEPTH %.1d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR",
 				config->parent.width, config->parent.height, config->parent.stride / config->parent.width);
+		break;
+		default:
 	}
-	warn("sfile: %s opened for %.4s", config->filename, &config->parent.fourcc);
+	warn("sfile: %s opened for %.4s", config->filename, (const char*)&config->parent.fourcc);
 	return dev;
 }
 
@@ -182,7 +184,7 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 		bytesused = buffer->size;
 	if (bytesused > buffer->size)
 	{
-		warn("sfile: buffer too small %lu %lu", buffer->size, bytesused);
+		warn("sfile: buffer too small %zu %zu", buffer->size, bytesused);
 	}
 	if (dev->type == device_output)
 	{
@@ -302,7 +304,6 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 			}
 		}
 	}
-library_end:
 	return 0;
 }
 #else

@@ -44,6 +44,7 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting);
 static int _glprog_uniform_size(GLProgram_Uniform_t *uniform);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
+static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
 
 EGLProg_ops_t gles2_ops;
 
@@ -140,6 +141,11 @@ static int _egl_initprototypes(void)
 	}
 	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
 	if(glEGLImageTargetTexture2DOES == NULL)
+	{
+		return -1;
+	}
+	glEGLImageTargetRenderbufferStorageOES = (void *) eglGetProcAddress("glEGLImageTargetRenderbufferStorageOES");
+	if(glEGLImageTargetRenderbufferStorageOES == NULL)
 	{
 		return -1;
 	}
@@ -244,7 +250,7 @@ static GLuint loadShader(GLenum shadertype, const char *shaderfile, const char *
 	if (shaderID == 0)
 		return 0;
 
-	GLuint shaderSize = 0;
+	GLint shaderSize = 0;
 	if (shaderfile)
 	{
 		shaderSize = readFile(shaderfile, &shaderSourceDyn);
@@ -286,7 +292,7 @@ static GLuint loadShaders(GLenum shadertype, const char *shaderfiles[MAX_SHADERS
 
 	GLint nbShaderSources = 0;
 	GLchar* shaderSources[MAX_SHADERS] = {0};
-	GLuint shaderSizes[MAX_SHADERS] = {0};
+	GLint shaderSizes[MAX_SHADERS] = {0};
 
 	for (int i = 0; i < MAX_SHADERS && shaderfiles[i]; i++)
 	{
@@ -318,8 +324,6 @@ static GLuint loadShaders(GLenum shadertype, const char *shaderfiles[MAX_SHADERS
 
 static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADERS])
 {
-	GLchar* vertexSource = NULL;
-	GLchar* fragmentSource = NULL;
 	GLint programState = 0;
 
 	GLuint vertexID = loadShader(GL_VERTEX_SHADER, vertex, defaultvertex);
@@ -790,13 +794,11 @@ void glprog_destroy(GLProgram_t *program)
 	if (program->controls_data)
 		shmdt(program->controls_data);
 	free(program->config);
+	for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = uniform->next)
+	{
+		_glprog_uniform_destroy(uniform);
+	}
 	free(program);
-}
-
-static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform)
-{
-	free(uniform->value);
-	free(uniform);
 }
 
 typedef GLfloat (*GLProgram_Uniform_func_t)(GLProgram_Uniform_t *uniform);
@@ -881,6 +883,9 @@ static int _glprog_uniform_size(GLProgram_Uniform_t *uniform)
 	case Uniform_MAT4_e:
 		ret = sizeof(GLfloat) * 4 * 4;
 	break;
+	default:
+		ret = -1;
+	break;
 	}
 	return ret;
 }
@@ -950,6 +955,8 @@ static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue
 		case Uniform_MAT4_e:
 			_glprog_uniform_setarray(uniform, jvalue, 4 * 4, Uniform_FLOAT_e);
 			ret = 0;
+		break;
+		default:
 		break;
 		}
 	}
@@ -1213,6 +1220,18 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 	return 0;
 }
 #endif
+
+static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform)
+{
+	switch (uniform->type)
+	{
+		case Uniform_FUNC_e:
+		break;
+		default:
+			free(uniform->value);
+	}
+	free(uniform);
+}
 
 EGLProg_ops_t gles2_ops = {
 	.name = "gles2",

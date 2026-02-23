@@ -371,10 +371,8 @@ static int _media_device(void *arg, int fd, const char *path, const char *name)
 	 */
 	json_t *allsubdevices = NULL;
 	allsubdevices = json_array();
-	int sink = -1;
 	int i;
 	json_t *device;
-	json_t *definition = NULL;
 	json_array_foreach(mediadevices, i, device)
 	{
 		json_t * jname = json_object_get(device, "name");

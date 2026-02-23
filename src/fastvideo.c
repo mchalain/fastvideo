@@ -145,8 +145,8 @@ int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 		inconfig->fourcc = outconfig->fourcc;
 	else if (!inconfig->fourcc && !outconfig->fourcc)
 		inconfig->fourcc = outconfig->fourcc = FOURCC('A','B','2','4');
-	dbg("input %s size %lu %lu", inconfig->name, inconfig->width, inconfig->height);
-	dbg("output %s size %lu %lu", outconfig->name, outconfig->width, outconfig->height);
+	dbg("input %s size %u %u", inconfig->name, inconfig->width, inconfig->height);
+	dbg("output %s size %u %u", outconfig->name, outconfig->width, outconfig->height);
 	return 0;
 }
 
@@ -404,11 +404,6 @@ int main(int argc, char * const argv[])
 	const char *owner = NULL;
 	const char *pidfile= NULL;
 	const char *configfile = NULL;
-	const char *input = "v4l2";
-	const char *output = "gpu";
-	const char *transfer = "passthrough";
-	int width = 640;
-	int height = 480;
 	const char *logfile = "-";
 	const char *cwd = NULL;
 	FastVideoList_t *pipes = NULL;
@@ -416,10 +411,57 @@ int main(int argc, char * const argv[])
 
 	fastvideodevice_ops_append(&spassthrough_ops);
 
+	opterr = 0;
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "i:o:t:j:w:h:DP:L:W:Iv");
+		opt = getopt(argc, argv, "+L:W:DP:Ivj:");
+		switch (opt)
+		{
+			case 'D':
+				_mode |= MODE_DAEMONIZE;
+			break;
+			case 'I':
+				_mode |= MODE_INITIALIZE;
+			break;
+			case 'v':
+				_mode |= MODE_VERBOSE;
+			break;
+			case 'L':
+				logfile = optarg;
+			break;
+			case 'P':
+				pidfile = optarg;
+			break;
+			case 'W':
+				cwd = optarg;
+			break;
+			case 'j':
+				configfile = optarg;
+			break;
+		}
+	} while(opt != -1);
+
+	if (strcmp(logfile,"-"))
+	{
+		int logfd = open(logfile, O_WRONLY | O_CREAT | O_TRUNC, 00644);
+		if (logfd > 0)
+		{
+			dup2(logfd, 1);
+			dup2(logfd, 2);
+			close(logfd);
+		}
+		else
+			err("log file error %m");
+	}
+
+	if (cwd  && chdir(cwd) != 0)
+		err("main: working directory %m");
+
+	optind = 0;
+	do
+	{
+		opt = getopt(argc, argv, "i:o:t:");
 		switch (opt)
 		{
 			case 'i':
@@ -444,49 +486,8 @@ int main(int argc, char * const argv[])
 					return -1;
 				}
 			break;
-			case 'j':
-				configfile = optarg;
-			break;
-			case 'w':
-				width = strtol(optarg, NULL, 10);
-			break;
-			case 'h':
-				height = strtol(optarg, NULL, 10);
-			break;
-			case 'D':
-				_mode |= MODE_DAEMONIZE;
-			break;
-			case 'I':
-				_mode |= MODE_INITIALIZE;
-			break;
-			case 'v':
-				_mode |= MODE_VERBOSE;
-			break;
-			case 'L':
-				logfile = optarg;
-			break;
-			case 'P':
-				pidfile = optarg;
-			break;
-			case 'W':
-				if (chdir(optarg) != 0)
-					err("main: working directory %m");
-			break;
 		}
 	} while(opt != -1);
-
-	if (strcmp(logfile,"-"))
-	{
-		int logfd = open(logfile, O_WRONLY | O_CREAT | O_TRUNC, 00644);
-		if (logfd > 0)
-		{
-			dup2(logfd, 1);
-			dup2(logfd, 2);
-			close(logfd);
-		}
-		else
-			err("log file error %m");
-	}
 
 	for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
 			pipe != NULL; pipe = fastvideolist_next(pipes))

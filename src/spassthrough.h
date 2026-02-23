@@ -13,6 +13,7 @@ struct Passthrough_config_s
 	int mode;
 	DeviceConf_t branch;
 	Convert_t *convert;
+	void *libraryhdl;
 };
 
 typedef struct Passthrough_s Passthrough_t;

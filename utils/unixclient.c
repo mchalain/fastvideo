@@ -16,10 +16,12 @@ struct app_s
 
 ssize_t _client_receive(void *data, client_t *clt, const char *buffer, size_t length)
 {
+	ssize_t ret = 0;
 	app_t *app = (app_t *)data;
 	//dbg("recieve %lu bytes", length);
 	if (app->fd > 0)
-		write(app->fd, buffer, length);
+		ret = write(app->fd, buffer, length);
+	return ret;
 }
 
 int main_run(app_t *app)
@@ -28,13 +30,13 @@ int main_run(app_t *app)
 	{
 		client_wait(app->client, 0, NULL);
 	}
+	return 0;
 }
 
 int main(int argc, char * const argv[])
 {
 	app_t app = {0};
 	const char *serverpath = "/tmp/fastsetting_socket";
-	unsigned int mode = 0;
 	const char *logfile = NULL;
 
 	int opt;

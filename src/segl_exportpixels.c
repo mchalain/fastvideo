@@ -106,6 +106,7 @@ static EGLExport_t eglexport_pixels =
 	.out = _egl_export_out,
 	.fd = _egl_export_fd,
 	.setbuffer = _egl_export_setbuffer,
+	.releasebuffer = _egl_export_releasebuffer,
 	.flush = _egl_export_flush,
 	.destroy = _egl_export_destroy,
 };

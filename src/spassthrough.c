@@ -109,6 +109,7 @@ static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t siz
 		: [src]"r"(src), [size]"r"(size)
 		: "d0", "d1", "d2", "d3", "cc", "memory"
 	);
+	return size;
 }
 #endif
 
@@ -339,7 +340,7 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 			}
 		}
 		break;
-		case (buf_type_memory | buf_type_master):
+		case (buf_type_memory_master):
 		{
 			/**
 			 * device_input (dup dev)
@@ -397,7 +398,7 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 			}
 		}
 		break;
-		case buf_type_dmabuf | buf_type_master:
+		case buf_type_dmabuf_master:
 		{
 			if (!dev->buffers || !dev->dmabufs)
 				break;
@@ -549,6 +550,7 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 		}
 		if (dev->config->convert && dev->convert_ctx)
 			dev->config->convert->ops.destroy(dev->convert_ctx);
+		dlclose(dev->config->libraryhdl);
 		free(dev->config);
 	}
 #if 0
@@ -595,6 +597,7 @@ static int _passthrough_loadstate(Passthrough_t *dev, json_t *jconfig)
 		else if (!strcmp(value, "tee"))
 			dev->state |= MODE_TEE;
 	}
+	return 0;
 }
 
 static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry)
@@ -663,7 +666,7 @@ EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry)
 		json_t *library = json_object_get(convert, "library");
 		if (library && json_is_string(library))
 		{
-			void *hdl = dlopen(json_string_value(library), RTLD_NOW);
+			config->libraryhdl = dlopen(json_string_value(library), RTLD_NOW);
 			json_decref(library);
 		}
 		convert = json_object_get(convert, "name");

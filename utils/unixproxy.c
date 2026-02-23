@@ -70,7 +70,6 @@ int main(int argc, char * const argv[])
 {
 	app_t app = {0};
 	const char *serverpath = "/tmp/fastsetting_socket";
-	unsigned int mode = 0;
 	const char *logfile = NULL;
 	int port= 1024;
 
@@ -88,6 +87,19 @@ int main(int argc, char * const argv[])
 			break;
 		}
 	} while(opt != -1);
+
+	if (strcmp(logfile,"-"))
+	{
+		int logfd = open(logfile, O_WRONLY | O_CREAT | O_TRUNC, 00644);
+		if (logfd > 0)
+		{
+			dup2(logfd, 1);
+			dup2(logfd, 2);
+			close(logfd);
+		}
+		else
+			err("log file error %m");
+	}
 
 	int sock = tcpsocket(port);
 	if (sock > 0)

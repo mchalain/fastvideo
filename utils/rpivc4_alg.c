@@ -40,6 +40,8 @@ static void *_control_open(int atfd, const char *name)
 	 } \
 	}");
 	int ret = client_request(client, (void*)request, length);
+	if (ret < 0)
+		err("fastsetting reject \"auto exposure\" control");
 	return client;
 }
 
@@ -58,6 +60,8 @@ static int _control_gain(void * client, int gain)
 }"
 	, gain);
 	int ret = client_request(client, (void*)request, length);
+	if (ret < 0)
+		err("fastsetting reject \"Analogue Gain\" control");
 	return 0;
 }
 
@@ -122,7 +126,7 @@ static void *_fifo_open(int atfd, const char *name, int access)
 		return NULL;
 	struct stat sb;
 	if (fstatat(atfd, name, &sb, 0) &&
-		(sb.st_mode & S_IFMT != S_IFIFO))
+		((sb.st_mode & S_IFMT) != S_IFIFO))
 	{
 		err("sfile: file %s is not a named pipe", name);
 		return NULL;
@@ -191,7 +195,6 @@ int main(int argc, char *const argv[])
 	const char *rootfs = NULL;
 	const char *pidfile= NULL;
 	const char *owner= NULL;
-	const char *configfile = NULL;
 	const char *statistics = "/tmp/statistics";
 	const char *control = FASTSETTING_DEFAULT_SERVER;
 	int mode = 0;
@@ -199,7 +202,7 @@ int main(int argc, char *const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "hL:W:DKP:U:C:s:c:");
+		opt = getopt(argc, argv, "hL:W:DKP:U:s:c:");
 		switch (opt)
 		{
 			case 'h':
@@ -223,9 +226,6 @@ int main(int argc, char *const argv[])
 			break;
 			case 'W':
 				rootfs = optarg;
-			break;
-			case 'C':
-				configfile = optarg;
 			break;
 			case 's':
 				statistics = optarg;

@@ -88,6 +88,7 @@ int _v4l2_subdev_fourcc2buscode(int fourcc)
 	return buscode;
 }
 
+#if 0
 static int _v4l2_subdev_fmtbus(void *arg, struct v4l2_subdev_mbus_code_enum *mbus_code)
 {
 	uint32_t code = *(uint32_t *)arg;
@@ -95,6 +96,7 @@ static int _v4l2_subdev_fmtbus(void *arg, struct v4l2_subdev_mbus_code_enum *mbu
 		return 0;
 	return -1;
 }
+#endif
 
 static uint32_t _v4l2_subdev_getfmtbus(int ctrlfd, sv4l2_subdev_stream_t *stream, int(*fmtbus)(void *arg, struct v4l2_subdev_mbus_code_enum *mbuscode), void *cbarg)
 {
@@ -144,7 +146,7 @@ int sv4l2_subdev_setpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, uin
 	ffs.format.height = height;
 	ffs.format.code = 0;
 	ffs.format.field = V4L2_FIELD_NONE;
-	dbg("sv4l2: subdev format request %lux%lu for (%#x)", width, height, fmtbus);
+	dbg("sv4l2: subdev format request %ux%u for (%#x)", width, height, fmtbus);
 	/**
 	 * The sensor has a Bayer colour filter which is arranged depending a colours' grid
 	 * he only way you can change the colour format would be either:
@@ -190,7 +192,7 @@ int sv4l2_subdev_setpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream, uin
 	}
 	if (fmtbus != ffs.format.code)
 		err("v4l2: subdev bus format not set! %#x", ffs.format.code);
-	dbg("sv4l2: subdev format acquired %lux%lu %#x", ffs.format.width, ffs.format.height, ffs.format.code);
+	dbg("sv4l2: subdev format acquired %ux%u %#x", ffs.format.width, ffs.format.height, ffs.format.code);
 	return 0;
 }
 
@@ -213,7 +215,7 @@ uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream
 		err("sv4l2: subdev get format error %m");
 		return -1;
 	}
-	dbg("sv4l2: current subdev %lu x %lu %#X", ffs.format.width, ffs.format.height, ffs.format.code);
+	dbg("sv4l2: current subdev %u x %u %#X", ffs.format.width, ffs.format.height, ffs.format.code);
 #ifdef DEBUG
 	struct v4l2_subdev_frame_size_enum efs = {0};
 	efs.pad = stream->pad;
@@ -223,9 +225,9 @@ uint32_t sv4l2_subdev_getpixformat(V4L2_t *subdev, sv4l2_subdev_stream_t *stream
 	while (ioctl(subdev->fd, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, &efs) == 0)
 	{
 		if (efs.min_width != efs.max_width)
-			dbg("\t(%lu=>%lu)x(%lu=>%lu)", efs.min_width, efs.max_width, efs.min_height, efs.max_height);
+			dbg("\t(%u=>%u)x(%u=>%u)", efs.min_width, efs.max_width, efs.min_height, efs.max_height);
 		else
-			dbg("\t%lux%lu", efs.min_width, efs.min_height);
+			dbg("\t%ux%u", efs.min_width, efs.min_height);
 		efs.index++;
 	}
 #endif
@@ -315,7 +317,6 @@ V4L2_t *sv4l2_subdev_create2(int ctrlfd, const char *name, device_type_e dtype, 
 
 V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Config_t *config)
 {
-	int pad = 0;
 	int ctrlfd = -1;
 	const char *device = devicename;
 	if (config && config->device)
@@ -340,7 +341,7 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 	if (config->parent.height) subdev->height = config->parent.height;
 	if (config->parent.fourcc) subdev->fourcc = config->parent.fourcc;
 
-	if (config->fmtbus && type != device_control)
+	if (type != device_control)
 	{
 		for (int i = 0; i < (sizeof(config->fmtbus)/sizeof(*config->fmtbus)); i++)
 		{
@@ -464,6 +465,7 @@ static int _sv4l2_subdev_capabilities_fmtbus_items(void *arg, struct v4l2_subdev
 	_JSONControl_Arg_t *jsoncontrol_arg = arg;
 	json_t *items = jsoncontrol_arg->controls;
 	json_array_append_new(items, json_sprintf("%#x", mbuscode->code));
+	return 0;
 }
 
 static int _v4l2_subdev_capabilities_fmtbus(V4L2_t *subdev, json_t *definition, int all)

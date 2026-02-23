@@ -234,7 +234,7 @@ void sv4l2_destroy(V4L2_t *dev);
  *
  * @return the object or NULL
  */
-DeviceConf_t * sv4l2_createconfig();
+DeviceConf_t * sv4l2_createconfig(const char *name);
 
 const char *sv4l2_CTRLTYPE(enum v4l2_ctrl_type type);
 const char *sv4l2_CTRLNAME(uint32_t id);

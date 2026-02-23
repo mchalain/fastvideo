@@ -42,7 +42,7 @@ void analizepacket(const void *packet, ssize_t length)
 			pcr |= (adaptfield[4] << 9);
 			pcr |= (adaptfield[5] << 1);
 			pcr |= ((adaptfield[6] & 0x7f) >> 7);
-			printf("\t\t\tpcr %lu\n", pcr);
+			printf("\t\t\tpcr %u\n", pcr);
 			if (adaptlength > 8)
 				printf("\t\tpadding last %#.02x\n", adaptfield[adaptlength - 1]);
 		}
@@ -66,7 +66,7 @@ void printpacket(const unsigned char *packet, ssize_t length)
 		if (i % 16 == 15)
 			printf("< %.03d\n", i);
 	}
-	printf("< %d\n",length);
+	printf("< %zd\n",length);
 }
 
 int main(int argc, char *argv[])
@@ -94,11 +94,11 @@ int main(int argc, char *argv[])
 					if (offset != i)
 					{
 						int tmpid = (packetid + 1) % (sizeof(packet) / sizeof(*packet));
-						err("sync %d move of %d bytes (%d %d)", packetcounter, i - offset, packetid, tmpid);
+						err("sync %d move of %zd bytes (%d %d)", packetcounter, i - offset, packetid, tmpid);
 						printpacket(packet[tmpid], length);
-						warn("followed by %lu bytes", length);
+						warn("followed by %zu bytes", length);
 						printpacket(packet[packetid], length);
-						warn("end %lu %d", offset, i);
+						warn("end %zu %d", offset, i);
 						analizepacket(packet[tmpid] + offset, length - offset);
 						//length = 0;
 					}

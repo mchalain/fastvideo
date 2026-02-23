@@ -78,7 +78,7 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 	if (IN_MULTICAST(htonl(longaddress)) ||
 		(family == AF_INET6 && htonl(longaddress) == 0xff020000))
 	{
-		if (! ifa_main->ifa_flags & IFF_MULTICAST)
+		if (!(ifa_main->ifa_flags & IFF_MULTICAST))
 		{
 			err("udp: udp multicast interface not supported");
 			return -1;
@@ -106,7 +106,7 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 	}
 	else if (htonl(longaddress) > 0xff000000)
 	{
-		if (! ifa_main->ifa_flags & IFF_BROADCAST)
+		if (!(ifa_main->ifa_flags & IFF_BROADCAST))
 		{
 			err("udp: udp broadcast interface not supported");
 			return -1;
@@ -266,7 +266,9 @@ static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 
 static void proto_flush(void *arg)
 {
+#if 0
 	Proto_UDP_t *proto = (Proto_UDP_t *)arg;
+#endif
 #ifdef UDP_CORK
 	int value = 0;
 	setsockopt(proto->serverfd, IPPROTO_UDP, UDP_CORK, &value, sizeof(value));

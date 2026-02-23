@@ -8,6 +8,7 @@
 #include <sys/ioctl.h>
 #include <limits.h>
 #include <errno.h>
+#include <inttypes.h>
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -276,7 +277,7 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 	}
 
 	const char *type = drmModeGetConnectorTypeName(connector_type);
-	dbg("sdrm: connector %lu %s, encoder %lu, crtc %lu", disp->connector_id,
+	dbg("sdrm: connector %u %s, encoder %u, crtc %u", disp->connector_id,
 		type, disp->encoder_id, disp->crtc_id);
 	return 0;
 }
@@ -363,7 +364,7 @@ static int sdrm_listconnector(Display_t *disp)
 		else
 			dbg("\ttype unkown");
 		dbg("\tconnected %d",connector->connection == DRM_MODE_CONNECTED);
-		dbg("\tencoder %lu",connector->encoder_id);
+		dbg("\tencoder %u",connector->encoder_id);
 
 		for (int m = 0; m < connector->count_modes; m++)
 		{
@@ -383,7 +384,7 @@ static int sdrm_listconnector(Display_t *disp)
 			prop = drmModeGetProperty(disp->fd, props->props[j]);
 			if (prop)
 			{
-				dbg("\tproperty %s %d => %llu", prop->name, prop->prop_id, props->prop_values[j]);
+				dbg("\tproperty %s %d => %"PRIu64, prop->name, prop->prop_id, props->prop_values[j]);
 			}
 		}
 	}
@@ -400,8 +401,8 @@ static int sdrm_listproperties(Display_t *disp,  uint32_t type)
 		return -1;
 	}
 	int count = 0;
-	int32_t defid = 0;
-	int32_t *id = &defid;
+	uint32_t defid = 0;
+	uint32_t *id = &defid;
 	const char *name;
 	const char *connector_name = "connector";
 	const char *crtc_name = "crtc";
@@ -429,20 +430,22 @@ static int sdrm_listproperties(Display_t *disp,  uint32_t type)
 			id = resources->encoders;
 			name = encoder_name;
 		break;
+		default:
+		break;
 	}
 	for(int i = 0; i < count; ++i)
 	{
 		drmModeObjectPropertiesPtr props;
 
 		props = drmModeObjectGetProperties(disp->fd, id[i], type);
-		dbg("sdrm: properties %s[%d] %lu", name, i, id[i]);
+		dbg("sdrm: properties %s[%d] %u", name, i, id[i]);
 		for (int j = 0; props && j < props->count_props; j++)
 		{
 			drmModePropertyPtr prop;
 			prop = drmModeGetProperty(disp->fd, props->props[j]);
 			if (prop)
 			{
-				dbg("\tproperty %s %d => %llu", prop->name, prop->prop_id, props->prop_values[j]);
+				dbg("\tproperty %s %d => %"PRIu64, prop->name, prop->prop_id, props->prop_values[j]);
 			}
 		}
 	}
@@ -464,13 +467,13 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	{
 		plane = drmModeGetPlane(disp->fd, planes->planes[i]);
 		int type = (int)sdrm_properties(disp, DRM_MODE_OBJECT_PLANE, plane->plane_id, "type", (uint64_t)-1);
-		dbg("  [%d] %u: %s %#x %d", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
+		dbg("  [%d] %u: %s", i, plane->plane_id, (type == DRM_PLANE_TYPE_PRIMARY)?"primary":(type == DRM_PLANE_TYPE_OVERLAY)?"overlay":"cursor");
 		if (*plane_id == (uint32_t)-1 && plane->possible_crtcs & (1 << disp->crtcindex) && type == disp->plane_type)
 		{
 			for (int j = 0; j < plane->count_formats; ++j)
 			{
 				uint32_t fourcc = plane->formats[j];
-				warn("\tformat %.4s %.4s", (char *)&fourcc, &disp->fourcc);
+				warn("\tformat %.4s %.4s", (char *)&fourcc, (char *)&disp->fourcc);
 				if ((!disp->fourcc || fourcc == disp->fourcc) && plane->possible_crtcs & (1 << disp->crtcindex))
 				{
 					ret = 0;
@@ -492,7 +495,7 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 	drmModeFreePlaneResources(planes);
 	if (ret == -1)
 	{
-		err("sdrm: plane with 4cc %.4s not found", &disp->fourcc);
+		err("sdrm: plane with 4cc %.4s not found", (char *)&disp->fourcc);
 	}
 	return ret;
 }
@@ -500,7 +503,6 @@ static int sdrm_plane(Display_t *disp, uint32_t *plane_id)
 static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 			uint32_t stride, uint32_t fourcc, FrameBuffer_t *buffer)
 {
-	uint64_t size;
 	int bpp = 32;
 	switch (fourcc)
 	{
@@ -544,7 +546,7 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 			buffer->nplanes = 2;
 		break;
 	}
-	dbg("sdrm: buffer for width %lu height %lu size %lu", width, height, buffer->size);
+	dbg("sdrm: buffer for width %u height %u size %zu", width, height, buffer->size);
 
 	return 0;
 }
@@ -558,7 +560,7 @@ static int sdrm_buffer_dumb(Display_t *disp, FrameBuffer_t *buffer)
 	buffer->private = (void *)(long)bo_handle;
 	if (size != buffer->size)
 	{
-		warn("sdrm: buffer size changed (%lu v %lu!!!", size, buffer->size);
+		warn("sdrm: buffer size changed (%"PRIu64" v %zu)!!!", size, buffer->size);
 	}
 	buffer->size = size;
 	return 0;
@@ -573,10 +575,12 @@ static int sdrm_buffer_fb(Display_t *disp, uint32_t fourcc, uint64_t modifier, F
 	int flags = 0;
 	if (modifier)
 		flags = DRM_MODE_FB_MODIFIERS;
+	if (buffer->id < 0)
+		return -1;
 	if (drmModeAddFB2WithModifiers(disp->fd, buffer->width, buffer->height, fourcc, handles,
-		buffer->strides, buffer->offsets, modifiers, &buffer->id, flags))
+		buffer->strides, buffer->offsets, modifiers, (unsigned int*)&buffer->id, flags))
 	{
-		err("sdrm: Frame buffer unavailable 2 (%dx%d %.4s) %m", buffer->width, buffer->height, &fourcc);
+		err("sdrm: Frame buffer unavailable 2 (%ux%u %.4s) %m", buffer->width, buffer->height, (char*)&fourcc);
 		return -1;
 	}
 	return 0;
@@ -610,7 +614,7 @@ static int sdrm_buffer_setdma2(Display_t *disp, uint32_t size, int fd, FrameBuff
 {
 	if (size != buffer->size)
 	{
-		warn("sdrm: buffer size changed (%lu v %lu!!!", size, buffer->size);
+		warn("sdrm: buffer size changed (%u v %zu!!!", size, buffer->size);
 	}
 	buffer->size = size;
 
@@ -636,7 +640,7 @@ static int sdrm_atomic_prepare(Display_t *disp, drmModeModeInfo *mode)
 	uint32_t prop_plane_crtc_id = sdrm_propertyid(disp, DRM_MODE_OBJECT_PLANE, disp->plane_id, "CRTC_ID");
 	if (prop_plane_crtc_id != disp->properties[SDRM_PROPID_CRTC_ID])
 	{
-		warn("sdrm: CRTC_ID for plane(%lu) and connector(%lu) differents", prop_plane_crtc_id, disp->properties[SDRM_PROPID_CRTC_ID]);
+		warn("sdrm: CRTC_ID for plane(%u) and connector(%u) differents", prop_plane_crtc_id, disp->properties[SDRM_PROPID_CRTC_ID]);
 	}
 	if (disp->dup && disp->dup->type == device_input)
 	{
@@ -907,7 +911,7 @@ EXT_API Display_t *sdrm_duplicate(Display_t *dev, DisplayConf_t **pconfig)
 		dbg("sdrm: writeback pixel formats");
 		uint32_t *fourccs = blob->data;
 		for (int i = 0; i < blob->length / sizeof(uint32_t); i++)
-			dbg("\t%.4s", &fourccs[i]);
+			dbg("\t%.4s", (char*)&fourccs[i]);
 		drmModeFreePropertyBlob(blob);
 	}
 #endif
@@ -932,7 +936,7 @@ static int sdrm_requestbuffer_output(Display_t *disp, enum buf_type_e t, va_list
 {
 	switch (t)
 	{
-		case (buf_type_memory | buf_type_master):
+		case (buf_type_memory_master):
 		{
 			int *ntargets = va_arg(ap, int *);
 			void **targets = va_arg(ap, void **);
@@ -978,7 +982,7 @@ static int sdrm_requestbuffer_output(Display_t *disp, enum buf_type_e t, va_list
 			disp->nbuffers = ntargets;
 		}
 		break;
-		case buf_type_dmabuf | buf_type_master:
+		case buf_type_dmabuf_master:
 		{
 			int *ntargets = va_arg(ap, int *);
 			int **targets = va_arg(ap, int **);
@@ -1034,11 +1038,9 @@ static int sdrm_requestbuffer_output(Display_t *disp, enum buf_type_e t, va_list
 
 static int sdrm_requestbuffer_input(Display_t *disp, enum buf_type_e t, va_list ap)
 {
-	uint32_t width = disp->config->parent.width;
-	uint32_t height = disp->config->parent.height;
 	switch (t)
 	{
-		case buf_type_dmabuf | buf_type_master:
+		case buf_type_dmabuf_master:
 		{
 			int *ntargets = va_arg(ap, int *);
 			int **targets = va_arg(ap, int **);
@@ -1143,7 +1145,7 @@ EXT_API int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused, int
 			munmap(buffer->mem, buffer->size);
 		if (bytesused > buffer->size)
 		{
-			warn("sfile: buffer too small %lu %lu", buffer->size, bytesused);
+			warn("sfile: buffer too small %zu %zu", buffer->size, bytesused);
 		}
 		if (disp->flags & SDRM_FLAGS_ATOMIC_COMMIT)
 		{
@@ -1383,7 +1385,6 @@ static int sdrm_capabilities_size(Display_t *disp, json_t *capabilities)
 		drmModeConnectorPtr connector = drmModeGetConnector(disp->fd, connector_id);
 		if (connector->connection == DRM_MODE_CONNECTED && connector->count_modes > 0)
 		{
-			drmModeModeInfo *preferred = NULL;
 			for (int m = 0; m < connector->count_modes; m++)
 			{
 				if (min_height > connector->modes[m].vdisplay)

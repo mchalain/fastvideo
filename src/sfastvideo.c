@@ -216,7 +216,6 @@ void fastvideolist_destroy(FastVideoList_t *list, void(*destroy)(void *))
 	if (list == NULL)
 		return;
 
-	void *entity = NULL;
 	FastVideoList_t *previous = NULL;
 	for (FastVideoList_t *entry = list->last; entry != NULL; entry = previous)
 	{

@@ -318,6 +318,7 @@ struct Dev_s
 	int periodic;
 };
 
+#if 0
 static FrameBuffer_t *_create_buffer(DeviceConf_t *config)
 {
 	FrameBuffer_t *buffer = calloc(1, sizeof(*buffer));
@@ -331,6 +332,7 @@ static void _destroy_buffer(FrameBuffer_t *buffer)
 {
 	free(buffer->mem);
 }
+#endif
 
 #ifdef HAVE_JANSSON
 int mpegts_loadjsonconfiguration(void *arg, void *entry);
@@ -372,7 +374,9 @@ DeviceConf_t *mpegts_createconfig(const char *name)
 	return &config->parent;
 }
 
+#if DUMPDATA
 static int dumpfd = 0;
+#endif
 
 #if 0
 
@@ -1158,7 +1162,6 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 			}
 		}
 	}
-library_end:
 	return 0;
 }
 #endif

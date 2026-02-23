@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <errno.h>
+#include <inttypes.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -239,7 +240,7 @@ static EGL_t *_egl_create(const char *devicename, device_type_e type, EGLConfig_
 
 	dev->curbufferid = -1;
 	dev->type = type;
-	warn("segl: create device %lux%lu %.4s", width, height, &dev->config->parent.fourcc);
+	warn("segl: create device %ux%u %.4s", width, height, (char *)&dev->config->parent.fourcc);
 	return dev;
 }
 
@@ -575,11 +576,13 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 			}
 		}
 		break;
+		default:
+		break;
 	}
 	if (ret == 0)
-		warn("segl: input image %lux%lu  %.4s %llu",
+		warn("segl: input image %ux%u  %.4s %"PRIu64,
 			dev->config->parent.width, dev->config->parent.height,
-			&dev->config->parent.fourcc, dev->config->parent.modifiers);
+			(char *)&dev->config->parent.fourcc, dev->config->parent.modifiers);
 	return ret;
 }
 
@@ -596,7 +599,7 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 	int ret = -1;
 	switch (t)
 	{
-		case buf_type_dmabuf | buf_type_master:
+		case buf_type_dmabuf_master:
 		{
 			int *ntargets = va_arg(ap, int *);
 			int **targets = va_arg(ap, int **);
@@ -608,7 +611,7 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 				{
 					GLBuffer_t *buffer = &dev->buffers[i];
 					(*targets)[i] = buffer->dma_fd;
-					dbg("segl: export dmabuffer[%d]: %d %lu", i, buffer->dma_fd, buffer->size);
+					dbg("segl: export dmabuffer[%d]: %d %u", i, buffer->dma_fd, buffer->size);
 				}
 			}
 			if (ntargets != NULL)
@@ -632,12 +635,12 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 				dev->buffers[i].memory = targets[i];
 				if (size > 0)
 					dev->buffers[i].size = size;
-				dbg("segl: push data into buffer %p (%lu)", dev->buffers[i].memory, dev->buffers[i].size);
+				dbg("segl: push data into buffer %p (%u)", dev->buffers[i].memory, dev->buffers[i].size);
 			}
 			ret = 0;
 		}
 		break;
-		case buf_type_memory | buf_type_master:
+		case buf_type_memory_master:
 		{
 			int *ntargets = va_arg(ap, int *);
 			void ***targets = va_arg(ap, void ***);
@@ -648,7 +651,7 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 				for (int i = 0; i < dev->nbuffers; i++)
 				{
 					(*targets)[i] = dev->buffers[i].memory;
-					dbg("segl: export memory[%d]: %p %lu", i, dev->buffers[i].memory, dev->buffers[i].size);
+					dbg("segl: export memory[%d]: %p %u", i, dev->buffers[i].memory, dev->buffers[i].size);
 				}
 			}
 			if (ntargets != NULL)
@@ -657,6 +660,8 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 				*size = dev->buffers[0].size;
 			ret = (dev->nbuffers == 0);
 		}
+		break;
+		default:
 		break;
 	}
 	return ret;
@@ -711,7 +716,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		free(dup);
 		return NULL;
 	}
-	warn("segl: create device export %lux%lu %.4s with %s", width, height, &fourcc, dup->export->name);
+	warn("segl: create device export %ux%u %.4s with %s", width, height, (char*)&fourcc, dup->export->name);
 
 	dup->nbuffers = 0;
 	const FourccFormat_t *fformat = fourcc_getformat(fourcc);
@@ -766,8 +771,6 @@ EXT_API int segl_stop(EGL_t *dev)
 EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flags)
 {
 	errno = 0;
-	uint32_t width = dev->config->parent.width;
-	uint32_t height = dev->config->parent.height;
 
 	if ((int)id > dev->nbuffers)
 	{
@@ -839,7 +842,7 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 			*flags |= FB_FLAGS_MODIFIER;
 		if (bytesused)
 			*bytesused = buffer->size;
-		buffer->state != dequeued;
+		buffer->state = dequeued;
 		dev->curbufferid++;
 		dev->curbufferid %= dev->nbuffers;
 		return id;
@@ -1008,7 +1011,7 @@ static int _egl_setjsondefinition(void *arg, ImageDefinition_t *image)
 	json_object_set_new(definition, "height", json_integer(image->height));
 	if (image->stride)
 		json_object_set_new(definition, "stride", json_integer(image->stride));
-	json_object_set_new(definition, "fourcc", json_sprintf("%.4s", &image->fourcc));
+	json_object_set_new(definition, "fourcc", json_sprintf("%.4s", (char*)&image->fourcc));
 	json_array_append_new(definitions->array, definition);
 	return 0;
 }

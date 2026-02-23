@@ -88,7 +88,7 @@ static void *proto_create(Proto_Config_t *config)
 	proto->config = config;
 	proto->mtu = mtu - IP_HEADER_LENGTH - TCP_HEADER_LENGTH; /// maxsize of tcp/ip header
 	proto->mtu = 7 * 188 + 1;
-	warn("unix: unix to %s (mtu %lu)", config->host, proto->mtu);
+	warn("unix: unix to %s (mtu %zu)", config->host, proto->mtu);
 	proto->serverfd = sock;
 	for (int i = 0 ; i < config->maxclients; i++)
 	{
@@ -105,8 +105,6 @@ static void *proto_thread(void *arg)
 {
 	Proto_UNIX_t *proto = (Proto_UNIX_t *)arg;
 	int sock = 0;
-	struct sockaddr_storage addr;
-	int addrsize = sizeof(addr);
 	dbg("unix: server running %d", proto->serverfd);
 	while ((sock = accept(proto->serverfd, NULL, NULL)) > 0)
 	{
@@ -149,6 +147,11 @@ static int proto_connect(void *arg)
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 	int ret = pthread_create(&(proto->thread), &attr, proto_thread, proto);
+	if (ret)
+	{
+		err("unix: server internal error (%d)", ret);
+		return -1;
+	}
 	return 0;
 }
 
@@ -201,7 +204,7 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 				FastVideoList_t *client = NULL;
 				proto->clients = fastvideolist_pop(proto->clients, &client);
 				proto->clientspool = fastvideolist_push(proto->clientspool, client);
-				dbg("unix: client disconnected %p %m %d", client, ret);
+				dbg("unix: client disconnected %p %m %zd", client, ret);
 				errno = 0;
 				ret = 0;
 			}
@@ -237,7 +240,6 @@ static void proto_flush(void *arg)
 
 static int proto_fd(void *arg)
 {
-	Proto_UNIX_t *proto = (Proto_UNIX_t *)arg;
 	return -1;
 }
 

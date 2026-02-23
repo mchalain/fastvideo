@@ -9,7 +9,7 @@
 
 typedef struct sv4l2_subdev_stream_s sv4l2_subdev_stream_t;
 
-DeviceConf_t * sv4l2_subdev_createconfig();
+DeviceConf_t * sv4l2_subdev_createconfig(const char *name);
 /**
  * @brief create a video subdevice and check capabilities
  *

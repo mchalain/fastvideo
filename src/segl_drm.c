@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <inttypes.h>
 
 #include <GLES2/gl2.h>
 #include <EGL/egl.h>
@@ -64,7 +65,7 @@ static struct drm_s {
 	uint32_t height;
 	int fd;
 	drmModeModeInfo mode;
-	int mode_id;
+	unsigned int mode_id;
 	uint32_t crtc_id;
 	uint32_t connector_id;
 	uint32_t plane_id;
@@ -104,7 +105,7 @@ static uint32_t sdrm_propertyid(int fd,  uint32_t type, uint32_t id, const char 
 	drmModeFreeObjectProperties(props);
 	return ret;
 }
-
+#if 0
 static uint64_t sdrm_properties(int fd,  uint32_t type, uint32_t id, const char *property, uint64_t value)
 {
 	uint64_t ret = 0;
@@ -139,6 +140,7 @@ static uint64_t sdrm_properties(int fd,  uint32_t type, uint32_t id, const char 
 	drmModeFreeObjectProperties(props);
 	return ret;
 }
+#endif
 #endif
 
 static uint32_t find_plane_for_crtc(int fd, int crtc_index, uint32_t crtc_id)
@@ -204,7 +206,7 @@ static uint32_t find_crtc_for_connector(int fd, const drmModeRes *resources,
 	return -1;
 }
 
-static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t *width, uint32_t *height, drmModeModeInfo *mode, int *mode_id, int writeback)
+static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t *width, uint32_t *height, drmModeModeInfo *mode, unsigned int *mode_id, int writeback)
 {
 	drmModeConnector *connector = NULL;
 	for (int i = 0; i < resources->count_connectors; i++)
@@ -224,13 +226,12 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 			continue;
 		}
 		drmModeModeInfo *current_mode = NULL;
-		int current_mode_id = -1;
-		dbg("segl: drm request %lux%lu connector", *width, *height);
+		dbg("segl: drm request %ux%u connector", *width, *height);
 		for (int j = 0; current_mode == NULL && j < connector->count_modes; j++)
 		{
 			current_mode = &connector->modes[j];
 
-			dbg("\tfound %lux%lu %dHz %#x", current_mode->hdisplay, current_mode->vdisplay, current_mode->vrefresh, current_mode->type);
+			dbg("\tfound %ux%u %dHz %#x", current_mode->hdisplay, current_mode->vdisplay, current_mode->vrefresh, current_mode->type);
 			if (current_mode->vdisplay == *height &&
 					current_mode->hdisplay == *width)
 			{
@@ -275,7 +276,7 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 		{
 			*width = current_mode->hdisplay;
 			*height = current_mode->vdisplay;
-			dbg("segl: mode select %s %lux%lu %d %#x", current_mode->name, current_mode->hdisplay, current_mode->vdisplay, current_mode->type, current_mode->flags);
+			dbg("segl: mode select %s %ux%u %d %#x", current_mode->name, current_mode->hdisplay, current_mode->vdisplay, current_mode->type, current_mode->flags);
 			if (mode)
 			{
 				memcpy(mode, current_mode, sizeof(*mode));
@@ -299,7 +300,6 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height, in
 {
 	drmModeRes *resources;
 	drmModeConnector *connector = NULL;
-	drmModeEncoder *encoder = NULL;
 
 	drm.fd = fd;
 	drm.fourcc = fourcc;
@@ -345,7 +345,7 @@ static int init_drm(int fd, uint32_t fourcc, uint32_t width, uint32_t height, in
 		warn("segl: set CRTC to plane error");
 	if (prop_plane_crtc_id != drm.properties[SDRM_PROPID_CRTC_ID])
 	{
-		warn("sdrm: CRTC_ID for plane(%lu) and connector(%lu) differents", prop_plane_crtc_id, drm.properties[SDRM_PROPID_CRTC_ID]);
+		warn("sdrm: CRTC_ID for plane(%u) and connector(%u) differents", prop_plane_crtc_id, drm.properties[SDRM_PROPID_CRTC_ID]);
 	}
 	if (writeback)
 	{
@@ -385,7 +385,11 @@ static void
 drm_fb_destroy_callback(struct gbm_bo *bo, void *data)
 {
 	struct drm_fb *fb = data;
+#if 0
 	struct gbm_device *gbm = gbm_bo_get_device(bo);
+#else
+	gbm_bo_get_device(bo);
+#endif
 	int fd = gbm_bo_get_fd(bo);
 
 	if (fb->fb_id)
@@ -716,17 +720,17 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 		requestfourcc = config->transfer.fourcc;
 #else
 	if (config->transfer.fourcc && requestfourcc != config->transfer.fourcc)
-		warn("segl: the gpu runs with %.4s format", &requestfourcc);
+		warn("segl: the gpu runs with %.4s format", (char*)&requestfourcc);
 #endif
 	uint32_t fourcc = 0;
-	dbg("segl: screen formats (search %.4s):", &requestfourcc);
+	dbg("segl: screen formats (search %.4s):", (char *)&requestfourcc);
 	for (int i = 0; i < sizeof(g_formats)/sizeof(*g_formats); i++)
 	{
 		int ret = gbm_device_is_format_supported(gbm, g_formats[i].fourcc,
 				GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
 		if (ret)
 		{
-			dbg("\t%.4s", &g_formats[i].fourcc);
+			dbg("\t%.4s", (char *)&g_formats[i].fourcc);
 			if (!defaultfourcc)
 				defaultfourcc = g_formats[i].fourcc;
 		}
@@ -735,7 +739,7 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 	}
 	if (! fourcc)
 		fourcc = defaultfourcc;
-	dbg("segl: screen format %.4s", &fourcc);
+	dbg("segl: screen format %.4s", (char *)&fourcc);
 
 	if (init_drm(fd, fourcc, config->parent.width, config->parent.height, (config->type == device_transfer)))
 	{
@@ -758,7 +762,7 @@ static const GLint *native_attributes(EGLNativeDisplayType display)
 		if (g_formats[i].fourcc == drm.fourcc)
 		{
 			attributes = g_formats[i].attributes;
-			dbg("found attributes %.4s", &g_formats[i].fourcc);
+			dbg("found attributes %.4s", (char *)&g_formats[i].fourcc);
 		}
 	}
 	return attributes;
@@ -786,7 +790,7 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 			GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 
 	if (!surface) {
-		err("segl: failed to create gbm surface %.4s", &drm.fourcc);
+		err("segl: failed to create gbm surface %.4s", (char *)&drm.fourcc);
 		return (EGLNativeWindowType)NULL;
 	}
 
@@ -849,7 +853,6 @@ static int native_flush(EGLNativeWindowType native_win)
 		goto commit_error;
 	if (drm->writeback)
 	{
-		int *out_fd = &(drm->writeback)->out_fd;
 		if (drmModeAtomicAddProperty(req, drm->writeback->connector_id, drm->properties[SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR], (uint64_t)(long)&(drm->writeback)->out_fd) < 0)
 			goto commit_error;
 		GLBuffer_t *buffer = drm->writeback->buffers[drm->writeback->currentid];
@@ -884,8 +887,6 @@ commit_error:
 
 static int native_sync(EGLNativeWindowType native_win)
 {
-	struct gbm_surface *surface = (struct gbm_surface *)native_win;
-
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
 			.page_flip_handler = page_flip_handler,
@@ -948,13 +949,11 @@ static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLC
 
 static GLuint _egl_export_fbo(void *arg)
 {
-	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
 	return 0;
 }
 
 static GL_Buffer_t *_egl_export_out(void *arg)
 {
-	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
 	return NULL;
 }
 
@@ -970,9 +969,9 @@ static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 	ctx->nbuffers++;
 	drmModeCreateDumbBuffer(ctx->fd, width, height, 32, 0, &bo_handle, &buffer->pitch, &size);
 	if (buffer->size && size != buffer->size)
-		err("segl: drm buffer size error (%lu for %lu", size, buffer->size);
-	drmModeAddFB(ctx->fd, width, height, 24, 32, buffer->pitch, bo_handle, &buffer->id);
-	drmPrimeHandleToFD(ctx->fd, bo_handle, 0, &buffer->dma_fd);
+		err("segl: drm buffer size error (%"PRIu64" for %u", size, buffer->size);
+	drmModeAddFB(ctx->fd, width, height, 24, 32, buffer->pitch, bo_handle, (unsigned int *)&buffer->id);
+	drmPrimeHandleToFD(ctx->fd, bo_handle, 0, (int *)&buffer->dma_fd);
 //	buffer->memory = sdmabuf_map(buffer->dma_fd, buffer->size, 1);
 	return 0;
 }
@@ -990,14 +989,13 @@ static int _egl_export_flush(void *arg, GLBuffer_t *buffer)
 
 static int _egl_export_releasebuffer(void *arg, GLBuffer_t *buffer)
 {
-	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
 	return 0;
 }
 
 static int _egl_export_fd(void *arg)
 {
-	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
 #if 0
+	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
 	/// This is too slow
 	return ctx->out_fd;
 #else
@@ -1007,7 +1005,6 @@ static int _egl_export_fd(void *arg)
 
 static void _egl_export_destroy(void *arg)
 {
-	EGLExportDRMWriteback_t *ctx = (EGLExportDRMWriteback_t *)arg;
 	free(arg);
 }
 
@@ -1020,6 +1017,7 @@ EGLExport_t export_drmwriteback =
 	.out = _egl_export_out,
 	.fd = _egl_export_fd,
 	.setbuffer = _egl_export_setbuffer,
+	.releasebuffer = _egl_export_releasebuffer,
 	.flush = _egl_export_flush,
 	.destroy = _egl_export_destroy,
 };

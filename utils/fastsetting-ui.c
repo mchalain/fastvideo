@@ -2,6 +2,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include <fcntl.h>
 
 #ifdef HAVE_NCURSES
 #include <ncurses.h>
@@ -72,7 +73,7 @@ int _ncurses_printf(app_t *app, const char *fmt, ...)
 	int ret;
 	va_list ap;
 	va_start(ap, fmt);
-	ret = vwprintw(app->window->win, fmt, ap);
+	ret = vw_printw(app->window->win, fmt, ap);
 	va_end(ap);
 	return ret;
 }
@@ -155,6 +156,8 @@ int _app_displaycontrol(app_t *app, control_t *control)
 	case CTRL_BOOLEAN:
 		app->env->printf(app, "%.04x % .32s\t\t: %d\n", control->id, control->name, control->value.integer);
 	break;
+	default:
+	break;
 	}
 	return 0;
 }
@@ -213,6 +216,8 @@ int _app_managecontrol(app_t *app, device_t *device, control_t *control)
 					control->value.integer = strtol(string + 1, NULL, 10);
 					cmd = 1;
 				break;
+				default:
+				break;
 				}
 			break;
 			case '-':
@@ -233,6 +238,8 @@ int _app_managecontrol(app_t *app, device_t *device, control_t *control)
 						control->value.integer = 0;
 					cmd = 1;
 				break;
+				default:
+				break;
 				}
 			break;
 		}
@@ -249,7 +256,6 @@ int _app_managecontrol(app_t *app, device_t *device, control_t *control)
 int _app_show_device(app_t *app, device_t *device)
 {
 	int ret = 2;
-	unsigned int w = 80, h = 50;
 	if (device == NULL)
 		return app->level - 1;
 	if (app->level != ret)
@@ -322,7 +328,6 @@ int main(int argc, char * const argv[])
 {
 	app_t app = {0};
 	const char *serverpath = "/tmp/fastsetting_socket";
-	unsigned int mode = 0;
 	const char *logfile = "-";
 
 	int opt;
@@ -339,6 +344,19 @@ int main(int argc, char * const argv[])
 			break;
 		}
 	} while(opt != -1);
+
+	if (strcmp(logfile,"-"))
+	{
+		int logfd = open(logfile, O_WRONLY | O_CREAT | O_TRUNC, 00644);
+		if (logfd > 0)
+		{
+			dup2(logfd, 1);
+			dup2(logfd, 2);
+			close(logfd);
+		}
+		else
+			err("log file error %m");
+	}
 
 	app.setting = fastsetting_create(serverpath);
 	app.env = &_simple_env;

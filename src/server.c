@@ -108,7 +108,7 @@ static int _server_connect(server_t *server)
 	int ret = -1;
 	int newsock = -1;
 	struct sockaddr_storage addr;
-	int addrsize = sizeof(addr);
+	unsigned int addrsize = sizeof(addr);
 	newsock = accept(server->sock, (struct sockaddr *)&addr, &addrsize);
 	if (newsock > 0)
 	{
@@ -138,7 +138,7 @@ static int _server_message(server_t *server, client_t *client)
 	ret = client_receive(client);
 	if (ret <= 0)
 	{
-		if (server->clients = client)
+		if (server->clients == client)
 			server->clients = client->next;
 		client_destroy(client);
 	}

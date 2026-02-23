@@ -475,10 +475,10 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 	}
 #ifdef V4L2_HAS_META
 	if (ismeta)
-		dbg("sv4l2: settings: %.4s %lu", (char*)&fmt.fmt.meta.dataformat, fmt.fmt.meta.buffersize);
+		dbg("sv4l2: settings: %.4s %u", (char*)&fmt.fmt.meta.dataformat, fmt.fmt.meta.buffersize);
 	else
 #endif
-	dbg("sv4l2: settings: %.4s stride: %lu/%lu field:%#lx", (char*)(fmt.fmt.pix.pixelformat?&fmt.fmt.pix.pixelformat:&pixelformat), fmt.fmt.pix.bytesperline, fmt.fmt.pix.width, fmt.fmt.pix.field);
+	dbg("sv4l2: settings: %.4s stride: %u/%u field:%#x", (char*)(fmt.fmt.pix.pixelformat?&fmt.fmt.pix.pixelformat:&pixelformat), fmt.fmt.pix.bytesperline, fmt.fmt.pix.width, fmt.fmt.pix.field);
 	return fmt.fmt.pix.pixelformat;
 }
 
@@ -644,7 +644,7 @@ static int _v4l2_setfps_vblank(int ctrlfd, uint32_t width, uint32_t height, int 
 		else
 		{
 			vblank = control.value;
-			dbg("sv4l2: new vertical blank %lu", vblank);
+			dbg("sv4l2: new vertical blank %u", vblank);
 		}
 	}
 	else
@@ -655,7 +655,7 @@ static int _v4l2_setfps_vblank(int ctrlfd, uint32_t width, uint32_t height, int 
 			fps = pixelrate / fps;
 	}
 	if (fps != -1)
-		warn("sv4l2: Frame rate: %d/%d fps vertical blank %lu",
+		warn("sv4l2: Frame rate: %d/%d fps vertical blank %u",
 			(fps > 0)?fps:1, (fps > 0)?1:-fps, vblank);
 	return fps;
 }
@@ -954,7 +954,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 	va_start(ap, t);
 	switch (t)
 	{
-		case buf_type_sv4l2 | buf_type_master:
+		case buf_type_sv4l2_master:
 			ret = sv4l2_requestbuffer_dmabuf(dev, MAX_BUFFERS);
 		break;
 		case buf_type_sv4l2:
@@ -972,7 +972,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 			ret = sv4l2_requestbuffer_userptr(dev, nmem, mems, size);
 		}
 		break;
-		case (buf_type_memory | buf_type_master):
+		case (buf_type_memory_master):
 		{
 			ret = sv4l2_requestbuffer_mmap(dev, MAX_BUFFERS);
 			if (ret)
@@ -1013,7 +1013,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 			}
 		}
 		break;
-		case buf_type_dmabuf | buf_type_master:
+		case buf_type_dmabuf_master:
 		{
 			ret = sv4l2_requestbuffer_dmabuf(dev, MAX_BUFFERS);
 			if (ret)
@@ -1049,7 +1049,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 	int length = 0;
 	if (dev->buffers)
 		length = dev->buffers[0].length;
-	dbg("sv4l2: %s %dx%d, %.4s %lu", dev->name, dev->width, dev->height, (char*)&dev->fourcc, length);
+	dbg("sv4l2: %s %dx%d, %.4s %u", dev->name, dev->width, dev->height, (char*)&dev->fourcc, length);
 	return ret;
 }
 
@@ -1184,11 +1184,11 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 	{
 		if (queryctrl->flags & V4L2_CTRL_FLAG_READ_ONLY)
 		{
-			err("sv4l2: control %d(%#d) read-only", id, id);
+			err("sv4l2: control %d(%#x) read-only", id, id);
 		}
 		else if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
 		{
-			err("sv4l2: control %d(%#d) %s setting error %m", id, id, queryctrl->name);
+			err("sv4l2: control %d(%#x) %s setting error %m", id, id, queryctrl->name);
 			return (void *)-1;
 		}
 	}
@@ -1200,12 +1200,12 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 	 */
 	control.value = 0;
 	if (queryctrl->flags & V4L2_CTRL_FLAG_HAS_PAYLOAD)
-		control.p_u8 = string;
+		control.p_u8 = (unsigned char *)string;
 	if ((queryctrl->type != V4L2_CTRL_TYPE_BUTTON) &&
 		(queryctrl->type != V4L2_CTRL_TYPE_CTRL_CLASS) &&
 		ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls))
 	{
-		err("sv4l2: control %d(%#d) %s getting error %m", id, id, queryctrl->name);
+		err("sv4l2: control %d(%#x) %s getting error %m", id, id, queryctrl->name);
 		return (void *)(long)-1;
 	}
 	value = control.ptr;
@@ -1213,13 +1213,13 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 	{
 	case V4L2_CTRL_TYPE_BOOLEAN:
 	case V4L2_CTRL_TYPE_INTEGER:
-		warn("sv4l2: control %d(%#d) %s => %d", id, id, queryctrl->name, control.value);
+		warn("sv4l2: control %d(%#x) %s => %d", id, id, queryctrl->name, control.value);
 	break;
 	case V4L2_CTRL_TYPE_STRING:
-		warn("sv4l2: control %d(%#d) %s => %s", id, id, queryctrl->name, control.ptr);
+		warn("sv4l2: control %d(%#x) %s => %s", id, id, queryctrl->name, (const char *)control.ptr);
 	break;
 	case V4L2_CTRL_TYPE_INTEGER64:
-		warn("sv4l2: control %d(%#d) %s => array", id, id, queryctrl->name);
+		warn("sv4l2: control %d(%#x) %s => array", id, id, queryctrl->name);
 	break;
 	case V4L2_CTRL_TYPE_U8:
 	case V4L2_CTRL_TYPE_U16:
@@ -1232,14 +1232,14 @@ static void * _sv4l2_control(int ctrlfd, int id, void *value, struct v4l2_query_
 		querymenu.id = control.id;
 		querymenu.index = control.value;
 		ioctl(ctrlfd, VIDIOC_QUERYMENU, &querymenu);
-		warn("sv4l2: control %d(%#d) %s => %s", id, id, queryctrl->name, querymenu.name);
+		warn("sv4l2: control %d(%#x) %s => %s", id, id, queryctrl->name, querymenu.name);
 	}
 	break;
 	default:
-		warn("sv4l2: control %d(%#d) %s => type(%d)", id, id, queryctrl->name, queryctrl->type);
+		warn("sv4l2: control %d(%#x) %s => type(%d)", id, id, queryctrl->name, queryctrl->type);
 	}
 	if (value == (void *)(long)-1)
-		err("sv4l2: control %d(%#d) %s => not set", id, id, queryctrl->name);
+		err("sv4l2: control %d(%#x) %s => not set", id, id, queryctrl->name);
 	return value;
 }
 
@@ -1333,11 +1333,11 @@ static int _sv4l2_treecontrols(int ctrlfd, int (*cb)(void *arg, struct v4l2_quer
 	{
 		if (qctrl.flags & V4L2_CTRL_FLAG_DISABLED)
 		{
-			dbg("sv4l2: control %s %d(%#d) disabled", qctrl.name, qctrl.id, qctrl.id);
+			dbg("sv4l2: control %s %d(%#x) disabled", qctrl.name, qctrl.id, qctrl.id);
 			qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
 			continue;
 		}
-		dbg("sv4l2: control %s id %d(%#d)", qctrl.name, qctrl.id, qctrl.id);
+		dbg("sv4l2: control %s id %d(%#x)", qctrl.name, qctrl.id, qctrl.id);
 		if (cb)
 			cb(arg, &qctrl);
 		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
@@ -1359,7 +1359,6 @@ int sv4l2_treecontrols(V4L2_t *dev, int (*cb)(void *arg, struct v4l2_query_ext_c
 
 int _sv4l2_treecontrolmenu(int ctrlfd, struct v4l2_query_ext_ctrl *ctrl, int (*cb)(void *arg, struct v4l2_querymenu *ctrl), void * arg)
 {
-	V4L2_t *dev = (V4L2_t *)arg;
 	struct v4l2_querymenu querymenu = {0};
 	querymenu.id = ctrl->id;
 	for (querymenu.index = ctrl->minimum; querymenu.index <= ctrl->maximum; querymenu.index++ )
@@ -1492,7 +1491,7 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 		dev->ops.createbuffers = createbuffers_mplane;
 	}
 	sv4l2_getpixformat(dev, NULL, NULL);
-	warn("sv4l2: create %s(%s), %s %lux%lu %.4s", name, devicename, config?config->device:"",
+	warn("sv4l2: create %s(%s), %s %ux%u %.4s", name, devicename, config?config->device:"",
 				dev->width, dev->height, (char*)&dev->fourcc);
 
 	return dev;
@@ -1833,7 +1832,7 @@ static int _sv4l2_loadjsonsetting(void *arg, struct v4l2_query_ext_ctrl *ctrl)
 		querymenu.id = ctrl->id;
 		for (querymenu.index = 0; ioctl(dev->fd, VIDIOC_QUERYMENU, &querymenu) == 0; querymenu.index++)
 		{
-			if (!strcmp(querymenu.name, value))
+			if (!strcmp((const char *)querymenu.name, value))
 			{
 				if (sv4l2_control(dev, ctrl->id, (void*)(long)querymenu.index) != (void *)-1)
 					warn("%s => %s", ctrl->name, value);
@@ -2344,6 +2343,8 @@ const char *sv4l2_CTRLTYPE(enum v4l2_ctrl_type type)
 		return "u32array";
 	case V4L2_CTRL_TYPE_CTRL_CLASS:
 		return "control class";
+	default:
+		return "unknown";
 	}
 	dbg("sv4l2: control type %#x not supported", type);
 	return "unknown";
@@ -2448,7 +2449,7 @@ static int menuprint(void *arg, struct v4l2_querymenu *querymenu)
 	json_t *control = (json_t *)arg;
 	json_t *value = json_object_get(control, "value");
 	if (value && querymenu->index == json_integer_value(value))
-		json_object_set_new(control, "value_show", json_string(querymenu->name));
+		json_object_set_new(control, "value_show", json_string((const char *)querymenu->name));
 	return 0;
 }
 
@@ -2456,7 +2457,7 @@ static int menuprintall(void *arg, struct v4l2_querymenu *querymenu)
 {
 	json_t *control = (json_t *)arg;
 	json_t *items = json_object_get(control, "items");
-	json_array_append_new(items, json_string(querymenu->name));
+	json_array_append_new(items, json_string((const char *)querymenu->name));
 	return menuprint(arg, querymenu);
 }
 

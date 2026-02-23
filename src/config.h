@@ -27,6 +27,9 @@ typedef enum buf_type_e
 	buf_type_memory = 2,
 	buf_type_dmabuf = 3,
 	buf_type_master = 0x80,
+	buf_type_sv4l2_master = 1 |  0x80,
+	buf_type_memory_master = 2 |  0x80,
+	buf_type_dmabuf_master = 3 |  0x80,
 } buf_type_e;
 
 typedef enum device_type_e

@@ -91,9 +91,6 @@ static socklen_t _proto_interface(Proto_Config_t *config, struct sockaddr_storag
 
 static socklen_t _proto_address(Proto_Config_t *config, struct sockaddr_storage *address)
 {
-	int sock = 0;
-	size_t mtu = 1500;
-	int family = 0;
 	struct addrinfo hints = {0};
 	struct addrinfo *result = NULL, *rp = NULL;
 
@@ -111,7 +108,6 @@ static socklen_t _proto_address(Proto_Config_t *config, struct sockaddr_storage 
 	{
 		return 0;
 	}
-	unsigned long longaddress = 0;
 	if (rp->ai_family == AF_INET)
 	{
 		((struct sockaddr_in *)rp->ai_addr)->sin_port = htons(config->port);
@@ -129,12 +125,14 @@ static socklen_t _proto_address(Proto_Config_t *config, struct sockaddr_storage 
 	return rp->ai_addrlen;
 }
 
+#if 0
 static int _proto_bindclient(int sock, struct sockaddr *saddr, socklen_t saddrlen)
 {
 	int status = -1;
 	status = connect(sock, saddr, saddrlen);
 	return status;
 }
+#endif
 
 static int _proto_bindserver(int sock, struct sockaddr *saddr, socklen_t saddrlen)
 {
@@ -152,7 +150,6 @@ static void *_proto_create(Proto_Config_t *config, int (*_bind)(int sock, struct
 	int sock = -1;
 	struct sockaddr_storage address = {0};
 	socklen_t addresslen = 0;
-	int status = -1;
 	int mtu = 1500;
 
 	if ((addresslen = _proto_address(config, &address)) == 0)
@@ -335,7 +332,6 @@ static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 
 static void proto_flush(void *arg)
 {
-	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
 }
 
 static int proto_fd(void *arg)

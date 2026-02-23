@@ -1,3 +1,6 @@
+#include <stdint.h>
+#include <inttypes.h>
+
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 
@@ -68,7 +71,7 @@ static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLC
 
 	uint32_t width = ctx->config->parent.width;
 	uint32_t height = ctx->config->parent.height;
-	GLuint glget = 0;
+	GLint glget = 0;
 	glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &glget);
 	if (glget <= width)
 		warn("segl: width to large max %d", glget);
@@ -140,7 +143,7 @@ static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLC
 	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if (ret != GL_FRAMEBUFFER_COMPLETE)
 	{
-		err("segl: generator failed for %.4s", &ctx->config->parent.fourcc);
+		err("segl: generator failed for %.4s", (char *)&ctx->config->parent.fourcc);
 		return NULL;
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -190,12 +193,12 @@ static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 //	if (stride[0] != dev->buffers[id].size / dev->config->parent.height)
 //		err("segl: exported format not aligned");
 	if (ctx->config->parent.fourcc && ctx->config->parent.fourcc != fourcc)
-		err("segl: requests %.4s, obtains %.4s", &ctx->config->parent.fourcc, &fourcc);
+		err("segl: requests %.4s, obtains %.4s", (char *)&ctx->config->parent.fourcc, (char *)&fourcc);
 	ctx->config->parent.fourcc = fourcc;
 
-	dbg("segl: export format modifier %.4s, %#x", &fourcc, modifiers[0]);
+	dbg("segl: export format modifier %.4s, %#"PRIx64"", (char *)&fourcc, modifiers[0]);
 	for (int i = 0; i < 4 && modifiers[0] != ctx->config->parent.modifiers; i++)
-		err("segl: format modifier present but not set (%lld/%lld)", modifiers[i], ctx->config->parent.modifiers);
+		err("segl: format modifier present but not set (%"PRId64"/%"PRId64")", modifiers[i], ctx->config->parent.modifiers);
 	ctx->config->parent.modifiers = modifiers[0];
 	eglDestroyImageKHR(ctx->egldisplay, image);
 
@@ -238,6 +241,7 @@ EGLExport_t export_imagemesa =
 	.out = _egl_export_out,
 	.fd = _egl_export_fd,
 	.setbuffer = _egl_export_setbuffer,
+	.releasebuffer = _egl_export_releasebuffer,
 	.flush = _egl_export_flush,
 	.destroy = _egl_export_destroy,
 };

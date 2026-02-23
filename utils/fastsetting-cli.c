@@ -87,7 +87,7 @@ void device_destroy(device_t *device)
 	free(device);
 }
 
-int _device_destroyall(device_t *devices)
+void _device_destroyall(device_t *devices)
 {
 	device_t *next = NULL;
 	for (device_t *device = devices; device != NULL; device = next)
@@ -266,7 +266,7 @@ static int _client_receive_loadsetting(fastsetting_t *data, client_t *clt, json_
 static ssize_t _client_receive(void *arg, client_t *clt, const char *buffer, size_t length)
 {
 	fastsetting_t *data = arg;
-	dbg("receive %d: %.*s", length, length, buffer);
+	dbg("receive %zd: %.*s", length, (int)length, buffer);
 
 	json_error_t error;
 	json_t *jentry = json_loadb(buffer, length, JSON_DECODE_ANY, &error);

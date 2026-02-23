@@ -133,7 +133,6 @@ int _capabilities(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 {
 	int ret = 0;
 	int all = 0;
-	int id = -2;
 	const char *name = NULL;
 	if (jentry && json_is_object(jentry))
 	{
@@ -174,7 +173,7 @@ int _capabilities(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 	json_object_set_new(jstatus, "data", jdata);
 	char *status = json_dumps(jstatus, 0);
 	size_t length = strnlen(status, UNIXSOCKET_PACKETSIZE);
-	dbg("send %lu %.*s", length, length, status);
+	dbg("send %zu %.*s", length, (int)length, status);
 	client_send(clt, status, length);
 	free(status);
 	json_decref(jstatus);
@@ -211,7 +210,7 @@ int _runcmd(FastVideoList_t *devices, client_t *clt, json_t *jentry)
 ssize_t _server_control(void *data, client_t *clt, const char *buffer, size_t length)
 {
 	int ret = -1;
-	dbg("receive: %.*s", length, buffer);
+	dbg("receive: %.*s", (int)length, buffer);
 	FastVideoList_t *devices = data;
 	json_error_t error;
 	json_t *jentry = json_loadb(buffer, length, JSON_DECODE_ANY, &error);

@@ -16,7 +16,7 @@
 #define HLS_HEADER "#EXTM3U\n\
 #EXT-X-VERSION:3\n\
 #EXT-X-TARGETDURATION:%f\n"
-#define HLS_ENTRY "#EXTINF:%d.%d\n"
+#define HLS_ENTRY "#EXTINF:%ld.%ld\n"
 #define HLS_FOOTER "#EXT-X-ENDLIST\n"
 
 #define Proto_FILE_Hls 0x010001
@@ -134,14 +134,13 @@ static void *proto_create(Proto_Config_t *config)
 static int proto_connect_fifo(void *arg)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
-	Proto_Config_t *config = proto->config;
 	if (faccessat(proto->rootfd, proto->filename, F_OK, 0) < 0)
 	{
 		mkfifoat(proto->rootfd, proto->filename, 0644);
 	}
 	struct stat sb;
 	if (fstatat(proto->rootfd, proto->filename, &sb, 0) &&
-		(sb.st_mode & S_IFMT != S_IFIFO))
+		((sb.st_mode & S_IFMT) != S_IFIFO))
 	{
 		err("file: file %s is not a named pipe", proto->filename);
 		return -1;
@@ -157,7 +156,6 @@ static int proto_connect_fifo(void *arg)
 static int proto_connect_reg(void *arg)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
-	Proto_Config_t *config = proto->config;
 
 	int newfd = proto->currentfd + 1;
 	newfd %= (sizeof(proto->fd) / sizeof(*proto->fd));
@@ -169,8 +167,6 @@ static int proto_connect_reg(void *arg)
 	}
 	if (proto->mode & Proto_FILE_Hls)
 	{
-		size_t length = 0;
-		length = strlen(HLS_FOOTER);
 		struct timespec tp;
 		clock_gettime(CLOCK_TAI, &tp);
 		timespec_subs(&tp, &proto->hlstp);
@@ -223,7 +219,6 @@ static void proto_flush(void *arg)
 
 static int proto_fd(void *arg)
 {
-	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
 	return -1;
 }
 
