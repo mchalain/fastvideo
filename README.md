@@ -12,6 +12,22 @@ The main feature is the use of dma_fd to transfer video from one device to anoth
 
 Fastvideo uses an external server to manage AWB, AEC and AF Algorithms. Fastvideo extracts the data from the v4l2 meta capture device and push them into a server via a named pipe. As this server is hardware dependent their are stored into *utils* directory.
 
+# Building
+
+The project uses only GNU Makefile, gcc (or clang). The *defconfig* file contains the available compilation options. For more information, see the [Makemore project](https://github.com/mchalain/makemore).
+
+```bash
+ $ make BUILDDIR=$PWD/build prefix=/usr sysconfdir=/etc/fastvideo defconfig
+ $ cd build
+ $ make
+ $ make DESTDIR=$PWD/tempo install
+```
+
+Other interesting configuration's options :
+
+ - CROSS\_COMPILE=arm-none-linux-gnueabi
+ - SYSROOT=/opt/arm-none-linux-gnueabi-sdk/arm-none-linux-gnueabi/sysroot
+
 # Features
 
 | Modules            |         | source | sync | transfer | control | dmafd | hw memory | soft memory | comment                      |
@@ -368,22 +384,6 @@ static void __attribute__ ((constructor)) convert_init()
 	}
 }
 ```
-
-# Building
-
-The project uses only GNU Makefile, gcc (or clang). The *defconfig* file contains the available compilation options. For more information, see the [Makemore project](https://github.com/mchalain/makemore).
-
-```bash
- $ make BUILDDIR=$PWD/build DRM=n prefix=/usr sysconfdir=/etc/fastvideo defconfig
- $ cd build
- $ make
- $ make DESTDIR=$PWD/tempo install
-```
-
-Other interesting configuration's options :
-
- - CROSS\_COMPILE=arm-none-linux-gnueabi
- - SYSROOT=/opt/arm-none-linux-gnueabi-sdk/arm-none-linux-gnueabi/sysroot
 
 ## Contribute
 
