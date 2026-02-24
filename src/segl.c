@@ -76,6 +76,7 @@ struct EGL_s
 	const EGLProg_ops_t *program_ops;
 	GLProgram_t *programs;
 	GLBuffer_t buffers[MAX_BUFFERS];
+	void *arraybuffers;
 	int curbufferid;
 	int nbuffers;
 };
@@ -281,14 +282,14 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	if (!eglInitialize(eglDisplay, &major, &minor))
 	{
 		err("segl: failed to initialize");
-		native->destroy(ndisplay);
+		native->destroy(ndisplay, 0);
 		return NULL;
 	}
 
 	if (!eglBindAPI(EGL_OPENGL_ES_API))
 	{
 		err("segl: failed to bind api EGL_OPENGL_ES_API");
-		native->destroy(ndisplay);
+		native->destroy(ndisplay, 0);
 		return NULL;
 	}
 
@@ -332,7 +333,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	if (eglChooseConfig(eglDisplay, native->attributes(ndisplay), eglConfigs, num_configs, &num_configs) == EGL_FALSE || num_configs == 0)
 	{
 		err("segl: failed to choose config: %d (%#x)", num_configs, eglGetError());
-		native->destroy(ndisplay);
+		native->destroy(ndisplay, 0);
 		return NULL;
 	}
 	dbg("segl: found %d configs", num_configs);
@@ -353,7 +354,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	if (eglContext == NULL)
 	{
 		err("segl: failed to create context (%#x)", eglGetError());
-		native->destroy(ndisplay);
+		native->destroy(ndisplay, 0);
 		return NULL;
 	}
 
@@ -390,7 +391,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	if (eglSurface == EGL_NO_SURFACE)
 	{
 		err("segl: failed to create egl surface (%#x)", eglGetError());
-		native->destroy(ndisplay);
+		native->destroy(ndisplay, nwindow);
 		return NULL;
 	}
 	eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext);
@@ -613,6 +614,7 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 					(*targets)[i] = buffer->dma_fd;
 					dbg("segl: export dmabuffer[%d]: %d %u", i, buffer->dma_fd, buffer->size);
 				}
+				dev->arraybuffers = *targets;
 			}
 			if (ntargets != NULL)
 				*ntargets = dev->nbuffers;
@@ -653,6 +655,7 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 					(*targets)[i] = dev->buffers[i].memory;
 					dbg("segl: export memory[%d]: %p %u", i, dev->buffers[i].memory, dev->buffers[i].size);
 				}
+				dev->arraybuffers = *targets;
 			}
 			if (ntargets != NULL)
 				*ntargets = dev->nbuffers;
@@ -874,14 +877,18 @@ EXT_API void segl_destroy(EGL_t *dev)
 		dev->program_ops->destroy(dev->programs);
 		eglDestroySurface(dev->egldisplay, dev->eglsurface);
 		eglDestroyContext(dev->egldisplay, dev->eglcontext);
-		dev->native->destroy(dev->native_display);
+		dev->native->destroy(dev->native_display, dev->native_window);
 	}
 	for (int i = 0; i < dev->nbuffers; i++)
 	{
 		_egl_releasebuffer(dev,i);
 	}
+	if (dev->arraybuffers)
+		free(dev->arraybuffers);
 	if (dev->export_ctx)
 		dev->export->destroy(dev->export_ctx);
+	if (dev->config)
+		free(dev->config);
 	free(dev);
 }
 

@@ -107,7 +107,7 @@ struct EGLNative_s
 	int (*fd)(EGLNativeWindowType native_win);
 	int (*flush)(EGLNativeWindowType native_win);
 	int (*sync)(EGLNativeWindowType native_win);
-	void (*destroy)(EGLNativeDisplayType native_display);
+	void (*destroy)(EGLNativeDisplayType native_display, EGLNativeWindowType native_win);
 };
 typedef void (*segl_native_append_t)(EGLNative_t *native);
 

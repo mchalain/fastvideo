@@ -32,6 +32,7 @@ fastvideo_LIBRARY-$(EGL)+=x11
 fastvideo_LIBRARY-$(EGL)+=wayland-protocols
 fastvideo_LIBRARY-$(EGL)+=wayland-egl
 fastvideo_PKGCONFIG+=fastvideo
+fastvideo_CFLAGS-$(SANITIZER)+=-fsanitize=address
 
 PKG_CONFIG?=pkg-config
 WAYLAND_FLAGS = $(shell $(PKG_CONFIG) wayland-client --cflags --libs)

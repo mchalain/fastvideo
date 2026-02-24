@@ -10,6 +10,7 @@
 typedef struct Dev_s Dev_t;
 struct Dev_s
 {
+	DeviceConf_t *config;
 	device_type_e type;
 	FrameBuffer_t *buffers;
 	int nbuffers;
@@ -40,6 +41,7 @@ EXT_API Dev_t *skeleton_create(const char *devicename, device_type_e type, Devic
 {
 	Dev_t *dev = calloc(1, sizeof(*dev));
 	dev->type = type;
+	dev->config = config;
 	if (type == device_input)
 	{
 		/**
@@ -241,6 +243,8 @@ EXT_API void skeleton_destroy(Dev_t *dev)
 		next = buffer->next;
 		_destroy_buffer(buffer);
 	}
+	if (dev->config)
+		free(dev->config);
 	free(dev);
 }
 

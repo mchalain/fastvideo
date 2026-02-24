@@ -119,10 +119,11 @@ static socklen_t _proto_address(Proto_Config_t *config, struct sockaddr_storage 
 	else
 		return 0;
 	memmove(address, rp->ai_addr, rp->ai_addrlen);
+	socklen_t len = rp->ai_addrlen;
 	if (result)
 		freeaddrinfo(result);
 
-	return rp->ai_addrlen;
+	return len;
 }
 
 #if 0

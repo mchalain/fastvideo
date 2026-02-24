@@ -53,6 +53,7 @@ struct V4L2_s
 	int nbuffers;
 	int nplanes;
 	V4L2Buffer_t *buffers;
+	void *arraybuffers;
 	int mode;
 	struct {
 		V4L2Buffer_t *(*createbuffers)(V4L2_t *dev, int number, enum v4l2_memory memory);

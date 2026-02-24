@@ -1094,7 +1094,8 @@ EXT_API void mpegts_destroy(Dev_t *dev)
 		close(dumpfd);
 #endif
 	free(dev->config->host);
-	free(dev->config);
+	if (dev->config)
+		free(dev->config);
 	free(dev);
 }
 

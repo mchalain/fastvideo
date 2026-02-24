@@ -249,6 +249,8 @@ EXT_API void sfile_destroy(File_t *dev)
 	dev->ops->destroy(dev->ctx);
 	if (dev->nbuffers > 0)
 		free(dev->buffers);
+	if (dev->config)
+		free(dev->config);
 	free(dev);
 }
 

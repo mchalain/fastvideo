@@ -399,6 +399,16 @@ int main_createoutput(const char *name, const char *configfile, FastVideoPipe_t 
 	return 0;
 }
 
+void main_pipedestroy(void *arg)
+{
+	FastVideoPipe_t *pipe = (FastVideoPipe_t *)arg;
+	pipe->input->ops->destroy(pipe->input->dev);
+	free(pipe->input);
+	pipe->output->ops->destroy(pipe->output->dev);
+	free(pipe->output);
+	free(pipe);
+}
+
 int main(int argc, char * const argv[])
 {
 	const char *owner = NULL;
@@ -554,11 +564,6 @@ int main(int argc, char * const argv[])
 		main_loop(pipes);
 
 	killdaemon(pidfile);
-	for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
-			pipe != NULL; pipe = fastvideolist_next(pipes))
-	{
-		pipe->input->ops->destroy(pipe->input->dev);
-		pipe->output->ops->destroy(pipe->output->dev);
-	}
+	fastvideolist_destroy(pipes, main_pipedestroy);
 	return 0;
 }

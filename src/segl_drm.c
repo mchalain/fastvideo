@@ -900,8 +900,13 @@ static int native_sync(EGLNativeWindowType native_win)
 	return 0;
 }
 
-static void native_destroy(EGLNativeDisplayType native_display)
+static void native_destroy(EGLNativeDisplayType native_display, EGLNativeWindowType native_win)
 {
+	struct gbm_surface *surface = (struct gbm_surface *)native_win;
+	if (surface)
+		gbm_surface_destroy(surface);
+	struct gbm_device *gbm = (struct gbm_device *)native_display;
+	gbm_device_destroy(gbm);
 }
 
 EGLNative_t eglnative_drm =

@@ -134,7 +134,7 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType native_displ
 	return (EGLNativeWindowType) win;
 }
 
-static void native_destroy(EGLNativeDisplayType native_display)
+static void native_destroy(EGLNativeDisplayType native_display, EGLNativeWindowType native_win)
 {
 }
 

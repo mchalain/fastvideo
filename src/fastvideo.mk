@@ -6,3 +6,5 @@ fastvideo_LIBS+=fastvideo
 fastvideo_LIBRARY+=jansson
 fastvideo_CFLAGS+=-fPIC -rdynamic
 fastvideo_LDFLAGS+=-fPIC -rdynamic
+fastvideo_CFLAGS-$(SANITIZER)+=-fsanitize=address
+fastvideo_LDFLAGS-$(SANITIZER)+=-fsanitize=address -static-libasan

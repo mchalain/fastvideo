@@ -794,8 +794,10 @@ void glprog_destroy(GLProgram_t *program)
 	if (program->controls_data)
 		shmdt(program->controls_data);
 	free(program->config);
-	for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = uniform->next)
+	GLProgram_Uniform_t *next;
+	for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = next)
 	{
+		next = uniform->next;
 		_glprog_uniform_destroy(uniform);
 	}
 	free(program);

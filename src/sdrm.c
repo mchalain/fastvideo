@@ -1573,6 +1573,8 @@ void sdrm_destroy(Display_t *disp)
 	{
 		drmModeDestroyPropertyBlob(disp->fd, disp->mode_id);
 	}
+	if (disp->config)
+		free(disp->config);
 	free(disp);
 }
 

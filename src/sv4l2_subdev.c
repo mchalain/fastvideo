@@ -363,6 +363,8 @@ void sv4l2_subdev_destroy(V4L2_t *subdev)
 {
 	dbg("sv4l2: subdev %s destroying", subdev->name);
 	close(subdev->fd);
+	if(subdev->config)
+		free(subdev->config);
 	free(subdev);
 }
 

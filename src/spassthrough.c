@@ -542,6 +542,7 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 		if (dev->buffers[i].mem)
 			sdmabuf_unmap(dev->buffers[i].mem, dev->buffers[i].size);
 	}
+	free(dev->buffers);
 	if (dev->config)
 	{
 		if (dev->config->mode & MODE_COPY)
@@ -550,7 +551,8 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 		}
 		if (dev->config->convert && dev->convert_ctx)
 			dev->config->convert->ops.destroy(dev->convert_ctx);
-		dlclose(dev->config->libraryhdl);
+		if (dev->config->libraryhdl)
+			dlclose(dev->config->libraryhdl);
 		free(dev->config);
 	}
 #if 0

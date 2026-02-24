@@ -835,7 +835,6 @@ int sv4l2_requestbuffer_dmabuf(V4L2_t *dev, int count)
 		return -1;
 	}
 	dev->nbuffers = req.count;
-	dev->buffers = calloc(dev->nbuffers, sizeof(*dev->buffers));
 	dev->buffers = dev->ops.createbuffers(dev, dev->nbuffers, V4L2_MEMORY_DMABUF);
 
 	dbg("sv4l2: request %d buffers", req.count);
@@ -990,6 +989,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 					{
 						(*targets)[i + j] = dev->buffers[i].ops.getmem(&dev->buffers[i], j);
 					}
+				dev->arraybuffers = *targets;
 			}
 			if (size != NULL)
 				*size = dev->buffers[0].ops.getsize(&dev->buffers[0], 0);
@@ -1029,6 +1029,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 				for (int i = 0; i < dev->nbuffers; i++)
 					for (int j = 0; j < dev->nplanes; j++)
 						(*targets)[i + j] = dev->buffers[i].ops.getdmafd(&dev->buffers[i], j);
+				dev->arraybuffers = *targets;
 			}
 			if (size != NULL)
 				*size = dev->buffers[0].ops.getsize(&dev->buffers[0], 0);
@@ -1694,6 +1695,8 @@ void sv4l2_destroy(V4L2_t *dev)
 			if (dev->buffers[i].map[j])
 				munmap(dev->buffers[i].map[j], dev->buffers[i].length);
 	}
+	if (dev->arraybuffers)
+		free(dev->arraybuffers);
 #if ADD_SUBDEVICES
 	for (int i = 0; i < (sizeof(dev->subdevs) / sizeof(*(dev->subdevs))); i++)
 	{
@@ -1702,6 +1705,8 @@ void sv4l2_destroy(V4L2_t *dev)
 	}
 #endif
 	free(dev->buffers);
+	if (dev->config)
+		free(dev->config);
 	close(dev->fd);
 	free(dev);
 }

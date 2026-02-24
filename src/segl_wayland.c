@@ -264,7 +264,7 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType native_displ
 	return (EGLNativeWindowType) g_context.egl_window;
 }
 
-static void native_destroy(EGLNativeDisplayType native_display)
+static void native_destroy(EGLNativeDisplayType native_display, EGLNativeWindowType native_win)
 {
 	wl_display_disconnect(native_display);
 }
