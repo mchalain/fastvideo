@@ -2240,6 +2240,7 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevices, const char *na
 						break;
 
 					config->subdev_entries[subdev_id] = (V4l2Config_t *)subdev_ops.createconfig(name);
+					memcpy(&config->subdev_entries[subdev_id]->parent, &config->parent, sizeof(config->parent));
 					config->subdev_entries[subdev_id]->parent.entry = subdevice;
 					config->subdev_entries[subdev_id]->parent.ops.loadconfiguration(config->subdev_entries[subdev_id], subdevice);
 					if (jlastname && json_is_string(jlastname))
