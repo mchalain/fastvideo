@@ -583,6 +583,7 @@ static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, uint32_t *wi
 		return -1;
 	}
 
+	uint8_t pdepth = fmt.fmt.pix.bytesperline / fmt.fmt.pix.width;
 	if (*height > 0 && *width == 0)
 	{
 		*width = *height * 16 / 9;
@@ -592,6 +593,7 @@ static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, uint32_t *wi
 	{
 		fmt.fmt.pix.width = *width;
 		fmt.fmt.pix.height = *height;
+		fmt.fmt.pix.bytesperline = *width * pdepth;
 	}
 	if (ioctl(fd, VIDIOC_S_FMT, &fmt) != 0)
 	{
