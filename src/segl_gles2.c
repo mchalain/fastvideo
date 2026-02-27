@@ -34,6 +34,7 @@ typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
 struct GLProgram_Uniform_s
 {
 	const char *name;
+	GLint loc;
 	Uniform_Type_e type;
 	void *value;
 	void *data;
@@ -691,39 +692,36 @@ void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer)
 
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 {
+	if (!uniform->loc)
+		uniform->loc = glGetUniformLocation(program->ID, uniform->name);
 	switch (uniform->type)
 	{
 	case Uniform_FLOAT_e:
 	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform1f(loc, *(GLfloat*)uniform->value);
+		glUniform1f(uniform->loc, *(GLfloat*)uniform->value);
 	}
 	break;
 	case Uniform_INT_e:
 	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform1i(loc, *(GLint*)uniform->value);
+		glUniform1i(uniform->loc, *(GLint*)uniform->value);
 	}
 	break;
 	case Uniform_FVEC2_e:
 	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform2f(loc, ((GLfloat*)uniform->value)[0],
+		glUniform2f(uniform->loc, ((GLfloat*)uniform->value)[0],
 						((GLfloat*)uniform->value)[1]);
 	}
 	break;
 	case Uniform_FVEC3_e:
 	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform3f(loc, ((GLfloat*)uniform->value)[0],
+		glUniform3f(uniform->loc, ((GLfloat*)uniform->value)[0],
 						((GLfloat*)uniform->value)[1],
 						((GLfloat*)uniform->value)[2]);
 	}
 	break;
 	case Uniform_FVEC4_e:
 	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform4f(loc, ((GLfloat*)uniform->value)[0],
+		glUniform4f(uniform->loc, ((GLfloat*)uniform->value)[0],
 						((GLfloat*)uniform->value)[1],
 						((GLfloat*)uniform->value)[2],
 						((GLfloat*)uniform->value)[3]);
@@ -731,8 +729,7 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 	break;
 	case Uniform_IVEC2_e:
 	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform2i(loc, ((GLint*)uniform->value)[0],
+		glUniform2i(uniform->loc, ((GLint*)uniform->value)[0],
 						((GLint*)uniform->value)[1]);
 	}
 	break;
@@ -746,8 +743,7 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 	break;
 	case Uniform_IVEC4_e:
 	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform4i(loc, ((GLint*)uniform->value)[0],
+		glUniform4i(uniform->loc, ((GLint*)uniform->value)[0],
 						((GLint*)uniform->value)[1],
 						((GLint*)uniform->value)[2],
 						((GLint*)uniform->value)[3]);
@@ -755,27 +751,23 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 	break;
 	case Uniform_MAT2_e:
 	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniformMatrix2fv(loc, 1, GL_FALSE, uniform->value);
+		glUniformMatrix2fv(uniform->loc, 1, GL_FALSE, uniform->value);
 	}
 	break;
 	case Uniform_MAT3_e:
 	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniformMatrix3fv(loc, 1, GL_FALSE, uniform->value);
+		glUniformMatrix3fv(uniform->loc, 1, GL_FALSE, uniform->value);
 	}
 	break;
 	case Uniform_MAT4_e:
 	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniformMatrix4fv(loc, 1, GL_FALSE, uniform->value);
+		glUniformMatrix4fv(uniform->loc, 1, GL_FALSE, uniform->value);
 	}
 	break;
 	case Uniform_FUNC_e:
 	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
 		GLfloat (*func)(GLProgram_Uniform_t *uniform) = uniform->value;
-		glUniform1f(loc, func(uniform));
+		glUniform1f(uniform->loc, func(uniform));
 	}
 	break;
 	default:
