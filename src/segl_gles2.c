@@ -30,6 +30,8 @@ typedef enum{
 	Uniform_FUNC_e,
 } Uniform_Type_e;
 
+#define	Uniform_SHARED_e 0x1000
+
 typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
 struct GLProgram_Uniform_s
 {
@@ -432,6 +434,7 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint
 			if (size > 0)
 			{
 				uniform->value = uniform_data + offset;
+				uniform->type |= Uniform_SHARED_e;
 				offset += size;
 			}
 		}
@@ -694,7 +697,7 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 {
 	if (!uniform->loc)
 		uniform->loc = glGetUniformLocation(program->ID, uniform->name);
-	switch (uniform->type)
+	switch (uniform->type & ~Uniform_SHARED_e)
 	{
 	case Uniform_FLOAT_e:
 	{
@@ -786,8 +789,6 @@ void glprog_destroy(GLProgram_t *program)
 		glDeleteFramebuffers(1, &program->fbo);
 		glDeleteTextures(1, &program->out.texture);
 	}
-	if (program->controls_data)
-		shmdt(program->controls_data);
 	free(program->config);
 	GLProgram_Uniform_t *next;
 	for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = next)
@@ -795,6 +796,8 @@ void glprog_destroy(GLProgram_t *program)
 		next = uniform->next;
 		_glprog_uniform_destroy(uniform);
 	}
+	if (program->controls_data)
+		shmdt(program->controls_data);
 	free(program);
 }
 
@@ -845,7 +848,7 @@ static void _glprog_uniform_setarray(GLProgram_Uniform_t *uniform, json_t *jvalu
 static int _glprog_uniform_size(GLProgram_Uniform_t *uniform)
 {
 	int ret = -1;
-	switch (uniform->type)
+	switch (uniform->type & ~Uniform_SHARED_e)
 	{
 	case Uniform_INT_e:
 		ret = sizeof(GLint);
@@ -899,7 +902,7 @@ static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue
 	}
 	if (jvalue && json_is_number(jvalue))
 	{
-		switch (uniform->type)
+		switch (uniform->type & ~Uniform_SHARED_e)
 		{
 		case Uniform_INT_e:
 			*(GLint *)uniform->value = json_integer_value(jvalue);
@@ -915,7 +918,7 @@ static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue
 	}
 	if (jvalue && json_is_array(jvalue))
 	{
-		switch (uniform->type)
+		switch (uniform->type & ~Uniform_SHARED_e)
 		{
 		case Uniform_FVEC2_e:
 			_glprog_uniform_setarray(uniform, jvalue, 2, Uniform_FLOAT_e);
@@ -1240,12 +1243,15 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform)
 {
-	switch (uniform->type)
+	if (!(uniform->type & Uniform_SHARED_e))
 	{
-		case Uniform_FUNC_e:
-		break;
-		default:
-			free(uniform->value);
+		switch (uniform->type)
+		{
+			case Uniform_FUNC_e:
+			break;
+			default:
+				free(uniform->value);
+		}
 	}
 	free(uniform);
 }
