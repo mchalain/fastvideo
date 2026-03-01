@@ -163,7 +163,10 @@ static void display_log(GLuint instance)
 	GLint logSize = 0;
 	GLchar* log = NULL;
 
-	glGetProgramiv(instance, GL_INFO_LOG_LENGTH, &logSize);
+	if (glIsShader(instance))
+		glGetShaderiv(instance, GL_INFO_LOG_LENGTH, &logSize);
+	else
+		glGetProgramiv(instance, GL_INFO_LOG_LENGTH, &logSize);
 	if (!logSize)
 	{
 		err("segl: no log");
