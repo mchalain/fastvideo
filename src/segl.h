@@ -42,15 +42,9 @@ struct FourccFormat_s
 const FourccFormat_t *fourcc_getformat(uint32_t fourcc);
 
 typedef struct GL_Buffer_s GL_Buffer_t;
-struct GL_Buffer_s
-{
-	const char *name;
-	GLint id;
-	EGLImageKHR image;
-	GLuint texture;
-	GLenum textype;
-	EGLint egltarget;
-};
+GL_Buffer_t *glbuffer_outtexture(uint32_t width, uint32_t height, const char *name);
+EGLImage glbuffer_getimage(GL_Buffer_t *buffer,EGLDisplay egldisplay, EGLContext eglcontext);
+void glbuffer_destroy(GL_Buffer_t *buffer);
 
 typedef struct GLBuffer_s GLBuffer_t;
 struct GLBuffer_s

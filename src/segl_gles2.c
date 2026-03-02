@@ -14,6 +14,18 @@
 
 #define segl_dbg(...)
 
+struct GL_Buffer_s
+{
+	const char *name;
+	GLint unit;
+	GLint loc;
+	EGLImageKHR image;
+	GLuint fbo;
+	GLuint texture;
+	GLenum textype;
+	EGLint egltarget;
+};
+
 typedef enum{
 	Uniform_UNKNOWN_e = 0,
 	Uniform_INT_e,
@@ -61,7 +73,7 @@ struct GLProgram_s
 	GLuint vertexBufferObject[3];
 	GLfloat *movectx;
 	GLfloat *(*move)(GLfloat *);
-	GL_Buffer_t out;
+	GL_Buffer_t *out;
 	GLuint fbo;
 	uint32_t width;
 	uint32_t height;
@@ -126,6 +138,9 @@ static const GLchar _defaultfragment[] = ""
 #ifndef EGL_EGLEXT_PROTOTYPES
 static PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = NULL;
 static PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = NULL;
+#ifdef EGL_KHR_image
+static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR = NULL;
+#endif
 #if defined(GL_OES_EGL_image)
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
 static PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
@@ -142,6 +157,7 @@ static int _egl_initprototypes(void)
 	{
 		return -1;
 	}
+#if defined(GL_OES_EGL_image)
 	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
 	if(glEGLImageTargetTexture2DOES == NULL)
 	{
@@ -152,6 +168,14 @@ static int _egl_initprototypes(void)
 	{
 		return -1;
 	}
+#endif
+#ifdef EGL_KHR_image
+	eglCreateImageKHR = (void *) eglGetProcAddress("eglCreateImageKHR");
+	if(eglCreateImageKHR == NULL)
+	{
+		return -1;
+	}
+#endif
 	return 0;
 }
 #else
@@ -529,35 +553,86 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	return program;
 }
 
-static int glprog_outtexture(GLProgram_t *program, GLenum textype)
+GL_Buffer_t *glbuffer_outtexture(uint32_t width, uint32_t height, const char *name)
 {
-	if (program->out.texture)
-	{
-		return 0;
-	}
-	glGenFramebuffers(1, &program->fbo);
-	if (program->fbo == 0)
+	GLenum textype = GL_TEXTURE_2D;
+	GLuint fbo;
+	glGenFramebuffers(1, &fbo);
+	if (fbo == 0)
 	{
 		err("segl: framebuffer unsupported");
-		return -1;
+		return NULL;
 	}
-	glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glEnable(textype);
 	GLuint texture = 0;
 	glGenTextures(1, &texture);
 	glBindTexture(textype, texture);
 	// The format must be RGB. RGBA generate error during the texture attachment to the frambuffer (glprog_run)
-	glTexImage2D(textype, 0, GL_RGB, program->width, program->height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(textype, 0, GL_RGB, width, height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
 	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameterf(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameterf(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	program->out.texture = texture;
-	program->out.textype = textype;
-	program->out.name = _defaultname;
-	if (program->config && program->config->name)
-		program->out.name = program->config->name;
+	GL_Buffer_t *out = calloc(1, sizeof(*out));
+	out->fbo = fbo;
+	out->texture = texture;
+	out->textype = textype;
+	out->egltarget = EGL_GL_TEXTURE_2D;
+	out->name = _defaultname;
+	if (name)
+		out->name = name;
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+				out->textype, out->texture, 0);
+	GLuint glerror = glGetError();
+#if 0
+	if (glerror)
+	{
+		err ("segl: Texturebuffer error %#x", glerror);
+		free(out);
+		return NULL;
+	}
+#endif
+	/* Sanity check. */
+	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (ret != GL_FRAMEBUFFER_COMPLETE)
+	{
+		err("segl: buffer %s export buffer error", name);
+		free(out);
+		return NULL;
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+	return out;
+}
+
+EGLImage glbuffer_getimage(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContext eglcontext)
+{
+	const EGLint tattributes[] = {
+		EGL_IMAGE_PRESERVED, EGL_TRUE,
+		EGL_NONE,
+	};
+	const EGLint *attributes = tattributes;
+
+	/// eglCreateImage and eglCreateImageKHR have the same result
+	EGLImage image = eglCreateImageKHR(egldisplay, eglcontext,
+		buffer->egltarget, (void *)(long)buffer->texture, attributes);
+	return image;
+}
+
+void glbuffer_destroy(GL_Buffer_t *buffer)
+{
+	glDeleteFramebuffers(1, &buffer->fbo);
+	glDeleteTextures(1, &buffer->texture);
+	free(buffer);
+}
+
+static int glprog_outtexture(GLProgram_t *program, GLenum textype)
+{
+	program->out = glbuffer_outtexture(program->width, program->height, program->config->name);
+	if (program->out == NULL)
+		return -1;
+	program->fbo = program->out->fbo;
 	return 0;
 }
 
@@ -572,7 +647,7 @@ int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out)
 	}
 	if (out)
 	{
-		memcpy(&program->out, out, sizeof(program->out));
+		program->out = out;
 	}
 	return 0;
 }
@@ -610,8 +685,9 @@ GL_Buffer_t *gltexture_create(GLProgram_t *program, uint32_t fourcc)
 	glbuffer->name = _defaulttexturename;
 	if (program->config && program->config->input.name)
 		glbuffer->name = program->config->input.name;
-	glbuffer->id = glGetUniformLocation(program->ID, glbuffer->name);
-	glUniform1i(glbuffer->id, glbuffer->id);
+	glbuffer->loc = glGetUniformLocation(program->ID, glbuffer->name);
+	glbuffer->unit = 0;
+	glUniform1i(glbuffer->loc, glbuffer->unit);
 
 	glBindVertexArrayOES(0);
 	return glbuffer;
@@ -636,17 +712,9 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 {
 	GLenum err = 0;
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	if (program->fbo  > 0)
+	if (program->out)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
-		glBindTexture(program->out.textype, program->out.texture);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, program->out.textype,
-					program->out.texture, 0);
-		err = glGetError();
-		if (err != GL_NO_ERROR)
-		{
-			err("segl: program[%s] Framebuffer access error %#x", program->out.name, err);
-		}
 	}
 	else
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -655,8 +723,8 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 	glBindVertexArrayOES(program->vertexArrayID);
 	glUseProgram(program->ID);
 
-	glUniform1i(buffer->id, 0); // GL_TEXTURE0
-	glActiveTexture(GL_TEXTURE0);
+	glUniform1i(buffer->loc, buffer->unit);
+	glActiveTexture(GL_TEXTURE0 + buffer->unit);
 	glBindTexture(buffer->textype, buffer->texture);
 
 	if (program->move)
@@ -683,7 +751,7 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 	}
 	if (program->next)
 	{
-		return glprog_run(program->next, &program->out);
+		return glprog_run(program->next, program->out);
 	}
 	return 0;
 }
@@ -787,10 +855,9 @@ void glprog_destroy(GLProgram_t *program)
 {
 	if (program->next)
 		return glprog_destroy(program->next);
-	if (program->fbo)
+	if (program->out)
 	{
-		glDeleteFramebuffers(1, &program->fbo);
-		glDeleteTextures(1, &program->out.texture);
+		glbuffer_destroy(program->out);
 	}
 	free(program->config);
 	GLProgram_Uniform_t *next;
