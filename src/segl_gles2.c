@@ -49,7 +49,7 @@ static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
 
-EGLProg_ops_t gles2_ops;
+static EGLProg_ops_t _gles2_ops;
 
 typedef struct GLProgram_s GLProgram_t;
 struct GLProgram_s
@@ -70,13 +70,13 @@ struct GLProgram_s
 	GLProgram_Uniform_t *controls;
 };
 
-const GLchar *defaultname = "display";
-const GLchar *defaulttexturename = "vTexture";
+const GLchar _defaultname[] = "display";
+const GLchar _defaulttexturename[] = "vTexture";
 
 //#define GLSLV300
 
 #ifdef GLSLV300
-static const GLchar defaultvertex[] = "#version 300 es \n\
+static const GLchar _defaultvertex[] = "#version 300 es \n\
 layout(location = 0) in vec3 vPosition;\n\
 out vec2 texUV;\n\
 \n\
@@ -86,7 +86,7 @@ void main (void)\n\
 	texUV = (vec2(0.5, 0.5) - vPosition.xy / 2.0);\n\
 }\n\
 ";
-static const GLchar defaultfragment[] = "#version 300 es\n\
+static const GLchar _defaultfragment[] = "#version 300 es\n\
 precision mediump float;\n\
 uniform sampler2D vTexture;\n\
 in vec2 texUV;\n\
@@ -97,7 +97,7 @@ void main() {\n\
 }\n\
 ";
 #else
-static const GLchar defaultvertex[] = ""
+static const GLchar _defaultvertex[] = ""
 "\n""attribute vec3 vPosition;"
 "\n""varying vec2 texUV;"
 "\n"
@@ -107,7 +107,7 @@ static const GLchar defaultvertex[] = ""
 "\n""	gl_Position = vec4(vPosition,1.);"
 "\n""}"
 "\n";
-static const GLchar defaultfragment[] = ""
+static const GLchar _defaultfragment[] = ""
 "\n""#extension GL_OES_EGL_image_external : require"
 "\n""precision mediump float;"
 "\n""uniform samplerExternalOES vTexture;"
@@ -332,7 +332,7 @@ static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADER
 {
 	GLint programState = 0;
 
-	GLuint vertexID = loadShader(GL_VERTEX_SHADER, vertex, defaultvertex);
+	GLuint vertexID = loadShader(GL_VERTEX_SHADER, vertex, _defaultvertex);
 	if ( vertexID == 0)
 	{
 		err("segl: vertex shader compilation error");
@@ -341,9 +341,9 @@ static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADER
 
 	GLuint fragmentID = 0;
 	if (fragments == NULL)
-		fragmentID = loadShader(GL_FRAGMENT_SHADER, NULL, defaultfragment);
+		fragmentID = loadShader(GL_FRAGMENT_SHADER, NULL, _defaultfragment);
 	else if (fragments[1] == NULL)
-		fragmentID = loadShader(GL_FRAGMENT_SHADER, fragments[0], defaultfragment);
+		fragmentID = loadShader(GL_FRAGMENT_SHADER, fragments[0], _defaultfragment);
 	else
 		fragmentID = loadShaders(GL_FRAGMENT_SHADER, fragments);
 	if (fragmentID == 0)
@@ -554,7 +554,7 @@ static int glprog_outtexture(GLProgram_t *program, GLenum textype)
 	glTexParameterf(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	program->out.texture = texture;
 	program->out.textype = textype;
-	program->out.name = defaultname;
+	program->out.name = _defaultname;
 	if (program->config && program->config->name)
 		program->out.name = program->config->name;
 
@@ -607,11 +607,11 @@ GL_Buffer_t *gltexture_create(GLProgram_t *program, uint32_t fourcc)
 	glbuffer->texture = dma_texture;
 	glbuffer->textype = textype;
 
-	glbuffer->name = defaulttexturename;
+	glbuffer->name = _defaulttexturename;
 	if (program->config && program->config->input.name)
 		glbuffer->name = program->config->input.name;
 	glbuffer->id = glGetUniformLocation(program->ID, glbuffer->name);
-	glUniform1i(glbuffer->id, 0); // GL_TEXTURE0
+	glUniform1i(glbuffer->id, glbuffer->id);
 
 	glBindVertexArrayOES(0);
 	return glbuffer;
@@ -1219,7 +1219,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 			if (previous)
 				previous->next = config;
 			previous = config;
-			config->type = gles2_ops.name;
+			config->type = _gles2_ops.name;
 		}
 	}
 	else if (jconfig && json_is_object(jconfig))
@@ -1232,7 +1232,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 		else
 		{
 			first = config;
-			config->name = gles2_ops.name;
+			config->name = _gles2_ops.name;
 		}
 	}
 	if (arg != NULL)
@@ -1259,7 +1259,7 @@ static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform)
 	free(uniform);
 }
 
-EGLProg_ops_t gles2_ops = {
+static EGLProg_ops_t _gles2_ops = {
 	.name = "gles2",
 	.create = glprog_create,
 	.create_controler = glprog_create_controler,
@@ -1289,6 +1289,6 @@ static void __attribute__ ((constructor)) segl_init()
 	_segl_program_ops_append = dlsym(hdl, "segl_program_ops_append");
 	if (_segl_program_ops_append)
 	{
-		_segl_program_ops_append(&gles2_ops);
+		_segl_program_ops_append(&_gles2_ops);
 	}
 }
