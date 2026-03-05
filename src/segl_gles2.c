@@ -66,6 +66,7 @@ static EGLProg_ops_t _gles2_ops;
 typedef struct GLProgram_s GLProgram_t;
 struct GLProgram_s
 {
+	int index;
 	GLProgram_t *next;
 	EGLConfig_Program_t *config;
 	GLuint ID;
@@ -490,6 +491,7 @@ GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, GLuint width, 
 
 GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height)
 {
+	static int index = 1;
 	GLuint programID = 0;
 	warn("segl: GPU %s %s", glGetString(GL_VENDOR), glGetString(GL_RENDERER));
 	warn("segl: %s", glGetString(GL_VERSION));
@@ -546,6 +548,7 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	glUniform4f(resolutionID, (GLfloat)program->width, (GLfloat)program->height, 1 / (GLfloat)program->width, 1 / (GLfloat)program->height);
 
 	glBindVertexArrayOES(0);
+	program->index = index++;
 	if (config && config->next)
 	{
 		program->next = glprog_create(config->next, width, height);
@@ -708,24 +711,34 @@ void gltexture_destroy(GL_Buffer_t *glbuffer)
 	free(glbuffer);
 }
 
-int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
+static int _glprog_run(GLProgram_t *program, GL_Buffer_t *buffer, GLProgram_t *prevprog)
 {
-	GLenum err = 0;
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	GLenum error = 0;
+	glUseProgram(program->ID);
+	error = glGetError();
+
 	if (program->out)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
+        	GLenum error = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		if (error != GL_FRAMEBUFFER_COMPLETE)
+			err("segl: framebuffer incomplet: %#xn", error);
 	}
-	else
-		glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT);
 
-	glClearColor(0.5, 0.5, 0.5, 1.0);
 	glBindVertexArrayOES(program->vertexArrayID);
-	glUseProgram(program->ID);
 
-	glUniform1i(buffer->loc, buffer->unit);
 	glActiveTexture(GL_TEXTURE0 + buffer->unit);
 	glBindTexture(buffer->textype, buffer->texture);
+	glUniform1i(buffer->loc, buffer->unit);
+
+	if (prevprog)
+	{
+		glActiveTexture(GL_TEXTURE0 + prevprog->index);
+		glBindTexture(prevprog->out->textype, prevprog->out->texture);
+		if (prevprog->out->loc)
+			glUniform1i(prevprog->out->loc, prevprog->index);
+	}
 
 	if (program->move)
 	{
@@ -737,23 +750,22 @@ int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 		glprog_setuniform(program, uniform);
 	}
 
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
-
-	if (program->fbo != -1)
-	{
-		GLint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-		if (status != GL_FRAMEBUFFER_COMPLETE)
-		{
-			err("framebuffer %u incomplet %#x", program->fbo, status);
-			//return -1;
-		}
-		//glFramebufferTexture2D to disable the texture is an invalid operation
-	}
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+	error = glGetError();
+	if (error != GL_NO_ERROR)
+		err("segl: %s running error %#x", program->config->name, error);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindTexture(buffer->textype, 0);
 	if (program->next)
 	{
-		return glprog_run(program->next, program->out);
+		return _glprog_run(program->next, buffer, program);
 	}
 	return 0;
+}
+
+int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
+{
+	return _glprog_run(program, buffer, NULL);
 }
 
 void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer)

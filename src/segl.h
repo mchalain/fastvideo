@@ -71,6 +71,7 @@ struct GLProgram_Input_s {
 typedef struct EGLConfig_Program_s EGLConfig_Program_t;
 struct EGLConfig_Program_s
 {
+	int index;
 	const char *name;
 	const char *type;
 	const char *vertex;
