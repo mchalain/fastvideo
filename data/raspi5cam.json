@@ -348,8 +348,8 @@
     "device": "/dev/dri/card0",
     "programs":[{
       "disable": false,
-      "vertex": "data/simplevertex.glsl",
-      "fragment": "data/debayer.glsl"
+      "vertex": "simplevertex.glsl",
+      "fragment": "debayer.glsl"
     }],
     "end": true
   }

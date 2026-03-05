@@ -396,6 +396,46 @@
     "end":true
   },
   {
+	"name":"shadertoy",
+	"type":"gpu",
+	"native":["x11","wayland","drm","offscreen"],
+	"transfer": {
+		"fourcc": "XB24",
+		"export": "imagemesa",
+		"end":true
+	},
+	"programs": [{
+		"name": "Empty",
+		"disable": true,
+		"vertex": "ShaderToy/flipvertex.glsl",
+		"fragment": ["ShaderToy/fragment.glsl","ShaderToy/Image.glsl"],
+		"controls": [{
+			"name": "iTime",
+			"type": "func",
+			"value": "time"
+		},{
+			"name": "fFrame",
+			"type": "func",
+			"value": "frames"
+		}]
+	},{
+		"name": "Funny",
+		"disable": false,
+		"vertex": "ShaderToy/vertex.glsl",
+		"fragment": ["ShaderToy/fragment.glsl","ShaderToy/Funny.glsl"],
+		"controls": [{
+			"name": "iTime",
+			"type": "func",
+			"value": "time"
+		},{
+			"name": "fFrame",
+			"type": "func",
+			"value": "frames"
+		}]
+	}],
+	"end":true
+  },
+  {
     "name": "dvb-e",
     "type": "mpegts",
     "protocol": "udp",
