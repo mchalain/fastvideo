@@ -75,7 +75,6 @@ struct GLProgram_s
 	GLfloat *movectx;
 	GLfloat *(*move)(GLfloat *);
 	GL_Buffer_t *out;
-	GLuint fbo;
 	uint32_t width;
 	uint32_t height;
 	uint32_t fourcc;
@@ -635,18 +634,16 @@ static int glprog_outtexture(GLProgram_t *program, GLenum textype)
 	program->out = glbuffer_outtexture(program->width, program->height, program->config->name);
 	if (program->out == NULL)
 		return -1;
-	program->fbo = program->out->fbo;
 	return 0;
 }
 
-int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out)
+int glprog_setup(GLProgram_t *program, GL_Buffer_t *out)
 {
-	program->fbo = fbo;
 	if (program->next)
 	{
 		if (glprog_outtexture(program, GL_TEXTURE_2D))
 			return -1;
-		return glprog_setup(program->next, fbo, out);
+		return glprog_setup(program->next, out);
 	}
 	if (out)
 	{
@@ -719,7 +716,7 @@ static int _glprog_run(GLProgram_t *program, GL_Buffer_t *buffer, GLProgram_t *p
 
 	if (program->out)
 	{
-		glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
+		glBindFramebuffer(GL_FRAMEBUFFER, program->out->fbo);
         	GLenum error = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 		if (error != GL_FRAMEBUFFER_COMPLETE)
 			err("segl: framebuffer incomplet: %#xn", error);

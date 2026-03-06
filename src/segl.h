@@ -119,7 +119,6 @@ struct EGLExport_s
 	const char *name;
 	const char *native;
 	void *(*create)(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext);
-	GLuint (*fbo)(void *arg);
 	GL_Buffer_t * (*out)(void *arg);
 	int (*fd)(void *arg);
 	int (*setbuffer)(void *arg, GLBuffer_t *buffer);
@@ -131,7 +130,7 @@ struct EGLExport_s
 typedef void (*segl_export_append_t)(EGLExport_t *export);
 
 typedef GLProgram_t *(*glprog_create_t)(EGLConfig_Program_t *config, GLuint width, GLuint height);
-typedef int (*glprog_setup_t)(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out);
+typedef int (*glprog_setup_t)(GLProgram_t *program, GL_Buffer_t *out);
 typedef GL_Buffer_t *(*glbuffer_create_t)(GLProgram_t *program, uint32_t fourcc);
 typedef void (*glbuffer_attach_t)(GL_Buffer_t *glbuffer, EGLImageKHR image);
 typedef void (*glbuffer_destroy_t)(GL_Buffer_t *glbuffer);

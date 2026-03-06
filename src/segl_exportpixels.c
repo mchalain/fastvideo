@@ -22,11 +22,6 @@ static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLC
 	return ctx;
 }
 
-static GLuint _egl_export_fbo(void *arg)
-{
-	return 0;
-}
-
 static GL_Buffer_t *_egl_export_out(void *arg)
 {
 	return NULL;
@@ -102,7 +97,6 @@ static EGLExport_t eglexport_pixels =
 {
 	.name = "pixels",
 	.create = _egl_export_create,
-	.fbo = _egl_export_fbo,
 	.out = _egl_export_out,
 	.fd = _egl_export_fd,
 	.setbuffer = _egl_export_setbuffer,

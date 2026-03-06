@@ -67,7 +67,6 @@ struct EGL_s
 	EGLConfig eglconfig;
 	EGLContext eglcontext;
 	EGLSurface eglsurface;
-	GLuint fbo;
 	EGL_t *dup;
 	const EGLExport_t *export;
 	void *export_ctx;
@@ -733,8 +732,6 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		dup->buffers[i].pitch = fformat->stride_factor[0];
 		dup->export->setbuffer(dup->export_ctx, &dup->buffers[i]);
 	}
-	/// set the parent fbo
-	dev->fbo = dup->export->fbo(dup->export_ctx);
 	return dup;
 }
 
@@ -756,7 +753,7 @@ EXT_API int segl_start(EGL_t *dev)
 	GL_Buffer_t *out = NULL;
 	if (dev->dup)
 		out = dev->dup->export->out(dev->dup->export_ctx);
-	dev->program_ops->setup(dev->programs, dev->fbo, out);
+	dev->program_ops->setup(dev->programs, out);
 
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
 	dev->curbufferid = -1;

@@ -57,7 +57,6 @@ struct EGLExportImageMesa_s
 	EGLConfig_t *config;
 	EGLDisplay egldisplay;
 	EGLContext eglcontext;
-	GLuint fbo;
 	GLuint rbo;
 	GL_Buffer_t *out;
 };
@@ -121,12 +120,6 @@ static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLC
 	ctx->out = glbuffer_outtexture(width, height, "export");
 #endif
 	return ctx;
-}
-
-static GLuint _egl_export_fbo(void *arg)
-{
-	EGLExportImageMesa_t *ctx = (EGLExportImageMesa_t *)arg;
-	return ctx->fbo;
 }
 
 static GL_Buffer_t *_egl_export_out(void *arg)
@@ -203,7 +196,6 @@ EGLExport_t export_imagemesa =
 {
 	.name = "imagemesa",
 	.create = _egl_export_create,
-	.fbo = _egl_export_fbo,
 	.out = _egl_export_out,
 	.fd = _egl_export_fd,
 	.setbuffer = _egl_export_setbuffer,
