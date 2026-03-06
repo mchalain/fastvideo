@@ -555,6 +555,34 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	return program;
 }
 
+static int _glbuffer_setframetexture(GLuint texture, GLenum textype, uint32_t width, uint32_t height)
+{
+	glBindTexture(textype, texture);
+	// The format must be RGB. RGBA generate error during the texture attachment to the frambuffer (glprog_run)
+	glTexImage2D(textype, 0, GL_RGB, width, height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameterf(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameterf(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textype, texture, 0);
+	GLuint glerror = glGetError();
+#if 0
+	if (glerror)
+	{
+		err ("segl: Texturebuffer error %#x", glerror);
+		return -1;
+	}
+#endif
+	/* Sanity check. */
+	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (ret != GL_FRAMEBUFFER_COMPLETE)
+	{
+		return -1;
+	}
+	return 0;
+}
+
 GL_Buffer_t *glbuffer_outtexture(uint32_t width, uint32_t height, const char *name)
 {
 	GLenum textype = GL_TEXTURE_2D;
@@ -565,17 +593,16 @@ GL_Buffer_t *glbuffer_outtexture(uint32_t width, uint32_t height, const char *na
 		err("segl: framebuffer unsupported");
 		return NULL;
 	}
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glEnable(textype);
 	GLuint texture = 0;
 	glGenTextures(1, &texture);
-	glBindTexture(textype, texture);
-	// The format must be RGB. RGBA generate error during the texture attachment to the frambuffer (glprog_run)
-	glTexImage2D(textype, 0, GL_RGB, width, height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
-	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameterf(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameterf(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	if (_glbuffer_setframetexture(texture, textype, width, height))
+	{
+		err("segl: buffer %s out buffer error", name);
+		return NULL;
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	GL_Buffer_t *out = calloc(1, sizeof(*out));
 	out->fbo = fbo;
 	out->texture = texture;
@@ -584,25 +611,6 @@ GL_Buffer_t *glbuffer_outtexture(uint32_t width, uint32_t height, const char *na
 	out->name = _defaultname;
 	if (name)
 		out->name = name;
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-				out->textype, out->texture, 0);
-	GLuint glerror = glGetError();
-#if 0
-	if (glerror)
-	{
-		err ("segl: Texturebuffer error %#x", glerror);
-		free(out);
-		return NULL;
-	}
-#endif
-	/* Sanity check. */
-	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-	if (ret != GL_FRAMEBUFFER_COMPLETE)
-	{
-		err("segl: buffer %s export buffer error", name);
-		free(out);
-		return NULL;
-	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	return out;
