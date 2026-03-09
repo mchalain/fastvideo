@@ -190,6 +190,33 @@ void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image);
 GLuint gltexture_id(GL_Buffer_t *glbuffer);
 void gltexture_destroy(GL_Buffer_t *glbuffer);
 
+static FourccFormat_t _FourccFormats[] =
+{
+	{ .fourcc = FOURCC_RGBA, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_AB24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_XB24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_AR24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_XR24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_RGBP, .internal = GL_RGB565   , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
+	{ .fourcc = FOURCC_RG16, .internal = GL_RGB565   , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
+	{ .fourcc = FOURCC_R8  , .internal = GL_R8_EXT   , .full = GL_RED_EXT, .data = GL_UNSIGNED_BYTE    , .nplanes = 1, .stride_factor={sizeof(uint8_t) ,0,0,0}},
+	{ .fourcc = FOURCC_NV12, .internal = GL_R8_EXT   , .full = GL_RED_EXT, .data = GL_UNSIGNED_BYTE    , .nplanes = 1, .stride_factor={sizeof(uint8_t) ,0,0,0}},
+//	{ .fourcc = FOURCC_NV12, .internal = GL_LUMINANCE8_OES, .full = GL_LUMINANCE, .data = GL_UNSIGNED_BYTE , .nplanes = 1, .stride_factor={sizeof(uint8_t),0,0,0}},
+	{ .fourcc = FOURCC_YUYV, .internal = GL_RGBA     , .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+};
+
+const FourccFormat_t *fourcc_getformat(uint32_t fourcc)
+{
+	FourccFormat_t *format = NULL;
+	for (int i = 0; i < sizeof(_FourccFormats)/sizeof(*_FourccFormats); i++)
+	{
+		format = &_FourccFormats[i];
+		if (format->fourcc == fourcc)
+			break;
+	}
+	return format;
+}
+
 static void display_log(GLuint instance)
 {
 	GLint logSize = 0;
@@ -584,23 +611,22 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 
 static int _glbuffer_setframetexture(GLuint texture, GLenum textype, uint32_t width, uint32_t height)
 {
+	GLuint glerror = glGetError();
 	glBindTexture(textype, texture);
-	// The format must be RGB. RGBA generate error during the texture attachment to the frambuffer (glprog_run)
-	glTexImage2D(textype, 0, GL_RGB, width, height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
-	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	const FourccFormat_t *format = fourcc_getformat(FOURCC_XB24);
+	glTexImage2D(textype, 0, format->internal, width, height, 0, format->full, format->data, NULL);
+	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameterf(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameterf(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textype, texture, 0);
-	GLuint glerror = glGetError();
-#if 0
+	glerror = glGetError();
 	if (glerror)
 	{
 		err ("segl: Texturebuffer error %#x", glerror);
 		return -1;
 	}
-#endif
+
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textype, texture, 0);
 	/* Sanity check. */
 	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if (ret != GL_FRAMEBUFFER_COMPLETE)

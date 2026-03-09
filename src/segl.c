@@ -126,34 +126,6 @@ static int _egl_initprototypes(void)
 #define _egl_initprototypes(...)
 #endif
 
-
-static FourccFormat_t _FourccFormats[] =
-{
-	{ .fourcc = FOURCC_RGBA, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-	{ .fourcc = FOURCC_AB24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-	{ .fourcc = FOURCC_XB24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-	{ .fourcc = FOURCC_AR24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-	{ .fourcc = FOURCC_XR24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-	{ .fourcc = FOURCC_RGBP, .internal = GL_RGB565   , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
-	{ .fourcc = FOURCC_RG16, .internal = GL_RGB565   , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
-	{ .fourcc = FOURCC_R8  , .internal = GL_R8_EXT   , .full = GL_RED_EXT, .data = GL_UNSIGNED_BYTE    , .nplanes = 1, .stride_factor={sizeof(uint8_t) ,0,0,0}},
-	{ .fourcc = FOURCC_NV12, .internal = GL_R8_EXT   , .full = GL_RED_EXT, .data = GL_UNSIGNED_BYTE    , .nplanes = 1, .stride_factor={sizeof(uint8_t) ,0,0,0}},
-//	{ .fourcc = FOURCC_NV12, .internal = GL_LUMINANCE8_OES, .full = GL_LUMINANCE, .data = GL_UNSIGNED_BYTE , .nplanes = 1, .stride_factor={sizeof(uint8_t),0,0,0}},
-	{ .fourcc = FOURCC_YUYV, .internal = GL_RGBA     , .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-};
-
-const FourccFormat_t *fourcc_getformat(uint32_t fourcc)
-{
-	FourccFormat_t *format = NULL;
-	for (int i = 0; i < sizeof(_FourccFormats)/sizeof(*_FourccFormats); i++)
-	{
-		format = &_FourccFormats[i];
-		if (format->fourcc == fourcc)
-			break;
-	}
-	return format;
-}
-
 int _egl_hasextension(EGLDisplay eglDisplay, const char *extension)
 {
 	const char *extensions = eglQueryString(eglDisplay, EGL_EXTENSIONS);
