@@ -420,7 +420,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 
 static int texture_fromdma(EGL_t *dev, GLBuffer_t *buffer, int dma_fd, size_t size)
 {
-	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, dev->config->parent.fourcc);
+	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, "vTexture", "camera", dev->config->parent.fourcc);
 
 	uint32_t stride = dev->config->parent.stride;
 	if (stride == 0)
@@ -516,7 +516,7 @@ for (int i = 0; i < sizeof(formats) / sizeof(*formats); i++)
 
 static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t size)
 {
-	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, dev->config->parent.fourcc);
+	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, "vTexture", "camera", dev->config->parent.fourcc);
 
 	uint32_t stride = size / dev->config->parent.height;
 	EGLImageKHR image;
