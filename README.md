@@ -14,8 +14,26 @@ Fastvideo uses an external server to manage AWB, AEC and AF Algorithms. Fastvide
 
 # Building
 
+## Dependencies
+
+Fastvideo uses jansson, opengles, libdrm, X11 or wayland
+
+On Debian like OS:
+```shell
+ $ sudo apt install libjansson-dev wayland-protocols libdrm-dev libgbm-dev libgles2-mesa-dev libegl1-mesa-dev
+```
+
+## Compilation
 The project uses only GNU Makefile, gcc (or clang). The *defconfig* file contains the available compilation options. For more information, see the [Makemore project](https://github.com/mchalain/makemore).
 
+The simplest building is:
+```bash
+ $ make defconfig
+ $ make
+ $ make install
+```
+
+Or for out-tree building with more setting:
 ```bash
  $ make BUILDDIR=$PWD/build prefix=/usr sysconfdir=/etc/fastvideo defconfig
  $ cd build
@@ -25,8 +43,173 @@ The project uses only GNU Makefile, gcc (or clang). The *defconfig* file contain
 
 Other interesting configuration's options :
 
- - CROSS\_COMPILE=arm-none-linux-gnueabi
- - SYSROOT=/opt/arm-none-linux-gnueabi-sdk/arm-none-linux-gnueabi/sysroot
+ - to add debug symbol and more traces
+   - DEBUG=y
+```bash
+ $ make defconfig
+ $ make DEBUG=y
+```
+ - for cross compilation:
+   - CROSS\_COMPILE=arm-none-linux-gnueabi
+   - SYSROOT=/opt/arm-none-linux-gnueabi-sdk/arm-none-linux-gnueabi/sysroot
+```bash
+ $ make BUILDDIR=$PWD/build-arm CROSS_COMPILE=arm-none-linux-gnueabi SYSROOT=/opt/arm-none-linux-gnueabi-sdk/arm-none-linux-gnueabi/sysrootdefconfig
+ $ cd build-arm
+ $ make
+ $ make DESTDIR=$PWD/tempo install
+```
+
+## Installation
+The setting for the files installation is availables during the configuration stage.
+Theis options are the standard definition:
+ - "prefix": the main installayions's directory (default: /usr/local)
+ - "exec_prefix": the main binaries' directory (default: $prefix)
+ - "bindir": the applications' directory (fastvideo, fastsetting,...) (default: $exec_prefix/bin)
+ - "libdir": the library's directory (libfastvideo.so) (default: $exec_prefix/$ARCH/lib ARCH depending of the OS)
+ - "sysconfdir": the configuration files' directory (*.json) (default: $prefix/etc)
+ - "datadir": the other files' directory (*.glsl) (default: $prefix/share/fastvideo)
+
+## testing
+### PC with webcam
+
+The configuration for Webcam is available into "uvc-desktop.json" file.
+
+```shell
+$ fastvideo -j /etc/fastvideo/uvc-desktop.json -i uvc -o gpu -D
+```
+#### ShaderToy
+The ShaderToy is a webGL application available to [shadertoy.com](https://www.shadertoy.com), that play fragment shader to create filters.
+
+Fastvideo allow to apply filter created on ShaderToy to the camera video in real time with good performances.
+
+ - to test
+```shell
+$ fastvideo -j /etc/fastvideo/uvc-desktop.json -i uvc -o shadertoy
+```
+ - to use your filter:
+```shell
+$ sudo rm /usr/share/fastvideo/ShaderToy/MyShader.glsl
+$ sudo cp myshader.glsl /usr/share/fastvideo/ShaderToy/
+$ sudo ln -s myshader.glsl /usr/share/fastvideo/ShaderToy/MyShader.glsl
+$ fastvideo -j /etc/fastvideo/uvc-desktop.json -i uvc -o shadertoy
+```
+
+### Raspberry Pi 3/4
+
+The project offers configuration files to use with Raspberry Pi and Broadcom ISP, the [main file](data/raspicam.json) contains default configuration for camera, isp, gpu, screen. Several camera modules are supported and needs settings file.
+
+By default the output is the GPU rendering into X11 window. The native rendering available are *X11*, *wayland*, *drm* and *offscreen*, the choice is done by the first entry into the *native* table of the *gpu* object.
+
+#### Raspberry Pi Camera Module 1
+
+This camera uses a ov5647 camera sensor. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-ov5647 -o isp-in -i isp-out -o gpu -D
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-ov5647.json
+```
+
+#### Raspberry Pi Camera Module 3
+
+The camera uses a imx708 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx708 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu -D
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx708.json
+```
+
+#### Raspberry Pi Camera Module HQ
+
+The camera uses a imx477 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx477 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu -D
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx477.json
+```
+
+#### Raspberry Pi Camera Module GS
+
+This camera uses a imx296 camera sensor. The following command lines should start a stream
+
+```bash
+$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx296 -o isp-in -i isp-out -o gpu -D
+$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx296.json
+```
+#### 3A Algorithms
+
+A 3AAlgo server is available into *utils* directory and named **rpivc4_alg**. It receives data from a fastvideo fifo and sends control to fastsetting socket.
+
+```bash
+$ rpivc4_alg -D
+$ fastvideo -j /etc/fastvideo/raspicam.json -i isp-meta -o rpivc4_alg -D
+```
+
+**NOTE:** As the rpivc4_alg uses a fifo file, the both process are synchronized. and each must be restarted at the same time.
+
+The full system should be:
+```
+ camera image --> fastvideo1 --> isp-in --> isp-out --> fastvideo1 --> gpu
+ if embedded : camera embedded --> fastvideo1 --> dryrun
+ camera statistics --> fastvideo2 --> fifo rpivc4_alg
+ fastsetting <--> socket unix
+ fifo rpivc4_alg --> rpivc4_alg <--> socket setting
+```
+
+**NOTE:** Currently rpivc4\_alg contains only a simple/bad AE algorithm, prefer to use AE from camera if available.
+
+### Raspberry Pi 5
+
+The Raspberry Pi 5 uses a new ISP chip (rp1). This chip needs a stream of data for initiliazing and running.
+The fastvideo application is ready to set the rp1 but the data generator is missing.
+
+Fastvideo may use the camera in raw mode. The video stream is Bayer images, and the output needs to be monochrome.
+A Bayer image displayed as monochrome is blurred. A solution is to use a monochrone camera.
+
+Into the "data" directory a **debayer.glsl** program allows to use the GPU as ISP. Its usage is available into the "raspi5cam.json" file.
+
+It is mandatory to set the media to manage the stream inside the rp1 frontend. The rpi5cam-setup.sh tool may help:
+```shell
+pi@mistral:~/fastvideo $ ./utils/rpi5cam-setup.sh auto
+Media : /dev/media0
+current 2028x1520 change (y/N)?
+current fmt SRGGB12_1X12 of imx477 10-001a (16). Change it (y/N)?
+current fmt SRGGB16_1X16 of pisp-fe. Change it (y/N):
+disable the pisp_fe (y/N)y
+fmt image SRGGB16_1X16
+subdev format code 0x3020/0x3012 SRGGB16_1X16 => output fourcc RG16
+Change fourcc ? [y/N]
+0: media topology
+1: Image device configuration
+2: try to stream into file
+3: take a picture
+your choice ?
+Device set to /dev/video4
+```
+
+To the question **disable the pisp_fe** the answer **must** be **y**.
+
+#### Camera ov9281
+
+The ov9281 is a global shutter monochrome camera. The output is Y10 1920x1080 at 120 fps.
+
+```shell
+$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-ov9281 -o gpu -D
+$ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-ov9281.json
+```
+
+#### Raspberry Camera HQ (imx477)
+
+```shell
+$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx477 -o gpu-isp -D
+$ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-imx477.json
+```
+
+#### Raspberry Camera GS (imx296)
+
+```shell
+$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx296 -t toR16 -o gpu-isp -D
+$ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-imx296.json
+```
 
 # Features
 
@@ -411,129 +594,3 @@ The current *convert* plugins are not ready.
 
 As the V4L2 system may be a succession of link between devices and subdevices, the naming of each *v4l2* or *subdev* object is complex and the code is not really clear.
 This part of configuration may be refactored.
-
-# testing
-## PC with webcam
-
-The configuration for Webcam is available into "uvc-desktop.json" file.
-
-```shell
-$ fastvideo -j /etc/fastvideo/uvc-desktop.json -i uvc -o gpu -D
-```
-
-## Raspberry Pi 3/4
-
-The project offers configuration files to use with Raspberry Pi and Broadcom ISP, the [main file](data/raspicam.json) contains default configuration for camera, isp, gpu, screen. Several camera modules are supported and needs settings file.
-
-By default the output is the GPU rendering into X11 window. The native rendering available are *X11*, *wayland*, *drm* and *offscreen*, the choice is done by the first entry into the *native* table of the *gpu* object.
-
-### Raspberry Pi Camera Module 1
-
-This camera uses a ov5647 camera sensor. The following command lines should start a stream
-
-```bash
-$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-ov5647 -o isp-in -i isp-out -o gpu -D
-$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-ov5647.json
-```
-
-### Raspberry Pi Camera Module 3
-
-The camera uses a imx708 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
-
-```bash
-$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx708 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu -D
-$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx708.json
-```
-
-### Raspberry Pi Camera Module HQ
-
-The camera uses a imx477 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
-
-```bash
-$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx477 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu -D
-$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx477.json
-```
-
-### Raspberry Pi Camera Module GS
-
-This camera uses a imx296 camera sensor. The following command lines should start a stream
-
-```bash
-$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx296 -o isp-in -i isp-out -o gpu -D
-$ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx296.json
-```
-### 3A Algorithms
-
-A 3AAlgo server is available into *utils* directory and named **rpivc4_alg**. It receives data from a fastvideo fifo and sends control to fastsetting socket.
-
-```bash
-$ rpivc4_alg -D
-$ fastvideo -j /etc/fastvideo/raspicam.json -i isp-meta -o rpivc4_alg -D
-```
-
-**NOTE:** As the rpivc4_alg uses a fifo file, the both process are synchronized. and each must be restarted at the same time.
-
-The full system should be:
-```
- camera image --> fastvideo1 --> isp-in --> isp-out --> fastvideo1 --> gpu
- if embedded : camera embedded --> fastvideo1 --> dryrun
- camera statistics --> fastvideo2 --> fifo rpivc4_alg
- fastsetting <--> socket unix
- fifo rpivc4_alg --> rpivc4_alg <--> socket setting
-```
-
-**NOTE:** Currently rpivc4\_alg contains only a simple/bad AE algorithm, prefer to use AE from camera if available.
-
-## Raspberry Pi 5
-
-The Raspberry Pi 5 uses a new ISP chip (rp1). This chip needs a stream of data for initiliazing and running.
-The fastvideo application is ready to set the rp1 but the data generator is missing.
-
-Fastvideo may use the camera in raw mode. The video stream is Bayer images, and the output needs to be monochrome.
-A Bayer image displayed as monochrome is blurred. A solution is to use a monochrone camera.
-
-Into the "data" directory a **debayer.glsl** program allows to use the GPU as ISP. Its usage is available into the "raspi5cam.json" file.
-
-It is mandatory to set the media to manage the stream inside the rp1 frontend. The rpi5cam-setup.sh tool may help:
-```shell
-pi@mistral:~/fastvideo $ ./utils/rpi5cam-setup.sh auto
-Media : /dev/media0
-current 2028x1520 change (y/N)?
-current fmt SRGGB12_1X12 of imx477 10-001a (16). Change it (y/N)?
-current fmt SRGGB16_1X16 of pisp-fe. Change it (y/N):
-disable the pisp_fe (y/N)y
-fmt image SRGGB16_1X16
-subdev format code 0x3020/0x3012 SRGGB16_1X16 => output fourcc RG16
-Change fourcc ? [y/N]
-0: media topology
-1: Image device configuration
-2: try to stream into file
-3: take a picture
-your choice ?
-Device set to /dev/video4
-```
-
-To the question **disable the pisp_fe** the answer **must** be **y**.
-
-### Camera ov9281
-
-The ov9281 is a global shutter monochrome camera. The output is Y10 1920x1080 at 120 fps.
-
-```shell
-$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-ov9281 -o gpu -D
-$ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-ov9281.json
-```
-
-### Raspberry Camera HQ (imx477)
-
-```shell
-$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx477 -o gpu-isp -D
-$ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-imx477.json
-```
-
-### Raspberry Camera GS (imx296)
-
-```shell
-$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx296 -t toR16 -o gpu-isp -D
-$ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-imx296.json
-```
