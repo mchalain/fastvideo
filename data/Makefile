@@ -1,7 +1,14 @@
 data-y+=simplevertex.glsl
+data-y+=simplefragment.glsl
 data-y+=mainfragment.glsl
 data-y+=defaultcolor.glsl
 data-y+=defaultpixel.glsl
+data-y+=ShaderToy/fragment.glsl
+data-y+=ShaderToy/vertex.glsl
+data-y+=ShaderToy/Image.glsl
+data-y+=ShaderToy/Bayer.glsl
+data-y+=ShaderToy/Funny.glsl
+ShaderToy/Funny.glsl_ALIAS-y+=ShaderToy/MyShader.glsl
 sysconf-y+=uvc_desktop.json
 sysconf-y+=raspicam.json
 sysconf-y+=raspi5cam.json
