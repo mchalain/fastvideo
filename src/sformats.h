@@ -13,6 +13,8 @@
 #define FOURCC_BG24  FOURCC('B','G','2','4')
 #define FOURCC_RG24  FOURCC('R','G','2','4')
 #define FOURCC_RGBA  FOURCC('R','G','B','A')
+#define FOURCC_RGB3  FOURCC('R','G','B','3')
+#define FOURCC_RGB4  FOURCC('R','G','B','4')
 #define FOURCC_RGBP  FOURCC('R','G','B','P')
 #define FOURCC_RG16  FOURCC('R','G','1','6')
 #define FOURCC_R8    FOURCC('R','8',' ',' ')
