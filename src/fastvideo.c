@@ -415,7 +415,7 @@ int main(int argc, char * const argv[])
 	const char *pidfile= NULL;
 	const char *configfile = NULL;
 	const char *logfile = "-";
-	const char *cwd = NULL;
+	const char *cwd = PKG_DATADIR;
 	FastVideoList_t *pipes = NULL;
 	FastVideoPipe_t *pipe = NULL;
 
