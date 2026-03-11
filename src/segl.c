@@ -4,6 +4,8 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
