@@ -664,6 +664,8 @@ static int _v4l2_setfps_vblank(int ctrlfd, uint32_t width, uint32_t height, int 
 
 static int _v4l2_setfps_param(int fd, enum v4l2_buf_type type, int fps)
 {
+	if (type < V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		return -1;
 	struct v4l2_streamparm streamparm = {0};
 	streamparm.type = type;
 	if (ioctl(fd, VIDIOC_G_PARM, &streamparm) == -1)
@@ -672,25 +674,28 @@ static int _v4l2_setfps_param(int fd, enum v4l2_buf_type type, int fps)
 		return -1;
 	}
 
+	struct v4l2_captureparm *parm = &streamparm.parm.capture;
+	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT || type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+		parm = (struct v4l2_captureparm *)&streamparm.parm.output;
 	if (fps == -1)
 	{
-		fps = streamparm.parm.capture.timeperframe.denominator /
-				streamparm.parm.capture.timeperframe.numerator;
+		fps = parm->timeperframe.denominator /
+				parm->timeperframe.numerator;
 	}
-	else if (fps >= 0 && fps != streamparm.parm.capture.timeperframe.denominator)
+	else if (fps >= 0 && fps != parm->timeperframe.denominator)
 	{
-		streamparm.parm.capture.timeperframe.denominator = fps;
-		streamparm.parm.capture.timeperframe.numerator = 1;
+		parm->timeperframe.denominator = fps;
+		parm->timeperframe.numerator = 1;
 		if (ioctl(fd, VIDIOC_S_PARM, &streamparm) == -1)
 		{
 			err("sv4l2: parameter setting error %m");
 			return -1;
 		}
 	}
-	else if (fps < 0 && -fps != streamparm.parm.capture.timeperframe.numerator)
+	else if (fps < 0 && -fps != parm->timeperframe.numerator)
 	{
-		streamparm.parm.capture.timeperframe.denominator = 1;
-		streamparm.parm.capture.timeperframe.numerator = -fps;
+		parm->timeperframe.denominator = 1;
+		parm->timeperframe.numerator = -fps;
 		if (ioctl(fd, VIDIOC_S_PARM, &streamparm) == -1)
 		{
 			err("sv4l2: parameter setting error %m");
@@ -698,8 +703,8 @@ static int _v4l2_setfps_param(int fd, enum v4l2_buf_type type, int fps)
 		}
 	}
 	dbg("sv4l2: Frame rate: %d/%d fps (request %d/%d)",
-			streamparm.parm.capture.timeperframe.numerator,
-			streamparm.parm.capture.timeperframe.denominator,
+			parm->timeperframe.numerator,
+			parm->timeperframe.denominator,
 			(fps > 0)?1:-fps, (fps > 0)?fps:1);
 	return fps;
 }
@@ -1527,6 +1532,8 @@ V4L2_t *sv4l2_create(const char *devicename, device_type_e type, V4l2Config_t *c
 	{
 		dev->periodicfunc = _v4l2_periodiccontrol;
 	}
+	sv4l2_fps(dev, config->parent.fps);
+
 	return dev;
 }
 
@@ -1557,6 +1564,7 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 		dup->periodicfunc = _v4l2_periodiccontrol;
 	}
 
+	sv4l2_fps(dup, dup->config->parent.fps);
 	if (_sv4l2_prepare(dup->fd, &dup->type, dup->mode, dup->config))
 	{
 		close(dup->fd);
