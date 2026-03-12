@@ -612,9 +612,14 @@ static int _v4l2_setfps_vblank(int ctrlfd, uint32_t width, uint32_t height, int 
 	controls.count = 1;
 	controls.controls = &control;
 
+	errno = 0;
 	control.id = V4L2_CID_PIXEL_RATE;
 	control.value = 0;
-	ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls);
+	if (ioctl(ctrlfd, VIDIOC_G_EXT_CTRLS, &controls))
+	{
+		err("sv4l2: fps access error %m");
+		return -1;
+	}
 	uint32_t pixelrate = control.value;
 
 	control.id = V4L2_CID_HBLANK;
@@ -635,7 +640,6 @@ static int _v4l2_setfps_vblank(int ctrlfd, uint32_t width, uint32_t height, int 
 			vblank = pixelrate * fps;
 		vblank /= width + hblank;
 		vblank -= height;
-
 		control.id = V4L2_CID_VBLANK;
 		control.value = vblank;
 		if (ioctl(ctrlfd, VIDIOC_S_EXT_CTRLS, &controls))
@@ -1054,10 +1058,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 		dbg_buffer((&dev->buffers[i].v4l2));
 	}
 #endif
-	int length = 0;
-	if (dev->buffers)
-		length = dev->buffers[0].length;
-	dbg("sv4l2: %s %dx%d, %.4s %u", dev->name, dev->width, dev->height, (char*)&dev->fourcc, length);
+	dbg("sv4l2: %s %dx%d, %.4s %u", dev->name, dev->width, dev->height, (char*)&dev->fourcc, (dev->buffers)?dev->buffers[0].length:0);
 	return ret;
 }
 
@@ -1477,7 +1478,7 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 
 	V4L2_t *dev = calloc(1, sizeof(*dev));
 	dev->name = name;
-	strncpy(dev->devicename, devicename, sizeof(dev->devicename) - 1);
+	strncpy(dev->devicename, devicename, sizeof(dev->devicename));
 	dev->config = config;
 	dev->fd = fd;
 	dev->type = type;
