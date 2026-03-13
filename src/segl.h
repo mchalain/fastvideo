@@ -62,6 +62,7 @@ struct GLBuffer_s
 };
 
 typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
+typedef struct EGLProg_ops_s EGLProg_ops_t;
 typedef struct GLProgram_Input_s GLProgram_Input_t;
 struct GLProgram_Input_s {
 	const char *name;
@@ -73,7 +74,6 @@ struct EGLConfig_Program_s
 {
 	int index;
 	const char *name;
-	const char *type;
 	const char *vertex;
 	const char *fragments[MAX_SHADERS];
 	GLProgram_Input_t input;
@@ -92,6 +92,7 @@ struct EGLConfig_s
 	DeviceConf_t transfer;
 	const EGLNative_t *native;
 	const char *device;
+	const EGLProg_ops_t *prog_ops;
 	EGLConfig_Program_t *programs;
 	const EGLExport_t *export;
 	int type;
@@ -142,7 +143,6 @@ typedef void (*glprog_destroy_t)(GLProgram_t *program);
 typedef int (*glprog_loadjsonsetting_t)(GLProgram_t *program, void *entry);
 typedef int (*glprog_loadjsonconfiguration_t)(void *arg, void *entry);
 
-typedef struct EGLProg_ops_s EGLProg_ops_t;
 struct EGLProg_ops_s
 {
 	const char *name;

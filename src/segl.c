@@ -191,14 +191,8 @@ static EGL_t *_egl_create(const char *devicename, device_type_e type, EGLConfig_
 	uint32_t height = config->parent.height;
 
 	const EGLProg_ops_t *prog_ops = _prog_ops[0];
-	for (int i = 0; config->programs && i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
-	{
-		if (_prog_ops[i] && strcmp(_prog_ops[i]->name, config->programs->type))
-		{
-			prog_ops = _prog_ops[i];
-			break;
-		}
-	}
+	if (config)
+		prog_ops = config->prog_ops;
 	GLProgram_t *programs = NULL;
 	if (type == device_control)
 		programs = prog_ops->create_controler(config->programs, width, height);
@@ -906,15 +900,24 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	json_t *jconfig = entry;
 	EGLConfig_t *config = (EGLConfig_t *)arg;
 
+	const EGLProg_ops_t *prog_ops = _prog_ops[0];
+	json_t *jengine = json_object_get(jconfig, "engine");
 	json_t *jprograms = json_object_get(jconfig, "programs");
 	for (int i = 0; i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
 	{
-		const EGLProg_ops_t *prog_ops = _prog_ops[i];
-		if (prog_ops && !(config->mode & SEGL_NOPROGRAM))
+		if (_prog_ops[i])
 		{
-			prog_ops->loadjsonconfiguration(&config->programs, jprograms);
+			if (jengine && json_is_string(jengine) &&
+				strcmp(json_string_value(jengine), _prog_ops[i]->name))
+				continue;
+			if (!(config->mode & SEGL_NOPROGRAM) &&
+				_prog_ops[i]->loadjsonconfiguration(&config->programs, jprograms))
+				continue;
+			prog_ops = _prog_ops[i];
+			break;
 		}
 	}
+	config->prog_ops = prog_ops;
 
 	json_t *native = json_object_get(jconfig, "native");
 	if (native && json_is_array(native))

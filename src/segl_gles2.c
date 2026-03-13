@@ -1358,7 +1358,6 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 			if (previous)
 				previous->next = config;
 			previous = config;
-			config->type = _gles2_ops.name;
 		}
 	}
 	else if (jconfig && json_is_object(jconfig))
