@@ -902,7 +902,9 @@ int segl_loadjsonsettings(EGL_t *dev, void *entry)
 {
 	json_t *jconfig = entry;
 	json_t *jprograms = json_object_get(jconfig, "programs");
-	return dev->program_ops->loadjsonsetting(dev->programs, jprograms);
+	if (dev->program_ops->loadjsonsetting)
+		return dev->program_ops->loadjsonsetting(dev->programs, jprograms);
+	return 0;
 }
 
 int segl_loadjsonconfiguration(void *arg, void *entry)

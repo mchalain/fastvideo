@@ -35,35 +35,6 @@ struct GL_Buffer_s
 	EGLint egltarget;
 };
 
-typedef enum{
-	Uniform_UNKNOWN_e = 0,
-	Uniform_INT_e,
-	Uniform_FLOAT_e,
-	Uniform_FVEC2_e,
-	Uniform_FVEC3_e,
-	Uniform_FVEC4_e,
-	Uniform_IVEC2_e,
-	Uniform_IVEC3_e,
-	Uniform_IVEC4_e,
-	Uniform_MAT2_e,
-	Uniform_MAT3_e,
-	Uniform_MAT4_e,
-	Uniform_FUNC_e,
-} Uniform_Type_e;
-
-#define	Uniform_SHARED_e 0x1000
-
-typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
-struct GLProgram_Uniform_s
-{
-	const char *name;
-	GLint loc;
-	Uniform_Type_e type;
-	void *value;
-	void *data;
-	GLProgram_Uniform_t *next;
-};
-
 static GLProgram_Uniform_t * _glprog_uniform_create(void *setting);
 static int _glprog_uniform_size(GLProgram_Uniform_t *uniform);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
@@ -1348,7 +1319,7 @@ static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jc
 	return 0;
 }
 
-static int glprog_loadjsonconfiguration(void *arg, void *entry)
+int glprog_loadjsonconfiguration(void *arg, void *entry)
 {
 	// This will inverse the list of programs before usage
 	EGLConfig_Program_t *first = NULL;
