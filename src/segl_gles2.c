@@ -16,6 +16,9 @@
 
 #define segl_dbg(...)
 
+/// the program running may use "DrawElements" or "DrawArrays". The both have the same performances
+#define GLES2_DRAWELEMENTS 0
+
 struct GL_Buffer_s
 {
 	const char *name;
@@ -808,7 +811,15 @@ static int _glprog_run(GLProgram_t *program, GL_Buffer_t *buffer, GLProgram_t *p
 		glprog_setuniform(program, uniform);
 	}
 
-	glDrawArrays(GL_TRIANGLES, 0, 4);
+#if GLES2_DRAWELEMENTS
+	GLshort indexBuffer[] = {
+		0, 1, 2, 1, 2, 3
+	};
+
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indexBuffer);
+#else
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+#endif
 	error = glGetError();
 	if (error != GL_NO_ERROR)
 		err("segl: %s running error %#x", program->config->name, error);
