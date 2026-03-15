@@ -120,7 +120,8 @@ static void *_egl_export_create(EGL_t *dev, EGLDisplay eglDisplay, EGLContext eg
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #else
 	GLProgram_t *prog = segl_program(ctx->egl);
-	ctx->out = glbuffer_outtexture(prog, "export");
+	const EGLProg_ops_t *engine = segl_engine(ctx->egl);
+	ctx->out = engine->buffer.create(prog, "export", "out", FOURCC_XR24);
 #endif
 	return ctx;
 }
@@ -135,7 +136,8 @@ static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 {
 	EGLExportImageMesa_t *ctx = (EGLExportImageMesa_t *)arg;
 
-	EGLImage image = glbuffer_getimage(ctx->out, ctx->egldisplay, ctx->eglcontext);
+	const EGLProg_ops_t *engine = segl_engine(ctx->egl);
+	EGLImage image = engine->buffer.getimage(ctx->out, ctx->egldisplay, ctx->eglcontext);
 	if (image == EGL_NO_IMAGE)
 		return -1;
 
@@ -201,6 +203,9 @@ static int _egl_export_fd(void *arg)
 
 static void _egl_export_destroy(void *arg)
 {
+	EGLExportImageMesa_t *ctx = (EGLExportImageMesa_t *)arg;
+	const EGLProg_ops_t *engine = segl_engine(ctx->egl);
+	engine->buffer.destroy(ctx->out);
 	free(arg);
 }
 

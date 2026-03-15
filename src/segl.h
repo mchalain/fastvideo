@@ -131,6 +131,7 @@ typedef GLProgram_t *(*glprog_create_t)(EGLConfig_Program_t *config, GLuint widt
 typedef int (*glprog_setup_t)(GLProgram_t *program, GL_Buffer_t *out);
 typedef GL_Buffer_t *(*glbuffer_create_t)(GLProgram_t *program, const char *name, const char *src, uint32_t fourcc);
 typedef void (*glbuffer_attach_t)(GL_Buffer_t *glbuffer, EGLImageKHR image);
+typedef EGLImage (*glbuffer_getimage_t)(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContext eglcontext);
 typedef void (*glbuffer_destroy_t)(GL_Buffer_t *glbuffer);
 typedef GLuint (*glbuffer_id_t)(GL_Buffer_t *glbuffer);
 typedef int (*glprog_run_t)(GLProgram_t *program, GL_Buffer_t *buffer);
@@ -149,6 +150,7 @@ struct EGLProg_ops_s
 	struct {
 		glbuffer_create_t create;
 		glbuffer_attach_t attach;
+		glbuffer_getimage_t getimage;
 		glbuffer_id_t id;
 		glbuffer_destroy_t destroy;
 	} buffer;
@@ -166,9 +168,6 @@ const EGLConfig_t *segl_config(EGL_t *dev);
 const EGLProg_ops_t *segl_engine(EGL_t *dev);
 GLProgram_t *segl_program(EGL_t *dev);
 typedef void (*segl_program_ops_append_t)(EGLProg_ops_t *prog_ops);
-
-GL_Buffer_t *glbuffer_outtexture(GLProgram_t *program, const char *name);
-EGLImage glbuffer_getimage(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContext eglcontext);
 
 #ifdef HAVE_JANSSON
 int segl_loadjsonsettings(EGL_t *dev, void *jconfig);

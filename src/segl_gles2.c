@@ -638,8 +638,11 @@ static int _glbuffer_setframetexture(GLuint texture, GLenum textype, uint32_t wi
 	return 0;
 }
 
-GL_Buffer_t *glbuffer_outtexture(GLProgram_t *program, const char *name)
+static GL_Buffer_t *_glbuffer_createout(GLProgram_t *program, const char *name)
 {
+	uint32_t width = program->width;
+	uint32_t height = program->height;
+	GLuint glerror = glGetError();
 	GLenum textype = GL_TEXTURE_2D;
 	GLuint fbo;
 	GLuint texture = 0;
@@ -647,7 +650,7 @@ GL_Buffer_t *glbuffer_outtexture(GLProgram_t *program, const char *name)
 	glGenFramebuffers(1, &fbo);
 	glGenTextures(1, &texture);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-	if (_glbuffer_setframetexture(texture, textype, program->width, program->height))
+	if (_glbuffer_setframetexture(texture, textype, width, height))
 	{
 		err("segl: buffer %s out buffer error", name);
 		return NULL;
@@ -666,7 +669,7 @@ GL_Buffer_t *glbuffer_outtexture(GLProgram_t *program, const char *name)
 	return out;
 }
 
-EGLImage glbuffer_getimage(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContext eglcontext)
+static EGLImage glbuffer_getimage(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContext eglcontext)
 {
 	const EGLint tattributes[] = {
 		EGL_IMAGE_PRESERVED, EGL_TRUE,
@@ -689,7 +692,7 @@ static void glbuffer_destroy(GL_Buffer_t *buffer)
 
 static int glprog_outtexture(GLProgram_t *program, GLenum textype)
 {
-	program->out = glbuffer_outtexture(program, program->config->name);
+	program->out = _glbuffer_createout(program, program->config->name);
 	if (program->out == NULL)
 		return -1;
 	return 0;
@@ -715,6 +718,8 @@ static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, con
 	GLenum textype = GL_TEXTURE_2D;
 	if (! strcmp("camera", src))
 		textype = GL_TEXTURE_EXTERNAL_OES;
+	if (! strcmp("out", src))
+		return _glbuffer_createout(program, name);
 	GLuint texture;
 	glBindVertexArrayOES(program->vertexArrayID);
 	glActiveTexture(GL_TEXTURE0);
@@ -1401,6 +1406,7 @@ static EGLProg_ops_t _gles2_ops = {
 		.create = gltexture_create,
 		.attach = gltexture_attach,
 		.id = gltexture_id,
+		.getimage = glbuffer_getimage,
 		.destroy = gltexture_destroy,
 	},
 	.run = glprog_run,
