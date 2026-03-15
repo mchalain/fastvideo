@@ -1,7 +1,6 @@
 #ifndef __SEGL_H__
 #define __SEGL_H__
 
-#include <GLES2/gl2.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include "fastvideo.h"
@@ -33,9 +32,9 @@ typedef struct FourccFormat_s FourccFormat_t;
 struct FourccFormat_s
 {
 	uint32_t fourcc;
-	GLuint internal;
-	GLuint full;
-	GLuint data;
+	uint32_t internal;
+	uint32_t full;
+	uint32_t data;
 	int nplanes;
 	int stride_factor[4];
 };
@@ -50,8 +49,8 @@ struct GLBuffer_s
 	uint32_t fourcc;
 	int dma_fd;
 	uint32_t *memory;
-	GLuint pitch;
-	GLuint offset;
+	uint32_t pitch;
+	uint32_t offset;
 	uint32_t size;
 	uint64_t modifiers;
 	void* private;
@@ -104,7 +103,7 @@ struct EGLNative_s
 	EGLNativeDisplayType (*display)(EGLConfig_t *config);
 	const EGLint *(*attributes)(EGLNativeDisplayType native_display);
 	EGLNativeWindowType (*createwindow)(EGLNativeDisplayType native_display,
-							GLuint width, GLuint height, const GLchar *name);
+							uint32_t width, uint32_t height, const char *name);
 	int (*fd)(EGLNativeWindowType native_win);
 	int (*flush)(EGLNativeWindowType native_win);
 	int (*sync)(EGLNativeWindowType native_win);
@@ -127,13 +126,13 @@ struct EGLExport_s
 
 typedef void (*segl_export_append_t)(EGLExport_t *export);
 
-typedef GLProgram_t *(*glprog_create_t)(EGLConfig_Program_t *config, GLuint width, GLuint height);
+typedef GLProgram_t *(*glprog_create_t)(EGLConfig_Program_t *config, uint32_t width, uint32_t height);
 typedef int (*glprog_setup_t)(GLProgram_t *program, GL_Buffer_t *out);
 typedef GL_Buffer_t *(*glbuffer_create_t)(GLProgram_t *program, const char *name, const char *src, uint32_t fourcc);
 typedef void (*glbuffer_attach_t)(GL_Buffer_t *glbuffer, EGLImageKHR image);
 typedef EGLImage (*glbuffer_getimage_t)(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContext eglcontext);
 typedef void (*glbuffer_destroy_t)(GL_Buffer_t *glbuffer);
-typedef GLuint (*glbuffer_id_t)(GL_Buffer_t *glbuffer);
+typedef uint32_t (*glbuffer_id_t)(GL_Buffer_t *glbuffer);
 typedef int (*glprog_run_t)(GLProgram_t *program, GL_Buffer_t *buffer);
 typedef void (*glprog_stop_t)(GLProgram_t *program, GL_Buffer_t *buffer);
 typedef int (*glprog_setuniform_t)(GLProgram_t *program, GLProgram_Uniform_t *uniform);

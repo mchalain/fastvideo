@@ -9,8 +9,6 @@
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
-#include <GLES2/gl2.h>
-#include <GLES2/gl2ext.h>
 
 #include "segl.h"
 #include "log.h"
@@ -84,9 +82,6 @@ struct EGL_s
 
 #ifndef EGL_KHR_image
 #error "this version of EGL doesn't support KHR Image"
-#endif
-#ifndef GL_OES_EGL_image
-#error "this version of GLES doesn't support EGL Image"
 #endif
 #ifndef EGL_EGLEXT_PROTOTYPES
 #if defined(EGL_KHR_image)
@@ -363,7 +358,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	}
 	eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext);
 
-	GLint minswapinterval = 1;
+	EGLint minswapinterval = 1;
 	eglGetConfigAttrib(eglDisplay, eglConfigs[configid], EGL_MIN_SWAP_INTERVAL, &minswapinterval);
 	dbg("segl: swap interval %d", minswapinterval);
 	eglSwapInterval(eglDisplay, minswapinterval);
@@ -394,7 +389,7 @@ static int texture_fromdma(EGL_t *dev, GLBuffer_t *buffer, int dma_fd, size_t si
 	uint32_t fourcc;
 	fourcc = dev->config->parent.fourcc;
 	EGLImageKHR image;
-	GLint attrib_list[] = {
+	EGLint attrib_list[] = {
 		EGL_IMAGE_PRESERVED_KHR, EGL_TRUE,
 		EGL_WIDTH, dev->config->parent.width,
 		EGL_HEIGHT, dev->config->parent.height,

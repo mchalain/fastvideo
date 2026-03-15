@@ -14,6 +14,10 @@
 #include "segl.h"
 #include "log.h"
 
+#ifndef GL_OES_EGL_image
+#error "this version of GLES doesn't support EGL Image"
+#endif
+
 #define segl_dbg(...)
 
 /// the program running may use "DrawElements" or "DrawArrays". The both have the same performances
@@ -457,7 +461,7 @@ static GLfloat *_movestatic(GLfloat * ctx)
 }
 static GLfloat *(*_move)(GLfloat * ctx) = NULL;
 
-static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint width, GLuint height)
+static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, uint32_t width, uint32_t height)
 {
 	void *uniform_data = NULL;
 	if (config)
@@ -537,7 +541,7 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint
 	return program;
 }
 
-static GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, GLuint width, GLuint height)
+static GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, uint32_t width, uint32_t height)
 {
 	GLProgram_t *program = _glprog_create_controler(config, width, height);
 	if (config && config->next)
@@ -547,7 +551,7 @@ static GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, GLuint 
 	return program;
 }
 
-static GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height)
+static GLProgram_t *glprog_create(EGLConfig_Program_t *config, uint32_t width, uint32_t height)
 {
 	static int index = 1;
 	GLuint programID = 0;
@@ -762,7 +766,7 @@ static void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image)
 	glEGLImageTargetTexture2DOES(glbuffer->textype, image);
 }
 
-static GLuint gltexture_id(GL_Buffer_t *glbuffer)
+static uint32_t gltexture_id(GL_Buffer_t *glbuffer)
 {
 	return glbuffer->texture;
 }
