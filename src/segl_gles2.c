@@ -638,7 +638,7 @@ static int _glbuffer_setframetexture(GLuint texture, GLenum textype, uint32_t wi
 	return 0;
 }
 
-GL_Buffer_t *glbuffer_outtexture(uint32_t width, uint32_t height, const char *name)
+GL_Buffer_t *glbuffer_outtexture(GLProgram_t *program, const char *name)
 {
 	GLenum textype = GL_TEXTURE_2D;
 	GLuint fbo;
@@ -647,7 +647,7 @@ GL_Buffer_t *glbuffer_outtexture(uint32_t width, uint32_t height, const char *na
 	glGenFramebuffers(1, &fbo);
 	glGenTextures(1, &texture);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-	if (_glbuffer_setframetexture(texture, textype, width, height))
+	if (_glbuffer_setframetexture(texture, textype, program->width, program->height))
 	{
 		err("segl: buffer %s out buffer error", name);
 		return NULL;
@@ -689,7 +689,7 @@ static void glbuffer_destroy(GL_Buffer_t *buffer)
 
 static int glprog_outtexture(GLProgram_t *program, GLenum textype)
 {
-	program->out = glbuffer_outtexture(program->width, program->height, program->config->name);
+	program->out = glbuffer_outtexture(program, program->config->name);
 	if (program->out == NULL)
 		return -1;
 	return 0;

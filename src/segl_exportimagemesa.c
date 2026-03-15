@@ -119,7 +119,8 @@ static void *_egl_export_create(EGL_t *dev, EGLDisplay eglDisplay, EGLContext eg
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #else
-	ctx->out = glbuffer_outtexture(width, height, "export");
+	GLProgram_t *prog = segl_program(ctx->egl);
+	ctx->out = glbuffer_outtexture(prog, "export");
 #endif
 	return ctx;
 }

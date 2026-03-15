@@ -42,8 +42,6 @@ struct FourccFormat_s
 const FourccFormat_t *fourcc_getformat(uint32_t fourcc);
 
 typedef struct GL_Buffer_s GL_Buffer_t;
-GL_Buffer_t *glbuffer_outtexture(uint32_t width, uint32_t height, const char *name);
-EGLImage glbuffer_getimage(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContext eglcontext);
 
 typedef struct GLBuffer_s GLBuffer_t;
 struct GLBuffer_s
@@ -165,7 +163,12 @@ struct EGLProg_ops_s
 int _egl_hasextension(EGLDisplay eglDisplay, const char *extension);
 int segl_hasextension(EGL_t *dev, const char *extension);
 const EGLConfig_t *segl_config(EGL_t *dev);
+const EGLProg_ops_t *segl_engine(EGL_t *dev);
+GLProgram_t *segl_program(EGL_t *dev);
 typedef void (*segl_program_ops_append_t)(EGLProg_ops_t *prog_ops);
+
+GL_Buffer_t *glbuffer_outtexture(GLProgram_t *program, const char *name);
+EGLImage glbuffer_getimage(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContext eglcontext);
 
 #ifdef HAVE_JANSSON
 int segl_loadjsonsettings(EGL_t *dev, void *jconfig);

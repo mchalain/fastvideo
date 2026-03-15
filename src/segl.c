@@ -840,6 +840,16 @@ const EGLConfig_t *segl_config(EGL_t *dev)
 	return dev->config;
 }
 
+const EGLProg_ops_t *segl_engine(EGL_t *dev)
+{
+	return dev->program_ops;
+}
+
+GLProgram_t *segl_program(EGL_t *dev)
+{
+	return dev->programs;
+}
+
 EXT_API void segl_destroy(EGL_t *dev)
 {
 	if (dev->type != device_input)
