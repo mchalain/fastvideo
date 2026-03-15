@@ -679,7 +679,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	dup->export = _exports[0];
 	if (dup->config->export)
 		dup->export = dup->config->export;
-	dup->export_ctx = dup->export->create(dup->config, dev->egldisplay, dev->eglcontext);
+	dup->export_ctx = dup->export->create(dup, dev->egldisplay, dev->eglcontext);
 	if (!dup->export_ctx)
 	{
 		err("segl: impossible to export data");
@@ -833,6 +833,11 @@ EXT_API int segl_fd(EGL_t *dev, int writer)
 	if (dev->type == device_input)
 		return dev->export->fd(dev->export_ctx);
 	return dev->native->fd(dev->native_window);
+}
+
+const EGLConfig_t *segl_config(EGL_t *dev)
+{
+	return dev->config;
 }
 
 EXT_API void segl_destroy(EGL_t *dev)

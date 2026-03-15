@@ -10,15 +10,15 @@
 typedef struct EGLExportPixels_s EGLExportPixels_t;
 struct EGLExportPixels_s
 {
-	EGLConfig_t *config;
+	const EGLConfig_t *config;
 };
 
 static const char segl[] = "segl";
 
-static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext)
+static void *_egl_export_create(EGL_t *dev, EGLDisplay eglDisplay, EGLContext eglContext)
 {
 	EGLExportPixels_t *ctx = calloc(1, sizeof(*ctx));
-	ctx->config = config;
+	ctx->config = segl_config(dev);
 	return ctx;
 }
 

@@ -51,7 +51,7 @@ typedef struct EGLExportDRMWriteback_s EGLExportDRMWriteback_t;
 struct EGLExportDRMWriteback_s
 {
 	int out_fd;
-	EGLConfig_t *config;
+	const EGLConfig_t *config;
 	int fd;
 	uint32_t connector_id;
 	GLBuffer_t *buffers[MAX_BUFFERS];
@@ -922,7 +922,7 @@ EGLNative_t eglnative_drm =
 };
 /*****************************************************************************/
 #ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
-static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext)
+static void *_egl_export_create(EGL_t *dev, EGLDisplay eglDisplay, EGLContext eglContext)
 {
 	drmModeRes *resources;
 
@@ -940,7 +940,7 @@ static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLC
 		return NULL;
 
 	EGLExportDRMWriteback_t *ctx = calloc(1, sizeof(*ctx));
-	ctx->config = config;
+	ctx->config = segl_config(dev);
 	ctx->fd = drm.fd;
 
 	ctx->connector_id = connector->connector_id;

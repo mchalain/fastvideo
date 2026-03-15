@@ -119,7 +119,7 @@ struct EGLExport_s
 {
 	const char *name;
 	const char *native;
-	void *(*create)(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext);
+	void *(*create)(EGL_t *dev, EGLDisplay eglDisplay, EGLContext eglContext);
 	GL_Buffer_t * (*out)(void *arg);
 	int (*fd)(void *arg);
 	int (*setbuffer)(void *arg, GLBuffer_t *buffer);
@@ -165,6 +165,7 @@ struct EGLProg_ops_s
 
 int _egl_hasextension(EGLDisplay eglDisplay, const char *extension);
 int segl_hasextension(EGL_t *dev, const char *extension);
+const EGLConfig_t *segl_config(EGL_t *dev);
 typedef void (*segl_program_ops_append_t)(EGLProg_ops_t *prog_ops);
 
 #ifdef HAVE_JANSSON

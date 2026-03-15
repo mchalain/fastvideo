@@ -54,17 +54,19 @@ static int _egl_initprototypes(void)
 typedef struct EGLExportImageMesa_s EGLExportImageMesa_t;
 struct EGLExportImageMesa_s
 {
-	EGLConfig_t *config;
+	EGL_t *egl;
+	const EGLConfig_t *config;
 	EGLDisplay egldisplay;
 	EGLContext eglcontext;
 	GLuint rbo;
 	GL_Buffer_t *out;
 };
 
-static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext)
+static void *_egl_export_create(EGL_t *dev, EGLDisplay eglDisplay, EGLContext eglContext)
 {
 	EGLExportImageMesa_t *ctx = calloc(1, sizeof(*ctx));
-	ctx->config = config;
+	ctx->egl = dev;
+	ctx->config = segl_config(dev);
 	ctx->egldisplay = eglDisplay;
 	ctx->eglcontext = eglContext;
 
@@ -152,13 +154,21 @@ static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 //	if (stride[0] != dev->buffers[id].size / dev->config->parent.height)
 //		err("segl: exported format not aligned");
 	if (ctx->config->parent.fourcc && ctx->config->parent.fourcc != fourcc)
+	{
 		err("segl: requests %.4s, obtains %.4s", (char *)&ctx->config->parent.fourcc, (char *)&fourcc);
-	ctx->config->parent.fourcc = fourcc;
+		return -1;
+	}
 
 	dbg("segl: export format modifier %.4s, %#"PRIx64"", (char *)&fourcc, modifiers[0]);
-	for (int i = 0; i < 4 && modifiers[0] != ctx->config->parent.modifiers; i++)
+	for (int i = 0; i < 4; i++)
+	{
+		if (modifiers[i] == ctx->config->parent.modifiers)
+		{
+			buffer->modifiers = modifiers[i];
+			break;
+		}
 		err("segl: format modifier present but not set (%"PRId64"/%"PRId64")", modifiers[i], ctx->config->parent.modifiers);
-	ctx->config->parent.modifiers = modifiers[0];
+	}
 	eglDestroyImageKHR(ctx->egldisplay, image);
 
 	uint32_t size = stride[0] * ctx->config->parent.height;
@@ -169,6 +179,7 @@ static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 	buffer->pitch = stride[0];
 	buffer->dma_fd = dma_buf[0];
 	buffer->offset = offset[0];
+	buffer->fourcc = fourcc;
 	return 0;
 }
 
