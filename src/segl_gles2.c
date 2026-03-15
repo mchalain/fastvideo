@@ -60,7 +60,7 @@ struct GLProgram_Uniform_s
 static GLProgram_Uniform_t * _glprog_uniform_create(void *setting);
 static int _glprog_uniform_size(GLProgram_Uniform_t *uniform);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
-int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
+static int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
 
 static EGLProg_ops_t _gles2_ops;
@@ -185,10 +185,10 @@ static int _egl_initprototypes(void)
 #define _egl_initprototypes(...)
 #endif
 
-GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src, uint32_t fourcc);
-void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image);
-GLuint gltexture_id(GL_Buffer_t *glbuffer);
-void gltexture_destroy(GL_Buffer_t *glbuffer);
+static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src, uint32_t fourcc);
+static void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image);
+static GLuint gltexture_id(GL_Buffer_t *glbuffer);
+static void gltexture_destroy(GL_Buffer_t *glbuffer);
 
 static FourccFormat_t _FourccFormats[] =
 {
@@ -534,7 +534,7 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint
 	return program;
 }
 
-GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, GLuint width, GLuint height)
+static GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, GLuint width, GLuint height)
 {
 	GLProgram_t *program = _glprog_create_controler(config, width, height);
 	if (config && config->next)
@@ -544,7 +544,7 @@ GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, GLuint width, 
 	return program;
 }
 
-GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height)
+static GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height)
 {
 	static int index = 1;
 	GLuint programID = 0;
@@ -642,14 +642,9 @@ GL_Buffer_t *glbuffer_outtexture(uint32_t width, uint32_t height, const char *na
 {
 	GLenum textype = GL_TEXTURE_2D;
 	GLuint fbo;
-	glGenFramebuffers(1, &fbo);
-	if (fbo == 0)
-	{
-		err("segl: framebuffer unsupported");
-		return NULL;
-	}
-	glEnable(textype);
 	GLuint texture = 0;
+
+	glGenFramebuffers(1, &fbo);
 	glGenTextures(1, &texture);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	if (_glbuffer_setframetexture(texture, textype, width, height))
@@ -685,7 +680,7 @@ EGLImage glbuffer_getimage(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContex
 	return image;
 }
 
-void glbuffer_destroy(GL_Buffer_t *buffer)
+static void glbuffer_destroy(GL_Buffer_t *buffer)
 {
 	glDeleteFramebuffers(1, &buffer->fbo);
 	glDeleteTextures(1, &buffer->texture);
@@ -700,7 +695,7 @@ static int glprog_outtexture(GLProgram_t *program, GLenum textype)
 	return 0;
 }
 
-int glprog_setup(GLProgram_t *program, GL_Buffer_t *out)
+static int glprog_setup(GLProgram_t *program, GL_Buffer_t *out)
 {
 	if (program->next)
 	{
@@ -715,17 +710,17 @@ int glprog_setup(GLProgram_t *program, GL_Buffer_t *out)
 	return 0;
 }
 
-GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src, uint32_t fourcc)
+static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src, uint32_t fourcc)
 {
 	GLenum textype = GL_TEXTURE_2D;
 	if (! strcmp("camera", src))
 		textype = GL_TEXTURE_EXTERNAL_OES;
-	GLuint dma_texture;
+	GLuint texture;
 	glBindVertexArrayOES(program->vertexArrayID);
 	glActiveTexture(GL_TEXTURE0);
-	glGenTextures(1, &dma_texture);
+	glGenTextures(1, &texture);
 
-	glBindTexture(textype, dma_texture);
+	glBindTexture(textype, texture);
 
 	for (GLProgram_t *it = program; it != NULL; it = it->next)
 	{
@@ -742,7 +737,7 @@ GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char
 	glTexParameteri(textype, GL_TEXTURE_MAX_LEVEL_APPLE, 0);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	GL_Buffer_t *glbuffer = calloc(1, sizeof(*glbuffer));
-	glbuffer->texture = dma_texture;
+	glbuffer->texture = texture;
 	glbuffer->textype = textype;
 
 	glbuffer->name = name;
@@ -756,17 +751,17 @@ GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char
 	return glbuffer;
 }
 
-void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image)
+static void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image)
 {
 	glEGLImageTargetTexture2DOES(glbuffer->textype, image);
 }
 
-GLuint gltexture_id(GL_Buffer_t *glbuffer)
+static GLuint gltexture_id(GL_Buffer_t *glbuffer)
 {
 	return glbuffer->texture;
 }
 
-void gltexture_destroy(GL_Buffer_t *glbuffer)
+static void gltexture_destroy(GL_Buffer_t *glbuffer)
 {
 	free(glbuffer);
 }
@@ -823,12 +818,12 @@ static int _glprog_run(GLProgram_t *program, GL_Buffer_t *buffer, GLProgram_t *p
 	return 0;
 }
 
-int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
+static int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
 {
 	return _glprog_run(program, buffer, NULL);
 }
 
-void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer)
+static void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer)
 {
 	glUseProgram(0);
 	glBindTexture(buffer->textype, 0);
@@ -836,7 +831,7 @@ void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
+static int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 {
 	if (!uniform->loc)
 		uniform->loc = glGetUniformLocation(program->ID, uniform->name);
@@ -923,7 +918,7 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 	return 0;
 }
 
-void glprog_destroy(GLProgram_t *program)
+static void glprog_destroy(GLProgram_t *program)
 {
 	if (program->next)
 		return glprog_destroy(program->next);
@@ -1224,7 +1219,7 @@ static int _glprog_loadjsonsetting(GLProgram_t *programs, json_t *jprogram)
 	return ret;
 }
 
-int glprog_loadjsonsetting(GLProgram_t *programs, void *entry)
+static int glprog_loadjsonsetting(GLProgram_t *programs, void *entry)
 {
 	int ret = -1;
 	json_t *jsetting = entry;
@@ -1335,7 +1330,7 @@ static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jc
 	return 0;
 }
 
-int glprog_loadjsonconfiguration(void *arg, void *entry)
+static int glprog_loadjsonconfiguration(void *arg, void *entry)
 {
 	// This will inverse the list of programs before usage
 	EGLConfig_Program_t *first = NULL;
