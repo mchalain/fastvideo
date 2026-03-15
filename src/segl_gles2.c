@@ -198,7 +198,7 @@ static FourccFormat_t _FourccFormats[] =
 	{ .fourcc = FOURCC_AR24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
 	{ .fourcc = FOURCC_XR24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
 	{ .fourcc = FOURCC_RGB3, .internal = GL_RGB,       .full = GL_RGB,  .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint8_t)*3,0,0,0}},
-	{ .fourcc = 0        , .internal = GL_RGBA32F_EXT, .full = GL_RGBA, .data = GL_FLOAT               , .nplanes = 1, .stride_factor={sizeof(float) ,0,0,0}},
+	{ .fourcc = 0,         .internal = GL_RGBA32F_EXT, .full = GL_RGBA, .data = GL_FLOAT               , .nplanes = 1, .stride_factor={sizeof(float) ,0,0,0}},
 	{ .fourcc = FOURCC_RGBP, .internal = GL_RGB565   , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
 	{ .fourcc = FOURCC_RG16, .internal = GL_RGB565   , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
 	{ .fourcc = FOURCC_R8  , .internal = GL_R8_EXT   , .full = GL_RED_EXT, .data = GL_UNSIGNED_BYTE    , .nplanes = 1, .stride_factor={sizeof(uint8_t) ,0,0,0}},
@@ -578,10 +578,8 @@ static GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLu
 	GLfloat vertices[] = {
 		-1.0f,  1.0f,  0.0f, // top left
 		-1.0f, -1.0f,  0.0f, // bottom left
-		 1.0f, -1.0f,  0.0f, // bottom right
-		-1.0f,  1.0f,  0.0f, // top left
-		 1.0f, -1.0f,  0.0f, // bottom right
 		 1.0f,  1.0f,  0.0f, // top right
+		 1.0f, -1.0f,  0.0f, // bottom right
 	};
 	glBindBuffer(GL_ARRAY_BUFFER, program->vertexBufferObject[0]);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
@@ -810,7 +808,7 @@ static int _glprog_run(GLProgram_t *program, GL_Buffer_t *buffer, GLProgram_t *p
 		glprog_setuniform(program, uniform);
 	}
 
-	glDrawArrays(GL_TRIANGLES, 0, 6);
+	glDrawArrays(GL_TRIANGLES, 0, 4);
 	error = glGetError();
 	if (error != GL_NO_ERROR)
 		err("segl: %s running error %#x", program->config->name, error);
