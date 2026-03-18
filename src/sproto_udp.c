@@ -37,7 +37,7 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 	struct sockaddr* saddr = NULL;
 	socklen_t saddrlen = 0;
 	struct ifaddrs *ifa_list;
-	struct ifaddrs *ifa_main;
+	struct ifaddrs *ifa_main = NULL;
 	while (status == -1)
 	{
 		int ret = -1;
@@ -86,7 +86,7 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 			sleep(1);
 		}
 	}
-	if (status)
+	if (status || !ifa_main)
 		return status;
 
 	// check if the address is for multicast diffusion
