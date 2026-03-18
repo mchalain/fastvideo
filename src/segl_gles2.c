@@ -823,6 +823,12 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 {
 	if (!uniform->loc)
 		uniform->loc = glGetUniformLocation(program->ID, uniform->name);
+	if (uniform->value == NULL &&
+		_glprog_uniform_setvalue(uniform, json_object_get(uniform->config, "value")))
+	{
+		err("segl: uniform %s not set", uniform->name);
+		return -1;
+	}
 	switch (uniform->type & ~Uniform_SHARED_e)
 	{
 	case Uniform_FLOAT_e:
@@ -1025,6 +1031,8 @@ static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue
 		if (size > 0)
 			uniform->value = malloc(size);
 	}
+	if (!uniform->value)
+		return ret;
 	if (jvalue && json_is_number(jvalue))
 	{
 		switch (uniform->type & ~Uniform_SHARED_e)
