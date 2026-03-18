@@ -78,6 +78,7 @@ typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
 struct GLProgram_Uniform_s
 {
 	const char *name;
+	void *config;
 	EGLint loc;
 	Uniform_Type_e type;
 	void *value;
@@ -97,6 +98,7 @@ struct EGLConfig_Program_s
 {
 	int index;
 	const char *name;
+	void *entry;
 	const char *vertex;
 	const char *fragments[MAX_SHADERS];
 	GLProgram_Input_t input;

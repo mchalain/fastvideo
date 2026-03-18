@@ -1140,6 +1140,7 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 					uniform->value = _frame;
 			}
 		}
+		uniform->config = setting;
 	}
 	if (uniform->type == Uniform_UNKNOWN_e)
 	{
@@ -1337,6 +1338,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 				free(config);
 				continue;
 			}
+			config->entry = jfield;
 			if (first == NULL)
 				first = config;
 			if (previous)
@@ -1353,6 +1355,7 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 		}
 		else
 		{
+			config->entry = jconfig;
 			first = config;
 			config->name = _gles2_ops.name;
 		}
