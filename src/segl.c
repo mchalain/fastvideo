@@ -190,7 +190,10 @@ static EGL_t *_egl_create(const char *devicename, device_type_e type, EGLConfig_
 		prog_ops = config->prog_ops;
 	GLProgram_t *programs = NULL;
 	if (type == device_control)
-		programs = prog_ops->create_controler(config->programs, width, height);
+	{
+		if (prog_ops->create_controler)
+			programs = prog_ops->create_controler(config->programs, width, height);
+	}
 	else
 		programs = prog_ops->create(config->programs, width, height);
 	if (programs == NULL)
