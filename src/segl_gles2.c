@@ -618,7 +618,6 @@ static GL_Buffer_t *_glbuffer_createout(GLProgram_t *program, const char *name)
 {
 	uint32_t width = program->width;
 	uint32_t height = program->height;
-	GLuint glerror = glGetError();
 	GLenum textype = GL_TEXTURE_2D;
 	GLuint fbo;
 	GLuint texture = 0;
