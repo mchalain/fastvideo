@@ -142,7 +142,7 @@ struct media_pad_desc *smedia_pad(Media_t *media, struct media_entity_desc *enti
 	 * the links must be enumerated.
 	 */
 	struct media_links_enum *current = media->current;
-	struct media_links_enum constant;
+	struct media_links_enum constant = {0};
 	if (media->current == NULL)
 	{
 		constant.entity = entity->id;
@@ -157,8 +157,10 @@ struct media_pad_desc *smedia_pad(Media_t *media, struct media_entity_desc *enti
 	memcpy(pad, &current->pads[id], sizeof(*pad));
 	if (current == &constant)
 	{
-		free(constant.pads);
-		free(constant.links);
+		if (constant.pads)
+			free(constant.pads);
+		if (constant.links)
+			free(constant.links);
 	}
 	return pad;
 }
