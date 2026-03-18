@@ -145,7 +145,7 @@ static uint64_t sdrm_properties(int fd,  uint32_t type, uint32_t id, const char 
 
 static uint32_t find_plane_for_crtc(int fd, int crtc_index, uint32_t crtc_id)
 {
-	uint32_t plane_id;
+	uint32_t plane_id = 0;
 	drmModePlaneResPtr planes;
 
 	planes = drmModeGetPlaneResources(fd);
