@@ -12,6 +12,7 @@
 #include <GLES2/gl2ext.h>
 
 #include "segl.h"
+#include "segl_engine.h"
 #include "log.h"
 
 #ifndef GL_OES_EGL_image
@@ -37,8 +38,7 @@ struct GL_Buffer_s
 
 static GLProgram_Uniform_t * _glprog_uniform_create(void *setting);
 static int _glprog_uniform_size(GLProgram_Uniform_t *uniform);
-static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
-static int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
+static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
 
 static EGLProg_ops_t _gles2_ops;
@@ -820,7 +820,7 @@ static void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-static int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
+int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 {
 	if (!uniform->loc)
 		uniform->loc = glGetUniformLocation(program->ID, uniform->name);

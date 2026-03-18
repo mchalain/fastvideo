@@ -57,58 +57,12 @@ struct GLBuffer_s
 	FrameBuffer_state_e state;
 };
 
-typedef enum{
-	Uniform_UNKNOWN_e = 0,
-	Uniform_INT_e,
-	Uniform_FLOAT_e,
-	Uniform_FVEC2_e,
-	Uniform_FVEC3_e,
-	Uniform_FVEC4_e,
-	Uniform_IVEC2_e,
-	Uniform_IVEC3_e,
-	Uniform_IVEC4_e,
-	Uniform_MAT2_e,
-	Uniform_MAT3_e,
-	Uniform_MAT4_e,
-	Uniform_FUNC_e,
-} Uniform_Type_e;
-
-#define	Uniform_SHARED_e 0x1000
-typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
-struct GLProgram_Uniform_s
-{
-	const char *name;
-	void *config;
-	EGLint loc;
-	Uniform_Type_e type;
-	void *value;
-	void *data;
-	GLProgram_Uniform_t *next;
-};
-
-typedef struct EGLProg_ops_s EGLProg_ops_t;
-typedef struct GLProgram_Input_s GLProgram_Input_t;
-struct GLProgram_Input_s {
-	const char *name;
-	const char *src;
-};
-
-typedef struct EGLConfig_Program_s EGLConfig_Program_t;
-struct EGLConfig_Program_s
-{
-	int index;
-	const char *name;
-	void *entry;
-	const char *vertex;
-	const char *fragments[MAX_SHADERS];
-	GLProgram_Input_t input;
-	EGLConfig_Program_t *next;
-	GLProgram_Uniform_t *controls;
-};
-
 typedef struct GLProgram_s GLProgram_t;
+typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
 typedef struct EGLExport_s EGLExport_t;
 typedef struct EGLNative_s EGLNative_t;
+typedef struct EGLProg_ops_s EGLProg_ops_t;
+typedef struct EGLConfig_Program_s EGLConfig_Program_t;
 
 typedef struct EGLConfig_s EGLConfig_t;
 struct EGLConfig_s
@@ -200,7 +154,6 @@ typedef void (*segl_program_ops_append_t)(EGLProg_ops_t *prog_ops);
 #ifdef HAVE_JANSSON
 int segl_loadjsonsettings(EGL_t *dev, void *jconfig);
 int segl_loadjsonconfiguration(void *arg, void *entry);
-int glprog_loadjsonconfiguration(void *arg, void *entry);
 
 #define segl_loadsettings segl_loadjsonsettings
 #define segl_loadconfiguration segl_loadjsonconfiguration
