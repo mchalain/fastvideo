@@ -121,7 +121,7 @@ static void *_egl_export_create(EGL_t *dev, EGLDisplay eglDisplay, EGLContext eg
 #else
 	GLProgram_t *prog = segl_program(ctx->egl);
 	const EGLProg_ops_t *engine = segl_engine(ctx->egl);
-	ctx->out = engine->buffer.create(prog, "export", "out", FOURCC_XR24);
+	ctx->out = engine->buffer.create(prog, "export", "out");
 #endif
 	return ctx;
 }

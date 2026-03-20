@@ -111,7 +111,7 @@ typedef void (*segl_export_append_t)(EGLExport_t *export);
 
 typedef GLProgram_t *(*glprog_create_t)(EGLConfig_Program_t *config, uint32_t width, uint32_t height);
 typedef int (*glprog_setup_t)(GLProgram_t *program, GL_Buffer_t *out);
-typedef GL_Buffer_t *(*glbuffer_create_t)(GLProgram_t *program, const char *name, const char *src, uint32_t fourcc);
+typedef GL_Buffer_t *(*glbuffer_create_t)(GLProgram_t *program, const char *name, const char *src);
 typedef void (*glbuffer_attach_t)(GL_Buffer_t *glbuffer, EGLImageKHR image);
 typedef EGLImage (*glbuffer_getimage_t)(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContext eglcontext);
 typedef void (*glbuffer_destroy_t)(GL_Buffer_t *glbuffer);

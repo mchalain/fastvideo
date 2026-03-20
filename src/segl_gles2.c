@@ -164,7 +164,7 @@ static int _egl_initprototypes(void)
 #define _egl_initprototypes(...)
 #endif
 
-static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src, uint32_t fourcc);
+static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src);
 static void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image);
 static GLuint gltexture_id(GL_Buffer_t *glbuffer);
 static void gltexture_destroy(GL_Buffer_t *glbuffer);
@@ -690,7 +690,7 @@ static int glprog_setup(GLProgram_t *program, GL_Buffer_t *out)
 	return 0;
 }
 
-static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src, uint32_t fourcc)
+static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src)
 {
 	GLenum textype = GL_TEXTURE_2D;
 	int id = 0;
@@ -710,14 +710,12 @@ static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, con
 
 	glBindTexture(textype, texture);
 
-	for (GLProgram_t *it = program; it != NULL; it = it->next)
-	{
-		it->fourcc = fourcc;
-	}
+#if 0
 	uint32_t width = program->width;
 	uint32_t height = program->height;
 	const FourccFormat_t *format = fourcc_getformat(fourcc);
 	glTexImage2D(textype, 0, format->internal, width, height, 0, format->full, format->data, NULL);
+#endif
 	glTexParameteri(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
