@@ -52,6 +52,7 @@ struct GLProgram_s
 	GLuint ID;
 	GLuint vertexArrayID;
 	GLuint vertexBufferObject[3];
+	int lasttextureid;
 	GLfloat *movectx;
 	GLfloat *(*move)(GLfloat *);
 	GL_Buffer_t *out;
@@ -622,6 +623,7 @@ static GL_Buffer_t *_glbuffer_createout(GLProgram_t *program, const char *name)
 	GLuint fbo;
 	GLuint texture = 0;
 
+	GLuint glerror = glGetError();
 	glGenFramebuffers(1, &fbo);
 	glGenTextures(1, &texture);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
@@ -691,13 +693,19 @@ static int glprog_setup(GLProgram_t *program, GL_Buffer_t *out)
 static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src, uint32_t fourcc)
 {
 	GLenum textype = GL_TEXTURE_2D;
+	int id = 0;
 	if (! strcmp("camera", src))
+	{
 		textype = GL_TEXTURE_EXTERNAL_OES;
-	if (! strcmp("out", src))
+		id = 0;
+	}
+	else if (! strcmp("out", src))
 		return _glbuffer_createout(program, name);
+	else
+		id = program->lasttextureid++;
 	GLuint texture;
 	glBindVertexArrayOES(program->vertexArrayID);
-	glActiveTexture(GL_TEXTURE0);
+	glActiveTexture(GL_TEXTURE0 + id);
 	glGenTextures(1, &texture);
 
 	glBindTexture(textype, texture);
@@ -721,10 +729,10 @@ static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, con
 	glbuffer->textype = textype;
 
 	glbuffer->name = name;
-	if (program->config && program->config->input.name)
+	if (program->config && program->config->input.name && textype == GL_TEXTURE_EXTERNAL_OES)
 		glbuffer->name = program->config->input.name;
 	glbuffer->loc = glGetUniformLocation(program->ID, glbuffer->name);
-	glbuffer->unit = 0;
+	glbuffer->unit = id;
 	glUniform1i(glbuffer->loc, glbuffer->unit);
 
 	glBindVertexArrayOES(0);
@@ -763,16 +771,24 @@ static int _glprog_run(GLProgram_t *program, GL_Buffer_t *buffer, GLProgram_t *p
 
 	glBindVertexArrayOES(program->vertexArrayID);
 
+	/// this is the camera texture and should be GL_TEXTURE0 (buffer->unit == 0)
 	glActiveTexture(GL_TEXTURE0 + buffer->unit);
 	glBindTexture(buffer->textype, buffer->texture);
 	glUniform1i(buffer->loc, buffer->unit);
 
 	if (prevprog)
 	{
-		glActiveTexture(GL_TEXTURE0 + prevprog->index);
-		glBindTexture(prevprog->out->textype, prevprog->out->texture);
-		if (prevprog->out->loc)
-			glUniform1i(prevprog->out->loc, prevprog->index);
+		GL_Buffer_t *buffer = prevprog->out;
+		/// check if buffer is available into program
+		GLint loc = glGetUniformLocation(program->ID, buffer->name);
+		if (loc >= 0)
+		{
+			if (buffer->unit == 0)
+				buffer->unit = program->lasttextureid++;
+			glActiveTexture(GL_TEXTURE0 + buffer->unit);
+			glBindTexture(buffer->textype, buffer->texture);
+			glUniform1i(loc, buffer->unit);
+		}
 	}
 
 	if (program->move)
