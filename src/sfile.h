@@ -36,20 +36,6 @@ struct FileConfig_s
 };
 
 typedef struct File_s File_t;
-struct File_s
-{
-	FileConfig_t *config;
-	const char *path;
-	void *ctx;
-	const Proto_t *ops;
-	device_type_e type;
-	uint32_t fourcc;
-	size_t nbuffers;
-	FrameBuffer_t *buffers;
-	int lastbufferid;
-	char header[128];
-	size_t headerlen;
-};
 
 #ifdef HAVE_JANSSON
 int sfile_loadjsonconfiguration(void *arg, void *entry);

@@ -20,6 +20,20 @@
 
 extern const Proto_t proto_file;
 
+struct File_s
+{
+	FileConfig_t *config;
+	const char *path;
+	void *ctx;
+	const Proto_t *ops;
+	uint32_t fourcc;
+	device_type_e type;
+	FrameBuffer_t *buffers;
+	int lastbufferid;
+	char header[128];
+	size_t headerlen;
+};
+
 EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int flags);
 
 EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
@@ -338,6 +352,10 @@ DeviceConf_t * sfile_createconfig(const char *name)
 		if (filepath[0] == '/' && filepath[1] == '/') filepath += 2;
 		devconfig->filename = filepath;
 	}
+	devconfig->parent.width = 640;
+	devconfig->parent.height = 480;
+	devconfig->parent.stride = 1280;
+	devconfig->parent.fourcc = FOURCC_YUYV;
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sfile_loadjsonconfiguration;
 #endif
