@@ -1529,6 +1529,7 @@ V4L2_t *sv4l2_create(const char *devicename, device_type_e type, V4l2Config_t *c
 	config->parent.width = dev->width;
 	config->parent.height = dev->height;
 	config->parent.fourcc = dev->fourcc;
+	config->parent.stride = dev->stride;
 	if (!(dev->mode & MODE_OUTPUT) && dev->config->periodic)
 	{
 		dev->periodicfunc = _v4l2_periodiccontrol;
