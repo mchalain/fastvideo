@@ -26,7 +26,7 @@ struct FileConfig_s
 	const Proto_t *proto;
 	enum {
 		File_None_e = 0,
-		File_TIFF_e,
+		File_PAM_e,
 	} header;
 	enum
 	{

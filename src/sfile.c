@@ -69,11 +69,13 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 	dev->height = config->parent.height;
 	dev->fourcc = config->parent.fourcc;
 	dev->bpp = config->parent.stride / dev->width;
+	if (strstr(dev->path, ".pam") != NULL)
+		config->header = File_PAM_e;
 	if (type == device_output)
 	{
 		switch (config->header)
 		{
-			case File_TIFF_e:
+			case File_PAM_e:
 				/// add TIFF header for other fourcc
 				dev->headerlen = snprintf(dev->header, sizeof(dev->header),
 					"P7 WIDTH %.4d HEIGHT %.4d DEPTH %.1d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR",
@@ -320,8 +322,8 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 						break;
 					}
 				}
-				if (! strncasecmp(value, "tiff", 6))
-					config->header = File_TIFF_e;
+				if (! strncasecmp(value, "pam", 3))
+					config->header = File_PAM_e;
 			}
 		}
 	}
@@ -336,6 +338,8 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 				break;
 			}
 		}
+		if (! strncasecmp(value, "pam", 3))
+			config->header = File_PAM_e;
 	}
 	return 0;
 }
