@@ -26,8 +26,12 @@ struct File_s
 	const char *path;
 	void *ctx;
 	const Proto_t *ops;
+	uint32_t width;
+	uint32_t height;
 	uint32_t fourcc;
 	device_type_e type;
+	uint8_t	bpp;
+	uint8_t nbuffers;
 	FrameBuffer_t *buffers;
 	int lastbufferid;
 	char header[128];
@@ -44,6 +48,11 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 		return NULL;
 	}
 	const Proto_t *ops = &proto_file;
+	if (!config)
+	{
+		err("sfile: need a configuration");
+		return NULL;
+	}
 	if (config && config->proto)
 		ops = config->proto;
 	void *ctx = ops->create(&config->protoconf);
@@ -55,18 +64,26 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 	dev->ctx = ctx;
 	dev->ops = ops;
 	dev->type = type;
-	dev->path = filename;
-	switch (config->header)
+	dev->path = config->filename;
+	dev->width = config->parent.width;
+	dev->height = config->parent.height;
+	dev->fourcc = config->parent.fourcc;
+	dev->bpp = config->parent.stride / dev->width;
+	if (type == device_output)
 	{
-		case File_TIFF_e:
-			/// add TIFF header for other fourcc
-			dev->headerlen = snprintf(dev->header, sizeof(dev->header),
-				"P7 WIDTH %.4d HEIGHT %.4d DEPTH %.1d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR",
-				config->parent.width, config->parent.height, config->parent.stride / config->parent.width);
-		break;
-		default:
+		switch (config->header)
+		{
+			case File_TIFF_e:
+				/// add TIFF header for other fourcc
+				dev->headerlen = snprintf(dev->header, sizeof(dev->header),
+					"P7 WIDTH %.4d HEIGHT %.4d DEPTH %.1d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR",
+					dev->width, dev->height, dev->bpp);
+			break;
+			default:
+		}
+		warn("sfile: %s opened for %.4s", config->filename, (const char*)&dev->fourcc);
 	}
-	warn("sfile: %s opened for %.4s", config->filename, (const char*)&config->parent.fourcc);
+
 	return dev;
 }
 
