@@ -20,6 +20,10 @@
 
 extern const Proto_t proto_file;
 
+static const char str_rgba[] = "RGB_ALPHA";
+static const char str_rgb[] = "RGB";
+static const char str_cmyk[] = "CMYK";
+
 struct File_s
 {
 	FileConfig_t *config;
@@ -77,6 +81,13 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 		{
 			case File_PAM_e:
 			{
+				const char *format;
+				if (dev->fourcc == FOURCC_XB24)
+					format = str_rgba;
+				if (dev->fourcc == FOURCC_RGB3)
+					format = str_rgb;
+				if (dev->fourcc == FOURCC_YUYV)
+					format = str_cmyk;
 				/// add TIFF header for other fourcc
 				dev->headerlen = snprintf(dev->header, sizeof(dev->header),
 					"P7 WIDTH %.4d HEIGHT %.4d DEPTH %.1d MAXVAL 255 TUPLTYPE %s ENDHDR",
@@ -95,11 +106,25 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 			case File_PAM_e:
 			{
 				/// add TIFF header for other fourcc
+				char format[16] = {0};
 				int ret = ops->recv(dev->ctx, dev->header, sizeof(dev->header), 0);
 				dev->headerlen = sscanf(dev->header,
-					"P7 WIDTH %d HEIGHT %d DEPTH %d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR",
-					&dev->width, &dev->height, &dev->bpp);
-				dev->fourcc = FOURCC_XB24;
+					"P7 WIDTH %d HEIGHT %d DEPTH %d MAXVAL 255 TUPLTYPE %s ENDHDR",
+					&dev->width, &dev->height, &dev->bpp, format);
+				if (!strncasecmp(format, "RGB_ALPHA", 16))
+					dev->fourcc = FOURCC_XB24;
+				else if (!strncasecmp(format, "RGB", 16))
+				{
+					if (dev->bpp == 2)
+						dev->fourcc = FOURCC_RG565;
+					if (dev->bpp == 3)
+						dev->fourcc = FOURCC_RGB3;
+				}
+				else if (!strncasecmp(format, "CMYK", 16))
+				{
+					if (dev->bpp == 2)
+						dev->fourcc = FOURCC_YUYV;
+				}
 			}
 			break;
 			default:
