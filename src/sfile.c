@@ -76,14 +76,37 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 		switch (config->header)
 		{
 			case File_PAM_e:
+			{
 				/// add TIFF header for other fourcc
 				dev->headerlen = snprintf(dev->header, sizeof(dev->header),
-					"P7 WIDTH %.4d HEIGHT %.4d DEPTH %.1d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR",
-					dev->width, dev->height, dev->bpp);
+					"P7 WIDTH %.4d HEIGHT %.4d DEPTH %.1d MAXVAL 255 TUPLTYPE %s ENDHDR",
+					dev->width, dev->height, dev->bpp, format);
+			}
 			break;
 			default:
 		}
 		warn("sfile: %s opened for %.4s", config->filename, (const char*)&dev->fourcc);
+	}
+	if (type == device_input)
+	{
+		ops->connect(dev->ctx);
+		switch (config->header)
+		{
+			case File_PAM_e:
+			{
+				/// add TIFF header for other fourcc
+				int ret = ops->recv(dev->ctx, dev->header, sizeof(dev->header), 0);
+				dev->headerlen = sscanf(dev->header,
+					"P7 WIDTH %d HEIGHT %d DEPTH %d MAXVAL 255 TUPLTYPE RGB_ALPHA ENDHDR",
+					&dev->width, &dev->height, &dev->bpp);
+				dev->fourcc = FOURCC_XB24;
+			}
+			break;
+			default:
+		}
+		warn("sfile: %s opened for %.4s", config->filename, (const char*)&dev->fourcc);
+		ops->close(dev->ctx);
+		ops->connect(dev->ctx);
 	}
 
 	return dev;
