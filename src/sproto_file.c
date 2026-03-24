@@ -161,10 +161,12 @@ static int proto_connect_reg(void *arg)
 	newfd %= (sizeof(proto->fd) / sizeof(*proto->fd));
 	if (proto->maxfiles > 1)
 		snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.ts", proto->fileid);
+#if 0
 	if (faccessat(proto->rootfd, proto->filename, F_OK, 0) == 0)
 	{
 		unlinkat(proto->rootfd, proto->filename, 0);
 	}
+#endif
 	if (proto->mode & Proto_FILE_Hls)
 	{
 		struct timespec tp;
@@ -180,7 +182,10 @@ static int proto_connect_reg(void *arg)
 	proto->fd[newfd] = openat(proto->rootfd, proto->filename, O_CREAT | O_RDWR, 0644);
 #endif
 	if (proto->fd[newfd] < 0)
+	{
+		err("sproto: file opening error %m");
 		return -1;
+	}
 	if (proto->fd[proto->currentfd] > 0)
 	{
 		close(proto->fd[proto->currentfd]);
@@ -219,7 +224,8 @@ static void proto_flush(void *arg)
 
 static int proto_fd(void *arg)
 {
-	return -1;
+	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
+	return proto->fd[proto->currentfd];
 }
 
 static size_t proto_mtu(void *arg)

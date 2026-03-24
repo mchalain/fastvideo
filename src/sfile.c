@@ -16,7 +16,10 @@
 
 #include "sfile.h"
 #include "config.h"
+#include "sdmabuf.h"
 #include "log.h"
+
+#define MAX_BUFFERS 4
 
 extern const Proto_t proto_file;
 
@@ -96,7 +99,7 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 			break;
 			default:
 		}
-		warn("sfile: %s opened for %.4s", config->filename, (const char*)&dev->fourcc);
+		warn("sfile: %s opened for %ux%u %.4s", config->filename, dev->width, dev->height, (const char*)&dev->fourcc);
 	}
 	if (type == device_input)
 	{
@@ -129,9 +132,35 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 			break;
 			default:
 		}
-		warn("sfile: %s opened for %.4s", config->filename, (const char*)&dev->fourcc);
-		ops->close(dev->ctx);
-		ops->connect(dev->ctx);
+		config->parent.width = dev->width;
+		config->parent.height = dev->height;
+		config->parent.fourcc = dev->fourcc;
+		config->parent.stride = dev->width * dev->bpp;
+
+		warn("sfile: %s opened for %ux%u %.4s", config->filename, dev->width, dev->height, (const char*)&dev->fourcc);
+
+		dev->buffers = calloc(MAX_BUFFERS, sizeof(FrameBuffer_t));
+		size_t size = dev->width;
+		size *= dev->height;
+		size *= dev->bpp;
+		for (int i = 0; i < MAX_BUFFERS; i++, dev->nbuffers++)
+		{
+			int dma_buf = sdmabuf_create("sfile", size);
+			if (dma_buf < 0)
+				dev->buffers[i].mem = calloc(1, size);
+			else
+				dev->buffers[i].mem = sdmabuf_map(dma_buf, size, 1);
+			if (!dev->buffers[i].mem)
+			{
+				err("sfile: buffer allocation error %m");
+				break;
+			}
+			dev->buffers[i].dma_buf = dma_buf;
+			dev->buffers[i].id = i;
+			dev->buffers[i].size = size;
+			dev->buffers[i].bpp = dev->bpp;
+		}
+
 	}
 
 	return dev;
@@ -162,6 +191,27 @@ EXT_API int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 			dev->nbuffers = nmem;
 		}
 		break;
+		case buf_type_memory_master:
+		{
+			int *ntargets = va_arg(ap, int *);
+			void ***targets = va_arg(ap, void ***);
+			size_t *size = va_arg(ap, size_t *);
+			if (targets != NULL)
+			{
+				*targets = calloc(dev->nbuffers, sizeof(void*));
+				for (int i = 0; i < dev->nbuffers; i++)
+				{
+					(*targets)[i] = dev->buffers[i].mem;
+					dbg("sfile: memory[%d]: %p %u", i, dev->buffers[i].mem, dev->buffers[i].size);
+				}
+			}
+			if (ntargets != NULL)
+				*ntargets = dev->nbuffers;
+			if (size != NULL)
+				*size = dev->buffers[0].size;
+			ret = (dev->nbuffers == 0);
+		}
+		break;
 		case buf_type_dmabuf:
 		{
 			int ntargets = va_arg(ap, int);
@@ -180,6 +230,32 @@ EXT_API int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 			dev->nbuffers = ntargets;
 		}
 		break;
+		case buf_type_dmabuf_master:
+		{
+			if (dev->buffers[0].dma_buf == -1)
+			{
+				ret = -1;
+				break;
+			}
+			int *ntargets = va_arg(ap, int *);
+			int **targets = va_arg(ap, int **);
+			size_t *size = va_arg(ap, size_t *);
+			if (targets != NULL)
+			{
+				*targets = calloc(dev->nbuffers, sizeof(int));
+				for (int i = 0; i < dev->nbuffers; i++)
+				{
+					(*targets)[i] = dev->buffers[i].dma_buf;
+					dbg("sfile: memory[%d]: %d %u", i, dev->buffers[i].dma_buf, dev->buffers[i].size);
+				}
+			}
+			if (ntargets != NULL)
+				*ntargets = dev->nbuffers;
+			if (size != NULL)
+				*size = dev->buffers[0].size;
+			ret = (dev->nbuffers == 0);
+		}
+		break;
 		default:
 			err("sfile: support only without master");
 			va_end(ap);
@@ -192,16 +268,16 @@ EXT_API int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 EXT_API int sfile_fd(File_t *dev, int writer)
 {
 #if 0
-	return dev->ops->fd(dev);
+	return dev->ops->fd(dev->ctx);
 #else
 	if (!writer && dev->type == device_input)
 	{
-		int ret = dev->ops->fd(dev->ctx);
+		int ret = -1;
 		for (int i = 0; i < dev->nbuffers; i++)
 		{
 			if (dev->buffers[i].state == queued)
 			{
-				ret = -1;
+				ret = dev->ops->fd(dev->ctx);
 				break;
 			}
 		}
@@ -301,19 +377,14 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 	{
 		if (buffer->dma_buf > 0)
 		{
-			struct dma_buf_sync sync = { 0 };
-			sync.flags = DMA_BUF_SYNC_WRITE | DMA_BUF_SYNC_START;
-			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
-			buffer->mem = mmap(NULL, buffer->size, PROT_WRITE, MAP_SHARED, buffer->dma_buf, 0 );
+			sdmabuf_sync(buffer->dma_buf, 1);
 		}
-		ssize_t ret = dev->ops->send(dev->ctx, buffer->mem, bytesused, 0);
+		ssize_t ret = dev->ops->recv(dev->ctx, buffer->mem, bytesused, 0);
 		if (buffer->dma_buf > 0)
 		{
-			struct dma_buf_sync sync = { 0 };
-			sync.flags = DMA_BUF_SYNC_WRITE | DMA_BUF_SYNC_END;
-			ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, sync);
+			sdmabuf_sync(buffer->dma_buf, 0);
 		}
-		if (ret < 0)
+		if (ret <= 0)
 		{
 			err("sfile: read from file \"%s\" error: %m", dev->path);
 			return -1;
