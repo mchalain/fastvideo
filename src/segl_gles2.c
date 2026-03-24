@@ -703,24 +703,17 @@ static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, con
 		return _glbuffer_createout(program, name);
 	else
 		id = program->lasttextureid++;
-	GLuint texture;
+	GLuint texture = 0;
 	glBindVertexArrayOES(program->vertexArrayID);
 	glActiveTexture(GL_TEXTURE0 + id);
 	glGenTextures(1, &texture);
 
 	glBindTexture(textype, texture);
 
-#if 0
-	uint32_t width = program->width;
-	uint32_t height = program->height;
-	const FourccFormat_t *format = fourcc_getformat(fourcc);
-	glTexImage2D(textype, 0, format->internal, width, height, 0, format->full, format->data, NULL);
-#endif
 	glTexParameteri(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(textype, GL_TEXTURE_MAX_LEVEL_APPLE, 0);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	GL_Buffer_t *glbuffer = calloc(1, sizeof(*glbuffer));
 	glbuffer->texture = texture;
