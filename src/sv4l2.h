@@ -29,7 +29,6 @@ struct V4l2Config_s
 	DeviceConf_t transfer;
 	const char *device;
 	int mode;
-	int fps;
 	int periodic;
 	int periodiccontrol;
 	V4l2Config_t *subdev_entries[MAX_SUBDEVS];

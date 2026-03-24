@@ -350,8 +350,8 @@ V4L2_t *sv4l2_subdev_create(const char *devicename, device_type_e type, V4l2Conf
 			if (!config->fmtbus[i])
 				continue;
 			sv4l2_subdev_setpixformat(subdev, &stream, config->fmtbus[i], subdev->width, subdev->height);
-			if (sv4l2_subdev_fps(subdev, &stream, config->fps) == -1)
-				sv4l2_fps(subdev, config->fps);
+			if (sv4l2_subdev_fps(subdev, &stream, config->parent.fps) == -1)
+				sv4l2_fps(subdev, config->parent.fps);
 			else
 				sv4l2_subdev_fps(subdev, &stream, -1);
 		}
@@ -376,12 +376,6 @@ DeviceConf_t * sv4l2_subdev_createconfig(const char *name)
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sv4l2_subdev_loadjsonconfiguration;
 #endif
-	devconfig->fps = -1;
-	const char *fps = strstr(name, "fps=");
-	if (fps)
-	{
-		devconfig->fps = strtol(fps + 4, NULL, 10);
-	}
 	return (DeviceConf_t *)devconfig;
 }
 

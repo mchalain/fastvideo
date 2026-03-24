@@ -19,6 +19,7 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 	json_t *height = NULL;
 	json_t *fourcc = NULL;
 	json_t *stride = NULL;
+	json_t *fps = NULL;
 	json_t *modifiers = NULL;
 
 	if (definition && json_is_array(definition))
@@ -51,6 +52,11 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 					fourcc = field;
 				}
 				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "fps"))
+				{
+					fps = field;
+				}
+				if (name && json_is_string(name) &&
 					!strcmp(json_string_value(name), "modifier"))
 				{
 					modifiers = field;
@@ -64,6 +70,7 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 		height = json_object_get(definition, "height");
 		fourcc = json_object_get(definition, "fourcc");
 		stride = json_object_get(definition, "stride");
+		fps = json_object_get(definition, "fps");
 		modifiers = json_object_get(definition, "modifier");
 	}
 	else
@@ -80,6 +87,10 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 		stride = json_object_get(stride, "value");
 	if (stride && !config->stride && json_is_integer(stride))
 		config->stride = json_integer_value(stride);
+	if (fps && json_is_object(fps))
+		fps = json_object_get(fourcc, "fps");
+	if (fps && !config->fps && json_is_integer(fps))
+		config->fps = json_integer_value(fps);
 	if (fourcc && json_is_object(fourcc))
 		fourcc = json_object_get(fourcc, "value");
 	if (fourcc && !config->fourcc && json_is_string(fourcc))
@@ -233,17 +244,25 @@ DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *
 		devconfig->name = name;
 		devconfig->type = ops->name;
 		devconfig->entry = entry;
-		const char *opts = strchr(name, ':');
+		char *opts = strchr(name, ':');
+		if (opts && opts[1] == '/' && opts[2] == '/')
+		{
+			opts = strchr(name, ',');
+			opts[0] = '\0';
+			opts++;
+		}
 		const char *width = NULL;
 		const char *height = NULL;
 		const char *stride = NULL;
 		const char *fourcc = NULL;
+		const char *fps = NULL;
 		if (opts)
 		{
 			width = strstr(opts, "width=");
 			height = strstr(opts, "height=");
 			stride = strstr(opts, "stride=");
 			fourcc = strstr(opts, "fourcc=");
+			fps = strstr(opts, "fps=");
 		}
 		if (width)
 		{
@@ -262,6 +281,10 @@ DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *
 			const char *end = strchr(fourcc + 7, ',');
 			if (! end || (end - fourcc - 7) > 3)
 				devconfig->fourcc = FOURCC(fourcc[7], fourcc[8], fourcc[9], fourcc[10]);
+		}
+		if (fps)
+		{
+			devconfig->fps = strtol(fps + 4, NULL, 10);
 		}
 	}
 	return devconfig;

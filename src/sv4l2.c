@@ -1441,7 +1441,7 @@ static int _sv4l2_prepare(int fd, enum v4l2_buf_type *type, int mode, V4l2Config
 
 	int fps = -1;
 	if (config)
-		fps = config->fps;
+		fps = config->parent.fps;
 	if (_v4l2_setfps_param(fd, *type, fps) == -1)
 		_v4l2_setfps_vblank(fd, width, height, fps);
 	return 0;
@@ -1626,14 +1626,14 @@ int sv4l2_dequeue(V4L2_t *dev, void **mem, size_t *bytesused, int *flags)
 	if (ret)
 	{
 #if V4L2_DEQUEUE_NONBLOCKED
-		if (errno == EAGAIN && dev->config->fps != 0)
+		if (errno == EAGAIN && dev->config->parent.fps != 0)
 		{
 			/**
 			 * with this waiting the stream seems faster
 			 */
-			useconds_t usec = -dev->config->fps * 1000000;
-			if (dev->config->fps > 0)
-				usec = 1000000 / dev->config->fps;
+			useconds_t usec = -dev->config->parent.fps * 1000000;
+			if (dev->config->parent.fps > 0)
+				usec = 1000000 / dev->config->parent.fps;
 			usec /= V4L2_TRYRATIO; /// we don't want to be late.
 			usleep(usec);
 		}
@@ -1719,15 +1719,6 @@ DeviceConf_t * sv4l2_createconfig(const char *name)
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sv4l2_loadjsonconfiguration;
 #endif
-	devconfig->fps = -1;
-	const char *opts = strchr(name, ':');
-	const char *fps = NULL;
-	if (opts)
-		fps = strstr(opts, "fps=");
-	if (fps)
-	{
-		devconfig->fps = strtol(fps + 4, NULL, 10);
-	}
 	return (DeviceConf_t *)devconfig;
 }
 
@@ -2155,13 +2146,7 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 	}
 	else if (definition && json_is_object(definition))
 	{
-		fps = json_object_get(definition, "fps");
 		mode = json_object_get(definition, "mode");
-	}
-	if (fps && !config->fps && json_is_integer(fps))
-	{
-		int value = json_integer_value(fps);
-		config->fps = value;
 	}
 	if (mode && json_is_string(mode))
 	{
@@ -2308,6 +2293,8 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 		config->transfer.height = config->parent.height;
 	if (config->transfer.fourcc == 0)
 		config->transfer.fourcc = config->parent.fourcc;
+	if (config->transfer.fps == 0)
+		config->transfer.fps = config->parent.fps;
 	if (config->transfer.modifiers == 0)
 		config->transfer.modifiers = config->parent.modifiers;
 

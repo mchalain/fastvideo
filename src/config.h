@@ -64,6 +64,7 @@ struct DeviceConf_s
 	uint32_t width;
 	uint32_t height;
 	uint32_t stride;
+	uint32_t fps;
 	uint64_t modifiers;
 	struct
 	{
