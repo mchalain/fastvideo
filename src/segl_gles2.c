@@ -118,6 +118,7 @@ static const GLchar _defaultfragment[] = ""
 #endif
 
 #ifndef EGL_EGLEXT_PROTOTYPES
+static PFNGLDEBUGMESSAGECALLBACKKHRPROC glDebugMessageCallbackKHR = NULL;
 static PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = NULL;
 static PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = NULL;
 #ifdef EGL_KHR_image
@@ -139,6 +140,9 @@ static int _egl_initprototypes(void)
 	{
 		return -1;
 	}
+#ifdef DEBUG
+	glDebugMessageCallbackKHR = (void *) eglGetProcAddress("glDebugMessageCallbackKHR");
+#endif
 #if defined(GL_OES_EGL_image)
 	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
 	if(glEGLImageTargetTexture2DOES == NULL)
@@ -524,6 +528,16 @@ static GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, uint32_
 	return program;
 }
 
+#ifdef DEBUG
+void _glprog_messagecb( GLenum source, GLenum type, GLuint id, GLenum severity,
+                 GLsizei length, const GLchar* message, const void* userParam)
+{
+  err("segl: gles2 error %s type = 0x%x, severity = 0x%x, message = %s\n",
+           ( type == GL_DEBUG_TYPE_ERROR_KHR ? "** GL ERROR **" : "" ),
+            type, severity, message );
+}
+#endif
+
 static GLProgram_t *glprog_create(EGLConfig_Program_t *config, uint32_t width, uint32_t height)
 {
 	static int index = 1;
@@ -588,6 +602,12 @@ static GLProgram_t *glprog_create(EGLConfig_Program_t *config, uint32_t width, u
 	{
 		program->next = glprog_create(config->next, width, height);
 	}
+#ifdef DEBUG
+	// During init, enable debug output
+	glEnable              ( GL_DEBUG_OUTPUT_KHR );
+	glDebugMessageCallbackKHR( _glprog_messagecb, 0 );
+#endif
+
 	return program;
 }
 
