@@ -15,6 +15,7 @@ typedef enum{
 	Uniform_MAT3_e,
 	Uniform_MAT4_e,
 	Uniform_FUNC_e,
+	Uniform_SAMPLER_e,
 } Uniform_Type_e;
 
 #define	Uniform_SHARED_e 0x1000

@@ -733,6 +733,73 @@ static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, con
 	return glbuffer;
 }
 
+static GL_Buffer_t *gltexture_loadTGA(GLProgram_t *program, const char *name, const char *fileName)
+{
+	char *buffer = NULL;
+	FILE *f = NULL;
+	unsigned char tgaheader[12];
+	unsigned char attributes[6];
+	unsigned int imagesize;
+
+	f = fopen(fileName, "rb");
+	if(f == NULL)
+	{
+		return NULL;
+	}
+
+	if(fread(&tgaheader, sizeof(tgaheader), 1, f) == 0)
+	{
+		fclose(f);
+		return NULL;
+	}
+
+	if(fread(attributes, sizeof(attributes), 1, f) == 0)
+	{
+		fclose(f);
+		return 0;
+	}
+
+	GLuint width = 0;
+	width = attributes[1] * 256 + attributes[0];
+	GLuint height = 0;
+	height = attributes[3] * 256 + attributes[2];
+	GLuint depth = attributes[4];
+	imagesize = depth / 8 * width * height;
+	buffer = malloc(imagesize);
+	if (buffer == NULL)
+	{
+		err("segl: file allocation error %m");
+		fclose(f);
+		return 0;
+	}
+
+	if(fread(buffer, 1, imagesize, f) != imagesize)
+	{
+		err("segl: file reading error %m");
+		free(buffer);
+		fclose(f);
+		return NULL;
+	}
+	fclose(f);
+
+	GL_Buffer_t *glbuffer = NULL;
+	glbuffer = gltexture_create(program, name, "file");
+	if (glbuffer == NULL)
+	{
+		err("segl: texture creation error %m");
+		free(buffer);
+		return NULL;
+	}
+	uint32_t fourcc = FOURCC_AB24;
+	if (depth == 24)
+		fourcc = FOURCC_RGB3;
+	glBindVertexArrayOES(program->vertexArrayID);
+	gltexture_attachbuffer(glbuffer, width, height, fourcc, buffer);
+	glBindVertexArrayOES(0);
+	free(buffer);
+	return glbuffer;
+}
+
 static void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image)
 {
 	glEGLImageTargetTexture2DOES(glbuffer->textype, image);
@@ -915,6 +982,14 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 		glUniformMatrix4fv(uniform->loc, 1, GL_FALSE, uniform->value);
 	}
 	break;
+	case Uniform_SAMPLER_e:
+	{
+		GL_Buffer_t *glbuffer = (GL_Buffer_t *)uniform->value;
+		glActiveTexture(GL_TEXTURE0 + glbuffer->unit);
+		glBindTexture(glbuffer->textype, glbuffer->texture);
+		glUniform1i(glbuffer->loc, glbuffer->unit);
+	}
+	break;
 	case Uniform_FUNC_e:
 	{
 		GLfloat (*func)(GLProgram_Uniform_t *uniform) = uniform->value;
@@ -1040,6 +1115,19 @@ static int _glprog_uniform_size(GLProgram_Uniform_t *uniform)
 static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, GLProgram_t *program, json_t *jvalue)
 {
 	int ret = -1;
+	if (jvalue && json_is_string(jvalue))
+	{
+		switch (uniform->type & ~Uniform_SHARED_e)
+		{
+		case Uniform_SAMPLER_e:
+		{
+			if (!uniform->value)
+				uniform->value = gltexture_loadTGA(program, uniform->name, json_string_value(jvalue));
+			ret = 0;
+		}
+		break;
+		}
+	}
 	if (!uniform->value)
 	{
 		err("segl: %s memory allocation error", uniform->name);
@@ -1148,6 +1236,15 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 			uniform->type = Uniform_MAT3_e;
 		else if (!strcmp(value, "mat4"))
 			uniform->type = Uniform_MAT4_e;
+		else if (!strcmp(value, "sampler"))
+		{
+			/// function are not modifiable with setting
+			json_t *jvalue = json_object_get(jsetting, "value");
+			if (jvalue && json_is_string(jvalue))
+			{
+				uniform->type = Uniform_SAMPLER_e;
+			}
+		}
 		else if (!strcmp(value, "func"))
 		{
 			uniform->type = Uniform_FUNC_e;
