@@ -38,7 +38,7 @@ struct GL_Buffer_s
 
 static GLProgram_Uniform_t * _glprog_uniform_create(void *setting);
 static int _glprog_uniform_size(GLProgram_Uniform_t *uniform);
-static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue);
+static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, GLProgram_t *program, json_t *jvalue);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
 
 static EGLProg_ops_t _gles2_ops;
@@ -831,7 +831,7 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 	if (!uniform->loc)
 		uniform->loc = glGetUniformLocation(program->ID, uniform->name);
 	if (uniform->value == NULL &&
-		_glprog_uniform_setvalue(uniform, json_object_get(uniform->config, "value")))
+		_glprog_uniform_setvalue(uniform, program, json_object_get(uniform->config, "value")))
 	{
 		err("segl: uniform %s not set", uniform->name);
 		return -1;
@@ -1028,7 +1028,7 @@ static int _glprog_uniform_size(GLProgram_Uniform_t *uniform)
 	return ret;
 }
 
-static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue)
+static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, GLProgram_t *program, json_t *jvalue)
 {
 	int ret = -1;
 	if (!uniform->value)
@@ -1182,7 +1182,7 @@ static int _glprog_setcontrols(GLProgram_t *program, json_t *jsettings)
 				if (!strcasecmp(json_string_value(jname), uniform->name))
 				{
 					json_t *jvalue = json_object_get(jsetting, "value");
-					_glprog_uniform_setvalue(uniform, jvalue);
+					_glprog_uniform_setvalue(uniform, program, jvalue);
 				}
 			}
 		}
@@ -1197,7 +1197,7 @@ static int _glprog_setcontrols(GLProgram_t *program, json_t *jsettings)
 				if (!strcasecmp(json_string_value(jname), uniform->name))
 				{
 					json_t *jvalue = json_object_get(jsettings, "value");
-					_glprog_uniform_setvalue(uniform, jvalue);
+					_glprog_uniform_setvalue(uniform, program, jvalue);
 				}
 			}
 		}
