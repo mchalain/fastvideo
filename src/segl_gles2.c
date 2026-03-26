@@ -866,21 +866,6 @@ static int _glprog_run(GLProgram_t *program, GL_Buffer_t *buffer, GLProgram_t *p
 	glBindTexture(buffer->textype, buffer->texture);
 	glUniform1i(buffer->loc, buffer->unit);
 
-	if (prevprog)
-	{
-		GL_Buffer_t *buffer = prevprog->out;
-		/// check if buffer is available into program
-		GLint loc = glGetUniformLocation(program->ID, buffer->name);
-		if (loc >= 0)
-		{
-			if (buffer->unit == 0)
-				buffer->unit = program->lasttextureid++;
-			glActiveTexture(GL_TEXTURE0 + buffer->unit);
-			glBindTexture(buffer->textype, buffer->texture);
-			glUniform1i(loc, buffer->unit);
-		}
-	}
-
 	if (program->move)
 	{
 		GLuint moveID = glGetUniformLocation(program->ID, "vMove");
@@ -1141,12 +1126,29 @@ static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, GLProgram_t *p
 	int ret = -1;
 	if (jvalue && json_is_string(jvalue))
 	{
+		const char *value = json_string_value(jvalue);
 		switch (uniform->type & ~Uniform_SHARED_e)
 		{
 		case Uniform_SAMPLER_e:
 		{
 			if (!uniform->value)
-				uniform->value = gltexture_loadTGA(program, uniform->name, json_string_value(jvalue));
+			{
+				for (GLProgram_t *it = program->list; it != NULL; it = it->next)
+				{
+					if (it->config->name && !strcasecmp(value, it->config->name))
+					{
+						uniform->value = it->out;
+						if (it->out)
+						{
+							it->out->unit = program->lasttextureid++;
+							it->out->loc = glGetUniformLocation(program->ID, uniform->name);
+						}
+					}
+				}
+			}
+			if (!uniform->value)
+				uniform->value = gltexture_loadTGA(program, uniform->name, value);
+
 			ret = 0;
 		}
 		break;
