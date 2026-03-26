@@ -166,6 +166,7 @@ static int _egl_initprototypes(void)
 
 static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src);
 static void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image);
+static void gltexture_attachbuffer(GL_Buffer_t *glbuffer, uint32_t width, uint32_t height, uint32_t fourcc, void *mem);
 static GLuint gltexture_id(GL_Buffer_t *glbuffer);
 static void gltexture_destroy(GL_Buffer_t *glbuffer);
 
@@ -580,6 +581,8 @@ static GLProgram_t *glprog_create(EGLConfig_Program_t *config, uint32_t width, u
 	glUniform4f(resolutionID, (GLfloat)program->width, (GLfloat)program->height, 1 / (GLfloat)program->width, 1 / (GLfloat)program->height);
 
 	glBindVertexArrayOES(0);
+	/// keep always GL_TEXTURE0 (texture unit) available for camera
+	program->lasttextureid = 1;
 	program->index = index++;
 	if (config && config->next)
 	{
@@ -735,6 +738,13 @@ static void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image)
 	glEGLImageTargetTexture2DOES(glbuffer->textype, image);
 }
 
+static void gltexture_attachbuffer(GL_Buffer_t *glbuffer, uint32_t width, uint32_t height, uint32_t fourcc, void *mem)
+{
+	const FourccFormat_t *format = fourcc_getformat(fourcc);
+	glTexImage2D(glbuffer->textype, 0, format->internal, width, height, 0, format->full, format->data, mem);
+//	glTexStorage2D(GL_TEXTURE_2D, 1, format->internal, width, height);
+}
+
 static uint32_t gltexture_id(GL_Buffer_t *glbuffer)
 {
 	return glbuffer->texture;
@@ -759,8 +769,6 @@ static int _glprog_run(GLProgram_t *program, GL_Buffer_t *buffer, GLProgram_t *p
 			err("segl: framebuffer incomplet: %#xn", error);
 	}
 	glClear(GL_COLOR_BUFFER_BIT);
-
-	glBindVertexArrayOES(program->vertexArrayID);
 
 	/// this is the camera texture and should be GL_TEXTURE0 (buffer->unit == 0)
 	glActiveTexture(GL_TEXTURE0 + buffer->unit);
@@ -792,6 +800,7 @@ static int _glprog_run(GLProgram_t *program, GL_Buffer_t *buffer, GLProgram_t *p
 		glprog_setuniform(program, uniform);
 	}
 
+	glBindVertexArrayOES(program->vertexArrayID);
 #if GLES2_DRAWELEMENTS
 	GLshort indexBuffer[] = {
 		0, 1, 2, 1, 2, 3
