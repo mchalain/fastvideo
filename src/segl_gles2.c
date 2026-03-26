@@ -47,6 +47,7 @@ typedef struct GLProgram_s GLProgram_t;
 struct GLProgram_s
 {
 	int index;
+	GLProgram_t *list;
 	GLProgram_t *next;
 	EGLConfig_Program_t *config;
 	GLuint ID;
@@ -598,9 +599,12 @@ static GLProgram_t *glprog_create(EGLConfig_Program_t *config, uint32_t width, u
 	/// keep always GL_TEXTURE0 (texture unit) available for camera
 	program->lasttextureid = 1;
 	program->index = index++;
+	program->list = program;
 	if (config && config->next)
 	{
 		program->next = glprog_create(config->next, width, height);
+		if (program->next)
+			program->next->list = program->list;
 	}
 #ifdef DEBUG
 	// During init, enable debug output
