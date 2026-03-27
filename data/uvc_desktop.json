@@ -35,9 +35,21 @@
 	},
 	"programs": [{
 		"disable": true,
-		"vertex": "data/simplevertex.glsl",
-		"fragment": "data/simplefragment.glsl"
-	},{
+		"vertex": "simplevertex.glsl",
+		"fragment": "simplefragment.glsl"
+	}],
+	"end":true
+},{
+	"name":"shadertoy",
+	"type":"gpu",
+	"native":["x11","wayland","drm","offscreen"],
+	"transfer": {
+		"fourcc": "XB24",
+		"export": "imagemesa",
+		"end":true
+	},
+	"programs": [{
+		"name": "Empty",
 		"disable": true,
 		"vertex": "ShaderToy/vertex.glsl",
 		"fragment": ["ShaderToy/fragment.glsl","ShaderToy/Image.glsl"],
@@ -51,6 +63,7 @@
 			"value": "frames"
 		}]
 	},{
+		"name": "Funny",
 		"disable": false,
 		"vertex": "ShaderToy/vertex.glsl",
 		"fragment": ["ShaderToy/fragment.glsl","ShaderToy/Funny.glsl"],

@@ -4,11 +4,11 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
-#include <GLES2/gl2.h>
-#include <GLES2/gl2ext.h>
 
 #include "segl.h"
 #include "log.h"
@@ -67,7 +67,6 @@ struct EGL_s
 	EGLConfig eglconfig;
 	EGLContext eglcontext;
 	EGLSurface eglsurface;
-	GLuint fbo;
 	EGL_t *dup;
 	const EGLExport_t *export;
 	void *export_ctx;
@@ -83,9 +82,6 @@ struct EGL_s
 
 #ifndef EGL_KHR_image
 #error "this version of EGL doesn't support KHR Image"
-#endif
-#ifndef GL_OES_EGL_image
-#error "this version of GLES doesn't support EGL Image"
 #endif
 #ifndef EGL_EGLEXT_PROTOTYPES
 #if defined(EGL_KHR_image)
@@ -124,34 +120,6 @@ static int _egl_initprototypes(void)
 #else
 #define _egl_initprototypes(...)
 #endif
-
-
-static FourccFormat_t _FourccFormats[] =
-{
-	{ .fourcc = FOURCC_RGBA, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-	{ .fourcc = FOURCC_AB24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-	{ .fourcc = FOURCC_XB24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-	{ .fourcc = FOURCC_AR24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-	{ .fourcc = FOURCC_XR24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-	{ .fourcc = FOURCC_RGBP, .internal = GL_RGB565   , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
-	{ .fourcc = FOURCC_RG16, .internal = GL_RGB565   , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
-	{ .fourcc = FOURCC_R8  , .internal = GL_R8_EXT   , .full = GL_RED_EXT, .data = GL_UNSIGNED_BYTE    , .nplanes = 1, .stride_factor={sizeof(uint8_t) ,0,0,0}},
-	{ .fourcc = FOURCC_NV12, .internal = GL_R8_EXT   , .full = GL_RED_EXT, .data = GL_UNSIGNED_BYTE    , .nplanes = 1, .stride_factor={sizeof(uint8_t) ,0,0,0}},
-//	{ .fourcc = FOURCC_NV12, .internal = GL_LUMINANCE8_OES, .full = GL_LUMINANCE, .data = GL_UNSIGNED_BYTE , .nplanes = 1, .stride_factor={sizeof(uint8_t),0,0,0}},
-	{ .fourcc = FOURCC_YUYV, .internal = GL_RGBA     , .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
-};
-
-const FourccFormat_t *fourcc_getformat(uint32_t fourcc)
-{
-	FourccFormat_t *format = NULL;
-	for (int i = 0; i < sizeof(_FourccFormats)/sizeof(*_FourccFormats); i++)
-	{
-		format = &_FourccFormats[i];
-		if (format->fourcc == fourcc)
-			break;
-	}
-	return format;
-}
 
 int _egl_hasextension(EGLDisplay eglDisplay, const char *extension)
 {
@@ -218,17 +186,14 @@ static EGL_t *_egl_create(const char *devicename, device_type_e type, EGLConfig_
 	uint32_t height = config->parent.height;
 
 	const EGLProg_ops_t *prog_ops = _prog_ops[0];
-	for (int i = 0; config->programs && i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
-	{
-		if (_prog_ops[i] && strcmp(_prog_ops[i]->name, config->programs->type))
-		{
-			prog_ops = _prog_ops[i];
-			break;
-		}
-	}
+	if (config)
+		prog_ops = config->prog_ops;
 	GLProgram_t *programs = NULL;
 	if (type == device_control)
-		programs = prog_ops->create_controler(config->programs, width, height);
+	{
+		if (prog_ops->create_controler)
+			programs = prog_ops->create_controler(config->programs, width, height);
+	}
 	else
 		programs = prog_ops->create(config->programs, width, height);
 	if (programs == NULL)
@@ -396,7 +361,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	}
 	eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext);
 
-	GLint minswapinterval = 1;
+	EGLint minswapinterval = 1;
 	eglGetConfigAttrib(eglDisplay, eglConfigs[configid], EGL_MIN_SWAP_INTERVAL, &minswapinterval);
 	dbg("segl: swap interval %d", minswapinterval);
 	eglSwapInterval(eglDisplay, minswapinterval);
@@ -419,7 +384,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 
 static int texture_fromdma(EGL_t *dev, GLBuffer_t *buffer, int dma_fd, size_t size)
 {
-	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, dev->config->parent.fourcc);
+	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, "vTexture", "camera");
 
 	uint32_t stride = dev->config->parent.stride;
 	if (stride == 0)
@@ -427,7 +392,7 @@ static int texture_fromdma(EGL_t *dev, GLBuffer_t *buffer, int dma_fd, size_t si
 	uint32_t fourcc;
 	fourcc = dev->config->parent.fourcc;
 	EGLImageKHR image;
-	GLint attrib_list[] = {
+	EGLint attrib_list[] = {
 		EGL_IMAGE_PRESERVED_KHR, EGL_TRUE,
 		EGL_WIDTH, dev->config->parent.width,
 		EGL_HEIGHT, dev->config->parent.height,
@@ -515,7 +480,7 @@ for (int i = 0; i < sizeof(formats) / sizeof(*formats); i++)
 
 static int texture_frommem(EGL_t *dev, GLBuffer_t *buffer, void *mem, size_t size)
 {
-	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, dev->config->parent.fourcc);
+	GL_Buffer_t *glbuffer = dev->program_ops->buffer.create(dev->programs, "vTexture", "camera");
 
 	uint32_t stride = size / dev->config->parent.height;
 	EGLImageKHR image;
@@ -712,7 +677,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	dup->export = _exports[0];
 	if (dup->config->export)
 		dup->export = dup->config->export;
-	dup->export_ctx = dup->export->create(dup->config, dev->egldisplay, dev->eglcontext);
+	dup->export_ctx = dup->export->create(dup, dev->egldisplay, dev->eglcontext);
 	if (!dup->export_ctx)
 	{
 		err("segl: impossible to export data");
@@ -733,8 +698,6 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 		dup->buffers[i].pitch = fformat->stride_factor[0];
 		dup->export->setbuffer(dup->export_ctx, &dup->buffers[i]);
 	}
-	/// set the parent fbo
-	dev->fbo = dup->export->fbo(dup->export_ctx);
 	return dup;
 }
 
@@ -756,7 +719,7 @@ EXT_API int segl_start(EGL_t *dev)
 	GL_Buffer_t *out = NULL;
 	if (dev->dup)
 		out = dev->dup->export->out(dev->dup->export_ctx);
-	dev->program_ops->setup(dev->programs, dev->fbo, out);
+	dev->program_ops->setup(dev->programs, out);
 
 	eglMakeCurrent(dev->egldisplay, dev->eglsurface, dev->eglsurface, dev->eglcontext);
 	dev->curbufferid = -1;
@@ -870,6 +833,21 @@ EXT_API int segl_fd(EGL_t *dev, int writer)
 	return dev->native->fd(dev->native_window);
 }
 
+const EGLConfig_t *segl_config(EGL_t *dev)
+{
+	return dev->config;
+}
+
+const EGLProg_ops_t *segl_engine(EGL_t *dev)
+{
+	return dev->program_ops;
+}
+
+GLProgram_t *segl_program(EGL_t *dev)
+{
+	return dev->programs;
+}
+
 EXT_API void segl_destroy(EGL_t *dev)
 {
 	if (dev->type != device_input)
@@ -927,7 +905,9 @@ int segl_loadjsonsettings(EGL_t *dev, void *entry)
 {
 	json_t *jconfig = entry;
 	json_t *jprograms = json_object_get(jconfig, "programs");
-	return dev->program_ops->loadjsonsetting(dev->programs, jprograms);
+	if (dev->program_ops->loadjsonsetting)
+		return dev->program_ops->loadjsonsetting(dev->programs, jprograms);
+	return 0;
 }
 
 int segl_loadjsonconfiguration(void *arg, void *entry)
@@ -935,15 +915,24 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	json_t *jconfig = entry;
 	EGLConfig_t *config = (EGLConfig_t *)arg;
 
+	const EGLProg_ops_t *prog_ops = _prog_ops[0];
+	json_t *jengine = json_object_get(jconfig, "engine");
 	json_t *jprograms = json_object_get(jconfig, "programs");
 	for (int i = 0; i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
 	{
-		const EGLProg_ops_t *prog_ops = _prog_ops[i];
-		if (prog_ops && !(config->mode & SEGL_NOPROGRAM))
+		if (_prog_ops[i])
 		{
-			prog_ops->loadjsonconfiguration(&config->programs, jprograms);
+			if (jengine && json_is_string(jengine) &&
+				strcmp(json_string_value(jengine), _prog_ops[i]->name))
+				continue;
+			if (!(config->mode & SEGL_NOPROGRAM) &&
+				_prog_ops[i]->loadjsonconfiguration(&config->programs, jprograms))
+				continue;
+			prog_ops = _prog_ops[i];
+			break;
 		}
 	}
+	config->prog_ops = prog_ops;
 
 	json_t *native = json_object_get(jconfig, "native");
 	if (native && json_is_array(native))

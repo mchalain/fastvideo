@@ -54,18 +54,19 @@ static int _egl_initprototypes(void)
 typedef struct EGLExportImageMesa_s EGLExportImageMesa_t;
 struct EGLExportImageMesa_s
 {
-	EGLConfig_t *config;
+	EGL_t *egl;
+	const EGLConfig_t *config;
 	EGLDisplay egldisplay;
 	EGLContext eglcontext;
-	GLuint fbo;
 	GLuint rbo;
-	GL_Buffer_t out;
+	GL_Buffer_t *out;
 };
 
-static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext)
+static void *_egl_export_create(EGL_t *dev, EGLDisplay eglDisplay, EGLContext eglContext)
 {
 	EGLExportImageMesa_t *ctx = calloc(1, sizeof(*ctx));
-	ctx->config = config;
+	ctx->egl = dev;
+	ctx->config = segl_config(dev);
 	ctx->egldisplay = eglDisplay;
 	ctx->eglcontext = eglContext;
 
@@ -78,18 +79,18 @@ static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLC
 	if (glget <= height)
 		warn("segl: width to height max %d", glget);
 
+
+#if EXPORT_RENDER
 	const FourccFormat_t *fformat = fourcc_getformat(config->parent.fourcc);
 
 	/*  Framebuffer */
 	glGenFramebuffers(1, &ctx->fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo);
-#if EXPORT_RENDER
-	ctx->out.texture = ctx->rbo;
 	ctx->out.textype = GL_RENDERBUFFER;
 	ctx->out.egltarget = EGL_GL_RENDERBUFFER;
 
-	glGenRenderbuffers(1, &ctx->rbo);
-	glBindRenderbuffer(GL_RENDERBUFFER, ctx->rbo);
+	glGenRenderbuffers(1, &ctx->texture);
+	glBindRenderbuffer(GL_RENDERBUFFER, ctx->texture);
 	GLuint format = fformat->internal;
 	/* Storage must be one of: */
 	/* GL_RGBA4, GL_RGB565, GL_RGB5_A1, GL_DEPTH_COMPONENT16, GL_STENCIL_INDEX8. */
@@ -108,37 +109,7 @@ static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLC
 	glGetRenderbufferParameteriv(ctx->out.textype, GL_RENDERBUFFER_HEIGHT, &height);
 
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-		ctx->out.textype, ctx->rbo);
-#else
-	/// glFramebufferTexture2D support only GL_TEXTURE_2D
-	ctx->out.egltarget = EGL_GL_TEXTURE_2D;
-	ctx->out.textype = GL_TEXTURE_2D;
-
-	glGenTextures(1, &ctx->out.texture);
-	if (ctx->out.texture == 0)
-	{
-		err("segl: output texture creation error");
-		free(ctx);
-		return NULL;
-	}
-	glBindTexture(ctx->out.textype, ctx->out.texture);
-	glTexParameteri(ctx->out.textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(ctx->out.textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(ctx->out.textype, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(ctx->out.textype, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-	glTexImage2D(ctx->out.textype, 0, fformat->internal,
-			width, height, 0, fformat->full, fformat->data, NULL);
-	GLuint glerror = glGetError();
-	if (glerror)
-	{
-		err ("segl: Texturebuffer error %#x", glerror);
-		free(ctx);
-		return NULL;
-	}
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-		ctx->out.textype, ctx->out.texture, 0);
-#endif
+		ctx->out.textype, ctx->texture);
 	/* Sanity check. */
 	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if (ret != GL_FRAMEBUFFER_COMPLETE)
@@ -147,33 +118,26 @@ static void *_egl_export_create(EGLConfig_t *config, EGLDisplay eglDisplay, EGLC
 		return NULL;
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#else
+	GLProgram_t *prog = segl_program(ctx->egl);
+	const EGLProg_ops_t *engine = segl_engine(ctx->egl);
+	ctx->out = engine->buffer.create(prog, "export", "out");
+#endif
 	return ctx;
-}
-
-static GLuint _egl_export_fbo(void *arg)
-{
-	EGLExportImageMesa_t *ctx = (EGLExportImageMesa_t *)arg;
-	return ctx->fbo;
 }
 
 static GL_Buffer_t *_egl_export_out(void *arg)
 {
 	EGLExportImageMesa_t *ctx = (EGLExportImageMesa_t *)arg;
-	return &ctx->out;
+	return ctx->out;
 }
 
 static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 {
 	EGLExportImageMesa_t *ctx = (EGLExportImageMesa_t *)arg;
-	const EGLint tattributes[] = {
-		EGL_IMAGE_PRESERVED, EGL_TRUE,
-		EGL_NONE,
-	};
-	const EGLint *attributes = tattributes;
 
-	/// eglCreateImage and eglCreateImageKHR have the same result
-	EGLImage image = eglCreateImageKHR(ctx->egldisplay, ctx->eglcontext,
-		ctx->out.egltarget, (void *)(long)ctx->out.texture, attributes);
+	const EGLProg_ops_t *engine = segl_engine(ctx->egl);
+	EGLImage image = engine->buffer.getimage(ctx->out, ctx->egldisplay, ctx->eglcontext);
 	if (image == EGL_NO_IMAGE)
 		return -1;
 
@@ -193,13 +157,21 @@ static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 //	if (stride[0] != dev->buffers[id].size / dev->config->parent.height)
 //		err("segl: exported format not aligned");
 	if (ctx->config->parent.fourcc && ctx->config->parent.fourcc != fourcc)
+	{
 		err("segl: requests %.4s, obtains %.4s", (char *)&ctx->config->parent.fourcc, (char *)&fourcc);
-	ctx->config->parent.fourcc = fourcc;
+		return -1;
+	}
 
 	dbg("segl: export format modifier %.4s, %#"PRIx64"", (char *)&fourcc, modifiers[0]);
-	for (int i = 0; i < 4 && modifiers[0] != ctx->config->parent.modifiers; i++)
+	for (int i = 0; i < 4; i++)
+	{
+		if (modifiers[i] == ctx->config->parent.modifiers)
+		{
+			buffer->modifiers = modifiers[i];
+			break;
+		}
 		err("segl: format modifier present but not set (%"PRId64"/%"PRId64")", modifiers[i], ctx->config->parent.modifiers);
-	ctx->config->parent.modifiers = modifiers[0];
+	}
 	eglDestroyImageKHR(ctx->egldisplay, image);
 
 	uint32_t size = stride[0] * ctx->config->parent.height;
@@ -210,6 +182,7 @@ static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 	buffer->pitch = stride[0];
 	buffer->dma_fd = dma_buf[0];
 	buffer->offset = offset[0];
+	buffer->fourcc = fourcc;
 	return 0;
 }
 
@@ -230,6 +203,9 @@ static int _egl_export_fd(void *arg)
 
 static void _egl_export_destroy(void *arg)
 {
+	EGLExportImageMesa_t *ctx = (EGLExportImageMesa_t *)arg;
+	const EGLProg_ops_t *engine = segl_engine(ctx->egl);
+	engine->buffer.destroy(ctx->out);
 	free(arg);
 }
 
@@ -237,7 +213,6 @@ EGLExport_t export_imagemesa =
 {
 	.name = "imagemesa",
 	.create = _egl_export_create,
-	.fbo = _egl_export_fbo,
 	.out = _egl_export_out,
 	.fd = _egl_export_fd,
 	.setbuffer = _egl_export_setbuffer,

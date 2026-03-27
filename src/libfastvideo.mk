@@ -17,6 +17,7 @@ fastvideo_SOURCES-$(HAVE_LIBDRM)+=sdrm.c
 fastvideo_SOURCES-$(HAVE_EGL)+=segl.c
 fastvideo_SOURCES-$(HAVE_EGL)+=segl_offscreen.c
 fastvideo_SOURCES-$(HAVE_EGL)+=segl_gles2.c
+fastvideo_SOURCES-$(HAVE_EGL)+=segl_gles3.c
 fastvideo_SOURCES-$(HAVE_GBM)+=segl_drm.c
 fastvideo_SOURCES-$(HAVE_X11)+=segl_x11.c
 fastvideo_SOURCES-$(HAVE_WAYLAND)+=segl_wayland.c

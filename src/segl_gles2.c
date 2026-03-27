@@ -3,6 +3,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+#include <errno.h>
+#include <sys/stat.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -10,57 +12,49 @@
 #include <GLES2/gl2ext.h>
 
 #include "segl.h"
+#include "segl_engine.h"
 #include "log.h"
+
+#ifndef GL_OES_EGL_image
+#error "this version of GLES doesn't support EGL Image"
+#endif
 
 #define segl_dbg(...)
 
-typedef enum{
-	Uniform_UNKNOWN_e = 0,
-	Uniform_INT_e,
-	Uniform_FLOAT_e,
-	Uniform_FVEC2_e,
-	Uniform_FVEC3_e,
-	Uniform_FVEC4_e,
-	Uniform_IVEC2_e,
-	Uniform_IVEC3_e,
-	Uniform_IVEC4_e,
-	Uniform_MAT2_e,
-	Uniform_MAT3_e,
-	Uniform_MAT4_e,
-	Uniform_FUNC_e,
-} Uniform_Type_e;
+/// the program running may use "DrawElements" or "DrawArrays". The both have the same performances
+#define GLES2_DRAWELEMENTS 0
 
-typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
-struct GLProgram_Uniform_s
+struct GL_Buffer_s
 {
 	const char *name;
-	Uniform_Type_e type;
-	void *value;
-	void *data;
-	GLProgram_Uniform_t *next;
+	GLint unit;
+	GLint loc;
+	EGLImageKHR image;
+	GLuint fbo;
+	GLuint texture;
+	GLenum textype;
+	EGLint egltarget;
 };
 
 static GLProgram_Uniform_t * _glprog_uniform_create(void *setting);
 static int _glprog_uniform_size(GLProgram_Uniform_t *uniform);
-static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
-int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform);
+static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, GLProgram_t *program, json_t *jvalue);
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform);
 
-EGLProg_ops_t gles2_ops;
+static EGLProg_ops_t _gles2_ops;
 
 typedef struct GLProgram_s GLProgram_t;
 struct GLProgram_s
 {
+	int index;
+	GLProgram_t *list;
 	GLProgram_t *next;
 	EGLConfig_Program_t *config;
 	GLuint ID;
 	GLuint vertexArrayID;
 	GLuint vertexBufferObject[3];
-	GLfloat *movectx;
-	GLfloat *(*move)(GLfloat *);
-	const char *in_texturename;
-	GL_Buffer_t out;
-	GLuint fbo;
+	int lasttextureid;
+	GL_Buffer_t *out;
 	uint32_t width;
 	uint32_t height;
 	uint32_t fourcc;
@@ -68,12 +62,14 @@ struct GLProgram_s
 	GLProgram_Uniform_t *controls;
 };
 
-const GLchar *defaulttexturename = "vTexture";
+const GLchar _defaultname[] = "display";
+const GLchar _defaulttexturename[] = "vTexture";
+static const char _segldir[] = "/tmp/fastvideo.segl";
 
 //#define GLSLV300
 
 #ifdef GLSLV300
-static const GLchar defaultvertex[] = "#version 300 es \n\
+static const GLchar _defaultvertex[] = "#version 300 es \n\
 layout(location = 0) in vec3 vPosition;\n\
 out vec2 texUV;\n\
 \n\
@@ -83,7 +79,7 @@ void main (void)\n\
 	texUV = (vec2(0.5, 0.5) - vPosition.xy / 2.0);\n\
 }\n\
 ";
-static const GLchar defaultfragment[] = "#version 300 es\n\
+static const GLchar _defaultfragment[] = "#version 300 es\n\
 precision mediump float;\n\
 uniform sampler2D vTexture;\n\
 in vec2 texUV;\n\
@@ -94,7 +90,7 @@ void main() {\n\
 }\n\
 ";
 #else
-static const GLchar defaultvertex[] = ""
+static const GLchar _defaultvertex[] = ""
 "\n""attribute vec3 vPosition;"
 "\n""varying vec2 texUV;"
 "\n"
@@ -104,7 +100,7 @@ static const GLchar defaultvertex[] = ""
 "\n""	gl_Position = vec4(vPosition,1.);"
 "\n""}"
 "\n";
-static const GLchar defaultfragment[] = ""
+static const GLchar _defaultfragment[] = ""
 "\n""#extension GL_OES_EGL_image_external : require"
 "\n""precision mediump float;"
 "\n""uniform samplerExternalOES vTexture;"
@@ -121,8 +117,12 @@ static const GLchar defaultfragment[] = ""
 #endif
 
 #ifndef EGL_EGLEXT_PROTOTYPES
+static PFNGLDEBUGMESSAGECALLBACKKHRPROC glDebugMessageCallbackKHR = NULL;
 static PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = NULL;
 static PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = NULL;
+#ifdef EGL_KHR_image
+static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR = NULL;
+#endif
 #if defined(GL_OES_EGL_image)
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = NULL;
 static PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES = NULL;
@@ -139,6 +139,10 @@ static int _egl_initprototypes(void)
 	{
 		return -1;
 	}
+#ifdef DEBUG
+	glDebugMessageCallbackKHR = (void *) eglGetProcAddress("glDebugMessageCallbackKHR");
+#endif
+#if defined(GL_OES_EGL_image)
 	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
 	if(glEGLImageTargetTexture2DOES == NULL)
 	{
@@ -149,18 +153,64 @@ static int _egl_initprototypes(void)
 	{
 		return -1;
 	}
+#endif
+#ifdef EGL_KHR_image
+	eglCreateImageKHR = (void *) eglGetProcAddress("eglCreateImageKHR");
+	if(eglCreateImageKHR == NULL)
+	{
+		return -1;
+	}
+#endif
 	return 0;
 }
 #else
 #define _egl_initprototypes(...)
 #endif
 
+static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src);
+static void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image);
+static void gltexture_attachbuffer(GL_Buffer_t *glbuffer, uint32_t width, uint32_t height, uint32_t fourcc, void *mem);
+static GLuint gltexture_id(GL_Buffer_t *glbuffer);
+static void gltexture_destroy(GL_Buffer_t *glbuffer);
+
+static FourccFormat_t _FourccFormats[] =
+{
+	{ .fourcc = FOURCC_RGBA, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_AB24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_XB24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_AR24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_XR24, .internal = GL_RGBA8_OES, .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+	{ .fourcc = FOURCC_RGB3, .internal = GL_RGB,       .full = GL_RGB,  .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint8_t)*3,0,0,0}},
+	{ .fourcc = 0,         .internal = GL_RGBA32F_EXT, .full = GL_RGBA, .data = GL_FLOAT               , .nplanes = 1, .stride_factor={sizeof(float) ,0,0,0}},
+	{ .fourcc = FOURCC_RGBP, .internal = GL_RGB565   , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
+	{ .fourcc = FOURCC_RG16, .internal = GL_RGB565   , .full = GL_RGB , .data = GL_UNSIGNED_SHORT_5_6_5, .nplanes = 1, .stride_factor={sizeof(uint16_t),0,0,0}},
+	{ .fourcc = FOURCC_R8  , .internal = GL_R8_EXT   , .full = GL_RED_EXT, .data = GL_UNSIGNED_BYTE    , .nplanes = 1, .stride_factor={sizeof(uint8_t) ,0,0,0}},
+	{ .fourcc = FOURCC_NV12, .internal = GL_R8_EXT   , .full = GL_RED_EXT, .data = GL_UNSIGNED_BYTE    , .nplanes = 1, .stride_factor={sizeof(uint8_t) ,0,0,0}},
+//	{ .fourcc = FOURCC_NV12, .internal = GL_LUMINANCE8_OES, .full = GL_LUMINANCE, .data = GL_UNSIGNED_BYTE , .nplanes = 1, .stride_factor={sizeof(uint8_t),0,0,0}},
+	{ .fourcc = FOURCC_YUYV, .internal = GL_RGBA     , .full = GL_RGBA, .data = GL_UNSIGNED_BYTE       , .nplanes = 1, .stride_factor={sizeof(uint32_t),0,0,0}},
+};
+
+const FourccFormat_t *fourcc_getformat(uint32_t fourcc)
+{
+	FourccFormat_t *format = NULL;
+	for (int i = 0; i < sizeof(_FourccFormats)/sizeof(*_FourccFormats); i++)
+	{
+		format = &_FourccFormats[i];
+		if (format->fourcc == fourcc)
+			break;
+	}
+	return format;
+}
+
 static void display_log(GLuint instance)
 {
 	GLint logSize = 0;
 	GLchar* log = NULL;
 
-	glGetProgramiv(instance, GL_INFO_LOG_LENGTH, &logSize);
+	if (glIsShader(instance))
+		glGetShaderiv(instance, GL_INFO_LOG_LENGTH, &logSize);
+	else
+		glGetProgramiv(instance, GL_INFO_LOG_LENGTH, &logSize);
 	if (!logSize)
 	{
 		err("segl: no log");
@@ -326,7 +376,7 @@ static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADER
 {
 	GLint programState = 0;
 
-	GLuint vertexID = loadShader(GL_VERTEX_SHADER, vertex, defaultvertex);
+	GLuint vertexID = loadShader(GL_VERTEX_SHADER, vertex, _defaultvertex);
 	if ( vertexID == 0)
 	{
 		err("segl: vertex shader compilation error");
@@ -335,9 +385,9 @@ static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADER
 
 	GLuint fragmentID = 0;
 	if (fragments == NULL)
-		fragmentID = loadShader(GL_FRAGMENT_SHADER, NULL, defaultfragment);
+		fragmentID = loadShader(GL_FRAGMENT_SHADER, NULL, _defaultfragment);
 	else if (fragments[1] == NULL)
-		fragmentID = loadShader(GL_FRAGMENT_SHADER, fragments[0], defaultfragment);
+		fragmentID = loadShader(GL_FRAGMENT_SHADER, fragments[0], _defaultfragment);
 	else
 		fragmentID = loadShaders(GL_FRAGMENT_SHADER, fragments);
 	if (fragmentID == 0)
@@ -376,18 +426,7 @@ static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADER
 	return programID;
 }
 
-static GLfloat *_movestatic(GLfloat * ctx)
-{
-	if (ctx == NULL)
-	{
-		ctx = calloc(16, sizeof(GLfloat));
-		ctx[0] = ctx[5] = ctx[10] = ctx[15] = 1.0;
-	}
-	return ctx;
-}
-static GLfloat *(*_move)(GLfloat * ctx) = NULL;
-
-static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint width, GLuint height)
+static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, uint32_t width, uint32_t height)
 {
 	void *uniform_data = NULL;
 	if (config)
@@ -399,20 +438,39 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint
 			if (usize > 0)
 				size += usize;
 		}
-		const char *keyname = "/tmp/program.shm";
-		int ret = access(keyname, F_OK|R_OK|W_OK);
-		if (ret)
+		if (size > 0)
 		{
-			int fd = creat(keyname, 0644);
+			int curdir = open(".", O_DIRECTORY);
+			const char *keyname = "program.shm";
+			if (config->name)
+				keyname = config->name;
+			if (mkdir(_segldir, 0) && errno != EEXIST)
+				err("segl: programs directory creation error %m");
+			int rootfd = open(_segldir, O_DIRECTORY);
+			if (rootfd == -1)
+				rootfd = AT_FDCWD;
+			int ret = faccessat(rootfd, keyname, F_OK, AT_EACCESS);
+			if (!ret)
+			{
+				if (unlinkat(rootfd, keyname, 0))
+					err("segl: shm file access error %m");
+			}
+			int fd = openat(rootfd, keyname, O_CREAT|O_WRONLY|O_TRUNC, 0644);
+			if (fd < 0)
+				err("segl: shm file error %m");
 			close(fd);
-		}
-		int shmid;
-		key_t key;
-		key = ftok(keyname, 'R');
-		if (size > 0 && key != -1)
-		{
+			int shmid = 0;
+			key_t key;
+			fchdir(rootfd);
+			key = ftok(keyname, 'R');
+			fchdir(curdir);
+			close(curdir);
+			close(rootfd);
+			if (key == -1)
+				err("segl: shm token error %m");
 			uniform_data = (void *)-1;
-			shmid = shmget(key, size, IPC_CREAT|SHM_R|SHM_W);
+			if (key != -1)
+				shmid = shmget(key, size, IPC_CREAT|SHM_R|SHM_W);
 			if (shmid > 0)
 			{
 				uniform_data = shmat(shmid, NULL, 0);
@@ -431,26 +489,23 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, GLuint
 			if (size > 0)
 			{
 				uniform->value = uniform_data + offset;
+				uniform->type |= Uniform_SHARED_e;
 				offset += size;
 			}
 		}
 	}
 	GLProgram_t *program = calloc(1, sizeof(*program));
-	program->in_texturename = defaulttexturename;
-	program->move = _move;
 	program->config = config;
 	program->controls_data = uniform_data;
 	if (config)
 		program->controls = config->controls;
-	if (config && config->tex_name)
-		program->in_texturename = config->tex_name;
 
 	program->width = width;
 	program->height = height;
 	return program;
 }
 
-GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, GLuint width, GLuint height)
+static GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, uint32_t width, uint32_t height)
 {
 	GLProgram_t *program = _glprog_create_controler(config, width, height);
 	if (config && config->next)
@@ -460,8 +515,19 @@ GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, GLuint width, 
 	return program;
 }
 
-GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint height)
+#ifdef DEBUG
+void _glprog_messagecb( GLenum source, GLenum type, GLuint id, GLenum severity,
+                 GLsizei length, const GLchar* message, const void* userParam)
 {
+  err("segl: gles2 error %s type = 0x%x, severity = 0x%x, message = %s\n",
+           ( type == GL_DEBUG_TYPE_ERROR_KHR ? "** GL ERROR **" : "" ),
+            type, severity, message );
+}
+#endif
+
+static GLProgram_t *glprog_create(EGLConfig_Program_t *config, uint32_t width, uint32_t height)
+{
+	static int index = 1;
 	GLuint programID = 0;
 	warn("segl: GPU %s %s", glGetString(GL_VENDOR), glGetString(GL_RENDERER));
 	warn("segl: %s", glGetString(GL_VERSION));
@@ -493,10 +559,8 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	GLfloat vertices[] = {
 		-1.0f,  1.0f,  0.0f, // top left
 		-1.0f, -1.0f,  0.0f, // bottom left
-		 1.0f, -1.0f,  0.0f, // bottom right
-		-1.0f,  1.0f,  0.0f, // top left
-		 1.0f, -1.0f,  0.0f, // bottom right
 		 1.0f,  1.0f,  0.0f, // top right
+		 1.0f, -1.0f,  0.0f, // bottom right
 	};
 	glBindBuffer(GL_ARRAY_BUFFER, program->vertexBufferObject[0]);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
@@ -504,181 +568,313 @@ GLProgram_t *glprog_create(EGLConfig_Program_t *config, GLuint width, GLuint hei
 	glEnableVertexAttribArray(pos);
 	glVertexAttribPointer(pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
-	GLint texMap = glGetUniformLocation(program->ID, program->in_texturename);
-	glUniform1i(texMap, 0); // GL_TEXTURE0
-	glActiveTexture(GL_TEXTURE0);
-
-	GLuint moveID = glGetUniformLocation(program->ID, "vMove");
-	void *movectx = _movestatic(NULL);
-	glUniformMatrix4fv(moveID, 1, GL_FALSE, movectx);
-	free(movectx);
-	if (program->move)
-	{
-		program->movectx = program->move(program->movectx);
-		glUniformMatrix4fv(moveID, 1, GL_FALSE, program->movectx);
-	}
-
 	GLuint resolutionID = glGetUniformLocation(program->ID, "vResolution");
 	glUniform4f(resolutionID, (GLfloat)program->width, (GLfloat)program->height, 1 / (GLfloat)program->width, 1 / (GLfloat)program->height);
 
 	glBindVertexArrayOES(0);
+	/// keep always GL_TEXTURE0 (texture unit) available for camera
+	program->lasttextureid = 1;
+	program->index = index++;
+	program->list = program;
 	if (config && config->next)
 	{
 		program->next = glprog_create(config->next, width, height);
+		if (program->next)
+			program->next->list = program->list;
 	}
+#ifdef DEBUG
+	// During init, enable debug output
+	glEnable              ( GL_DEBUG_OUTPUT_KHR );
+	glDebugMessageCallbackKHR( _glprog_messagecb, 0 );
+#endif
+
 	return program;
+}
+
+static int _glbuffer_setframetexture(GLuint texture, GLenum textype, uint32_t width, uint32_t height)
+{
+	GLuint glerror = glGetError();
+	glBindTexture(textype, texture);
+	const FourccFormat_t *format = fourcc_getformat(FOURCC_XB24);
+	glTexImage2D(textype, 0, format->internal, width, height, 0, format->full, format->data, NULL);
+	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameterf(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameterf(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glerror = glGetError();
+	if (glerror)
+	{
+		err ("segl: Texturebuffer error %#x", glerror);
+		return -1;
+	}
+
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textype, texture, 0);
+	/* Sanity check. */
+	GLint ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (ret != GL_FRAMEBUFFER_COMPLETE)
+	{
+		return -1;
+	}
+	return 0;
+}
+
+static GL_Buffer_t *_glbuffer_createout(GLProgram_t *program, const char *name)
+{
+	uint32_t width = program->width;
+	uint32_t height = program->height;
+	GLenum textype = GL_TEXTURE_2D;
+	GLuint fbo;
+	GLuint texture = 0;
+
+	GLuint glerror = glGetError();
+	glGenFramebuffers(1, &fbo);
+	glGenTextures(1, &texture);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	if (_glbuffer_setframetexture(texture, textype, width, height))
+	{
+		err("segl: buffer %s out buffer error", name);
+		return NULL;
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	GL_Buffer_t *out = calloc(1, sizeof(*out));
+	out->fbo = fbo;
+	out->texture = texture;
+	out->textype = textype;
+	out->egltarget = EGL_GL_TEXTURE_2D;
+	out->name = _defaultname;
+	if (name)
+		out->name = name;
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	return out;
+}
+
+static EGLImage glbuffer_getimage(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContext eglcontext)
+{
+	const EGLint tattributes[] = {
+		EGL_IMAGE_PRESERVED, EGL_TRUE,
+		EGL_NONE,
+	};
+	const EGLint *attributes = tattributes;
+
+	/// eglCreateImage and eglCreateImageKHR have the same result
+	EGLImage image = eglCreateImageKHR(egldisplay, eglcontext,
+		buffer->egltarget, (void *)(long)buffer->texture, attributes);
+	return image;
+}
+
+static void glbuffer_destroy(GL_Buffer_t *buffer)
+{
+	glDeleteFramebuffers(1, &buffer->fbo);
+	glDeleteTextures(1, &buffer->texture);
+	free(buffer);
 }
 
 static int glprog_outtexture(GLProgram_t *program, GLenum textype)
 {
-	if (program->out.texture)
-	{
-		return 0;
-	}
-	glGenFramebuffers(1, &program->fbo);
-	if (program->fbo == 0)
-	{
-		err("segl: framebuffer unsupported");
+	program->out = _glbuffer_createout(program, program->config->name);
+	if (program->out == NULL)
 		return -1;
-	}
-	glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
-	glEnable(textype);
-	GLuint texture = 0;
-	glGenTextures(1, &texture);
-	glBindTexture(textype, texture);
-	// The format must be RGB. RGBA generate error during the texture attachment to the frambuffer (glprog_run)
-	glTexImage2D(textype, 0, GL_RGB, program->width, program->height, 0, GL_RGB,  GL_UNSIGNED_BYTE, NULL);
-	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameterf(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameterf(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	program->out.texture = texture;
-	program->out.textype = textype;
-
 	return 0;
 }
 
-int glprog_setup(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out)
+static int glprog_setup(GLProgram_t *program, GL_Buffer_t *out)
 {
-	program->fbo = fbo;
 	if (program->next)
 	{
 		if (glprog_outtexture(program, GL_TEXTURE_2D))
 			return -1;
-		return glprog_setup(program->next, fbo, out);
+		return glprog_setup(program->next, out);
 	}
 	if (out)
 	{
-		memcpy(&program->out, out, sizeof(program->out));
+		program->out = out;
 	}
 	return 0;
 }
 
-GL_Buffer_t *gltexture_create(GLProgram_t *program, uint32_t fourcc)
+static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, const char *src)
 {
-	GLenum textype = GL_TEXTURE_EXTERNAL_OES;
-	GLuint dma_texture;
-	glGenTextures(1, &dma_texture);
-
-	glBindTexture(textype, dma_texture);
-
-	for (GLProgram_t *it = program; it != NULL; it = it->next)
+	GLenum textype = GL_TEXTURE_2D;
+	int id = 0;
+	if (! strcmp("camera", src))
 	{
-		it->fourcc = fourcc;
+		textype = GL_TEXTURE_EXTERNAL_OES;
+		id = 0;
 	}
-#if 0
-	uint32_t width = program->width;
-	uint32_t height = program->height;
-	const FourccFormat_t *format = fourcc_getformat(fourcc);
-	glTexImage2D(textype, 0, format->internal, width, height, 0, format->full, GL_UNSIGNED_BYTE, NULL);
-#endif
+	else if (! strcmp("out", src))
+		return _glbuffer_createout(program, name);
+	else
+		id = program->lasttextureid++;
+	GLuint texture = 0;
+	glBindVertexArrayOES(program->vertexArrayID);
+	glActiveTexture(GL_TEXTURE0 + id);
+	glGenTextures(1, &texture);
+
+	glBindTexture(textype, texture);
+
 	glTexParameteri(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(textype, GL_TEXTURE_MAX_LEVEL_APPLE, 0);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	GL_Buffer_t *glbuffer = calloc(1, sizeof(*glbuffer));
-	glbuffer->texture = dma_texture;
+	glbuffer->texture = texture;
 	glbuffer->textype = textype;
 
+	glbuffer->name = name;
+	if (program->config && program->config->input.name && textype == GL_TEXTURE_EXTERNAL_OES)
+		glbuffer->name = program->config->input.name;
+	glbuffer->loc = glGetUniformLocation(program->ID, glbuffer->name);
+	glbuffer->unit = id;
+	glUniform1i(glbuffer->loc, glbuffer->unit);
+
+	glBindVertexArrayOES(0);
 	return glbuffer;
 }
 
-void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image)
+static GL_Buffer_t *gltexture_loadTGA(GLProgram_t *program, const char *name, const char *fileName)
+{
+	char *buffer = NULL;
+	FILE *f = NULL;
+	unsigned char tgaheader[12];
+	unsigned char attributes[6];
+	unsigned int imagesize;
+
+	f = fopen(fileName, "rb");
+	if(f == NULL)
+	{
+		return NULL;
+	}
+
+	if(fread(&tgaheader, sizeof(tgaheader), 1, f) == 0)
+	{
+		fclose(f);
+		return NULL;
+	}
+
+	if(fread(attributes, sizeof(attributes), 1, f) == 0)
+	{
+		fclose(f);
+		return 0;
+	}
+
+	GLuint width = 0;
+	width = attributes[1] * 256 + attributes[0];
+	GLuint height = 0;
+	height = attributes[3] * 256 + attributes[2];
+	GLuint depth = attributes[4];
+	imagesize = depth / 8 * width * height;
+	buffer = malloc(imagesize);
+	if (buffer == NULL)
+	{
+		err("segl: file allocation error %m");
+		fclose(f);
+		return 0;
+	}
+
+	if(fread(buffer, 1, imagesize, f) != imagesize)
+	{
+		err("segl: file reading error %m");
+		free(buffer);
+		fclose(f);
+		return NULL;
+	}
+	fclose(f);
+
+	GL_Buffer_t *glbuffer = NULL;
+	glbuffer = gltexture_create(program, name, "file");
+	if (glbuffer == NULL)
+	{
+		err("segl: texture creation error %m");
+		free(buffer);
+		return NULL;
+	}
+	uint32_t fourcc = FOURCC_AB24;
+	if (depth == 24)
+		fourcc = FOURCC_RGB3;
+	glBindVertexArrayOES(program->vertexArrayID);
+	gltexture_attachbuffer(glbuffer, width, height, fourcc, buffer);
+	glBindVertexArrayOES(0);
+	free(buffer);
+	return glbuffer;
+}
+
+static void gltexture_attach(GL_Buffer_t *glbuffer, EGLImageKHR image)
 {
 	glEGLImageTargetTexture2DOES(glbuffer->textype, image);
 }
 
-GLuint gltexture_id(GL_Buffer_t *glbuffer)
+static void gltexture_attachbuffer(GL_Buffer_t *glbuffer, uint32_t width, uint32_t height, uint32_t fourcc, void *mem)
+{
+	const FourccFormat_t *format = fourcc_getformat(fourcc);
+	glTexImage2D(glbuffer->textype, 0, format->internal, width, height, 0, format->full, format->data, mem);
+//	glTexStorage2D(GL_TEXTURE_2D, 1, format->internal, width, height);
+}
+
+static uint32_t gltexture_id(GL_Buffer_t *glbuffer)
 {
 	return glbuffer->texture;
 }
 
-void gltexture_destroy(GL_Buffer_t *glbuffer)
+static void gltexture_destroy(GL_Buffer_t *glbuffer)
 {
 	free(glbuffer);
 }
 
-int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
+static int _glprog_run(GLProgram_t *program, GL_Buffer_t *buffer, GLProgram_t *prevprog)
 {
-	static int programid = 0;
-	GLenum err = 0;
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	if (program->fbo  > 0)
-	{
-		glBindFramebuffer(GL_FRAMEBUFFER, program->fbo);
-		glBindTexture(program->out.textype, program->out.texture);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, program->out.textype,
-					program->out.texture, 0);
-		err = glGetError();
-		if (err != GL_NO_ERROR)
-		{
-			err("segl: program[%d] Framebuffer access error %#x", programid, err);
-		}
-	}
-	else
-		glClear(GL_COLOR_BUFFER_BIT);
-
-	glClearColor(0.5, 0.5, 0.5, 1.0);
-	glBindVertexArrayOES(program->vertexArrayID);
+	GLenum error = 0;
 	glUseProgram(program->ID);
+	error = glGetError();
 
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(buffer->textype, buffer->texture);
-
-	if (program->move)
+	if (program->out)
 	{
-		GLuint moveID = glGetUniformLocation(program->ID, "vMove");
-		glUniformMatrix4fv(moveID, 1, GL_FALSE, program->move(program->movectx));
+		glBindFramebuffer(GL_FRAMEBUFFER, program->out->fbo);
+        	GLenum error = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		if (error != GL_FRAMEBUFFER_COMPLETE)
+			err("segl: framebuffer incomplet: %#xn", error);
 	}
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	/// this is the camera texture and should be GL_TEXTURE0 (buffer->unit == 0)
+	glActiveTexture(GL_TEXTURE0 + buffer->unit);
+	glBindTexture(buffer->textype, buffer->texture);
+	glUniform1i(buffer->loc, buffer->unit);
+
 	for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = uniform->next)
 	{
 		glprog_setuniform(program, uniform);
 	}
 
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
+	glBindVertexArrayOES(program->vertexArrayID);
+#if GLES2_DRAWELEMENTS
+	GLshort indexBuffer[] = {
+		0, 1, 2, 1, 2, 3
+	};
 
-	if (program->fbo != -1)
-	{
-		GLint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-		if (status != GL_FRAMEBUFFER_COMPLETE)
-		{
-			err("framebuffer %u incomplet %#x", program->fbo, status);
-			//return -1;
-		}
-		//glFramebufferTexture2D to disable the texture is an invalid operation
-	}
-	programid++;
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indexBuffer);
+#else
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+#endif
+	error = glGetError();
+	if (error != GL_NO_ERROR)
+		err("segl: %s running error %#x", program->config->name, error);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindTexture(buffer->textype, 0);
 	if (program->next)
 	{
-		return glprog_run(program->next, &program->out);
+		return _glprog_run(program->next, buffer, program);
 	}
-	programid = 0;
 	return 0;
 }
 
-void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer)
+static int glprog_run(GLProgram_t *program, GL_Buffer_t *buffer)
+{
+	return _glprog_run(program, buffer, NULL);
+}
+
+static void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer)
 {
 	glUseProgram(0);
 	glBindTexture(buffer->textype, 0);
@@ -688,111 +884,132 @@ void glprog_stop(GLProgram_t *program, GL_Buffer_t *buffer)
 
 int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 {
-	switch (uniform->type)
+	if (!uniform->loc)
+		uniform->loc = glGetUniformLocation(program->ID, uniform->name);
+	if (uniform->value == NULL &&
+		_glprog_uniform_setvalue(uniform, program, json_object_get(uniform->config, "value")))
 	{
-	case Uniform_FLOAT_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform1f(loc, *(GLfloat*)uniform->value);
-	}
-	break;
-	case Uniform_INT_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform1i(loc, *(GLint*)uniform->value);
-	}
-	break;
-	case Uniform_FVEC2_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform2f(loc, ((GLfloat*)uniform->value)[0],
-						((GLfloat*)uniform->value)[1]);
-	}
-	break;
-	case Uniform_FVEC3_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform3f(loc, ((GLfloat*)uniform->value)[0],
-						((GLfloat*)uniform->value)[1],
-						((GLfloat*)uniform->value)[2]);
-	}
-	break;
-	case Uniform_FVEC4_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform4f(loc, ((GLfloat*)uniform->value)[0],
-						((GLfloat*)uniform->value)[1],
-						((GLfloat*)uniform->value)[2],
-						((GLfloat*)uniform->value)[3]);
-	}
-	break;
-	case Uniform_IVEC2_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform2i(loc, ((GLint*)uniform->value)[0],
-						((GLint*)uniform->value)[1]);
-	}
-	break;
-	case Uniform_IVEC3_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform3i(loc, ((GLint*)uniform->value)[0],
-						((GLint*)uniform->value)[1],
-						((GLint*)uniform->value)[2]);
-	}
-	break;
-	case Uniform_IVEC4_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform4i(loc, ((GLint*)uniform->value)[0],
-						((GLint*)uniform->value)[1],
-						((GLint*)uniform->value)[2],
-						((GLint*)uniform->value)[3]);
-	}
-	break;
-	case Uniform_MAT2_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniformMatrix2fv(loc, 1, GL_FALSE, uniform->value);
-	}
-	break;
-	case Uniform_MAT3_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniformMatrix3fv(loc, 1, GL_FALSE, uniform->value);
-	}
-	break;
-	case Uniform_MAT4_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniformMatrix4fv(loc, 1, GL_FALSE, uniform->value);
-	}
-	break;
-	case Uniform_FUNC_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		GLfloat (*func)(GLProgram_Uniform_t *uniform) = uniform->value;
-		glUniform1f(loc, func(uniform));
-	}
-	break;
-	default:
-		err("segl: Uniform type invalid");
+		err("segl: uniform %s not set", uniform->name);
 		return -1;
+	}
+	if (uniform->type & Uniform_FUNC_e)
+	{
+		switch (uniform->type & ~Uniform_FUNC_e)
+		{
+		case Uniform_FLOAT_e:
+		{
+			GLfloat (*func)(GLProgram_Uniform_t *uniform) = uniform->value;
+			glUniform1f(uniform->loc, func(uniform));
+		}
+		break;
+		case Uniform_MAT4_e:
+		{
+			GLfloat *(*func)(GLProgram_Uniform_t *uniform) = uniform->value;
+			glUniformMatrix4fv(uniform->loc, 1, GL_FALSE, func(uniform));
+		}
+		break;
+		break;
+		default:
+			err("segl: Uniform type invalid");
+			return -1;
+		}
+	}
+	else
+	{
+		switch (uniform->type & ~Uniform_SHARED_e)
+		{
+		case Uniform_FLOAT_e:
+		{
+			glUniform1f(uniform->loc, *(GLfloat*)uniform->value);
+		}
+		break;
+		case Uniform_INT_e:
+		{
+			glUniform1i(uniform->loc, *(GLint*)uniform->value);
+		}
+		break;
+		case Uniform_FVEC2_e:
+		{
+			glUniform2f(uniform->loc, ((GLfloat*)uniform->value)[0],
+							((GLfloat*)uniform->value)[1]);
+		}
+		break;
+		case Uniform_FVEC3_e:
+		{
+			glUniform3f(uniform->loc, ((GLfloat*)uniform->value)[0],
+							((GLfloat*)uniform->value)[1],
+							((GLfloat*)uniform->value)[2]);
+		}
+		break;
+		case Uniform_FVEC4_e:
+		{
+			glUniform4f(uniform->loc, ((GLfloat*)uniform->value)[0],
+							((GLfloat*)uniform->value)[1],
+							((GLfloat*)uniform->value)[2],
+							((GLfloat*)uniform->value)[3]);
+		}
+		break;
+		case Uniform_IVEC2_e:
+		{
+			glUniform2i(uniform->loc, ((GLint*)uniform->value)[0],
+							((GLint*)uniform->value)[1]);
+		}
+		break;
+		case Uniform_IVEC3_e:
+		{
+			GLint loc = glGetUniformLocation(program->ID, uniform->name);
+			glUniform3i(loc, ((GLint*)uniform->value)[0],
+							((GLint*)uniform->value)[1],
+							((GLint*)uniform->value)[2]);
+		}
+		break;
+		case Uniform_IVEC4_e:
+		{
+			glUniform4i(uniform->loc, ((GLint*)uniform->value)[0],
+							((GLint*)uniform->value)[1],
+							((GLint*)uniform->value)[2],
+							((GLint*)uniform->value)[3]);
+		}
+		break;
+		case Uniform_MAT2_e:
+		{
+			glUniformMatrix2fv(uniform->loc, 1, GL_FALSE, uniform->value);
+		}
+		break;
+		case Uniform_MAT3_e:
+		{
+			glUniformMatrix3fv(uniform->loc, 1, GL_FALSE, uniform->value);
+		}
+		break;
+		case Uniform_MAT4_e:
+		{
+			glUniformMatrix4fv(uniform->loc, 1, GL_FALSE, uniform->value);
+		}
+		break;
+		case Uniform_SAMPLER_e:
+		{
+			GL_Buffer_t *glbuffer = (GL_Buffer_t *)uniform->value;
+			glActiveTexture(GL_TEXTURE0 + glbuffer->unit);
+			glBindTexture(glbuffer->textype, glbuffer->texture);
+			glUniform1i(glbuffer->loc, glbuffer->unit);
+		}
+		break;
+		default:
+			err("segl: Uniform type invalid");
+			return -1;
+		}
 	}
 	return 0;
 }
 
-void glprog_destroy(GLProgram_t *program)
+static void glprog_destroy(GLProgram_t *program)
 {
 	if (program->next)
 		return glprog_destroy(program->next);
-	if (program->fbo)
+	if (program->out)
 	{
-		glDeleteFramebuffers(1, &program->fbo);
-		glDeleteTextures(1, &program->out.texture);
+		glbuffer_destroy(program->out);
 	}
-	if (program->controls_data)
-		shmdt(program->controls_data);
 	free(program->config);
 	GLProgram_Uniform_t *next;
 	for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = next)
@@ -800,6 +1017,8 @@ void glprog_destroy(GLProgram_t *program)
 		next = uniform->next;
 		_glprog_uniform_destroy(uniform);
 	}
+	if (program->controls_data)
+		shmdt(program->controls_data);
 	free(program);
 }
 
@@ -820,6 +1039,19 @@ static GLfloat _frame(GLProgram_Uniform_t *uniform)
 	return (GLfloat)f;
 }
 
+static GLfloat *_movestatic(GLProgram_Uniform_t *uniform)
+{
+	GLfloat *ctx = uniform->data;
+	if (ctx == NULL)
+	{
+		ctx = calloc(16, sizeof(GLfloat));
+		ctx[0] = ctx[5] = ctx[10] = ctx[15] = 1.0;
+	}
+	uniform->data = ctx;
+	return ctx;
+}
+static GLfloat *(*_move)(GLProgram_Uniform_t *uniform) = _movestatic;
+
 #ifdef HAVE_JANSSON
 #include <jansson.h>
 
@@ -827,12 +1059,12 @@ static void _glprog_uniform_setarray(GLProgram_Uniform_t *uniform, json_t *jvalu
 {
 	if (!uniform->value && type == Uniform_FLOAT_e)
 	{
-		err("segl: memory allocation error");
+		err("segl: %s memory allocation error", uniform->name);
 		uniform->value = calloc(nbentries, sizeof(GLfloat));
 	}
 	if (!uniform->value && type == Uniform_INT_e)
 	{
-		err("segl: memory allocation error");
+		err("segl: %s memory allocation error", uniform->name);
 		uniform->value = calloc(nbentries, sizeof(GLint));
 	}
 	GLfloat *fvalues = uniform->value;
@@ -850,7 +1082,7 @@ static void _glprog_uniform_setarray(GLProgram_Uniform_t *uniform, json_t *jvalu
 static int _glprog_uniform_size(GLProgram_Uniform_t *uniform)
 {
 	int ret = -1;
-	switch (uniform->type)
+	switch (uniform->type & ~Uniform_SHARED_e)
 	{
 	case Uniform_INT_e:
 		ret = sizeof(GLint);
@@ -892,19 +1124,51 @@ static int _glprog_uniform_size(GLProgram_Uniform_t *uniform)
 	return ret;
 }
 
-static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue)
+static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, GLProgram_t *program, json_t *jvalue)
 {
 	int ret = -1;
+	if (jvalue && json_is_string(jvalue))
+	{
+		const char *value = json_string_value(jvalue);
+		switch (uniform->type & ~(Uniform_SHARED_e | Uniform_FUNC_e))
+		{
+		case Uniform_SAMPLER_e:
+		{
+			if (!uniform->value)
+			{
+				for (GLProgram_t *it = program->list; it != NULL; it = it->next)
+				{
+					if (it->config->name && !strcasecmp(value, it->config->name))
+					{
+						uniform->value = it->out;
+						if (it->out)
+						{
+							it->out->unit = program->lasttextureid++;
+							it->out->loc = glGetUniformLocation(program->ID, uniform->name);
+						}
+					}
+				}
+			}
+			if (!uniform->value)
+				uniform->value = gltexture_loadTGA(program, uniform->name, value);
+
+			ret = 0;
+		}
+		break;
+		}
+	}
 	if (!uniform->value)
 	{
-		err("segl: memory allocation error");
+		err("segl: %s memory allocation error", uniform->name);
 		int size = _glprog_uniform_size(uniform);
 		if (size > 0)
 			uniform->value = malloc(size);
 	}
+	if (!uniform->value)
+		return ret;
 	if (jvalue && json_is_number(jvalue))
 	{
-		switch (uniform->type)
+		switch (uniform->type & ~Uniform_SHARED_e)
 		{
 		case Uniform_INT_e:
 			*(GLint *)uniform->value = json_integer_value(jvalue);
@@ -920,7 +1184,7 @@ static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, json_t *jvalue
 	}
 	if (jvalue && json_is_array(jvalue))
 	{
-		switch (uniform->type)
+		switch (uniform->type & ~Uniform_SHARED_e)
 		{
 		case Uniform_FVEC2_e:
 			_glprog_uniform_setarray(uniform, jvalue, 2, Uniform_FLOAT_e);
@@ -1001,21 +1265,39 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 			uniform->type = Uniform_MAT3_e;
 		else if (!strcmp(value, "mat4"))
 			uniform->type = Uniform_MAT4_e;
-		else if (!strcmp(value, "func"))
+		else if (!strcmp(value, "sampler"))
 		{
-			uniform->type = Uniform_FUNC_e;
 			/// function are not modifiable with setting
 			json_t *jvalue = json_object_get(jsetting, "value");
 			if (jvalue && json_is_string(jvalue))
 			{
+				uniform->type = Uniform_SAMPLER_e;
+			}
+		}
+		else if (!strcmp(value, "func"))
+		{
+			/// function are not modifiable with setting
+			json_t *jvalue = json_object_get(jsetting, "value");
+			if (jvalue && json_is_string(jvalue))
+			{
+				uniform->type = Uniform_FLOAT_e;
 				const char *value = NULL;
 				value = json_string_value(jvalue);
 				if (!strncasecmp(value, "time", 4))
 					uniform->value = _time;
 				else if (!strncasecmp(value, "frames", 6))
 					uniform->value = _frame;
+				else if (!strncasecmp(value, "move", 4))
+				{
+					uniform->type = Uniform_MAT4_e;
+					uniform->value = _move;
+				}
+				else
+					uniform->type = Uniform_UNKNOWN_e;
+				uniform->type |= Uniform_FUNC_e;
 			}
 		}
+		uniform->config = setting;
 	}
 	if (uniform->type == Uniform_UNKNOWN_e)
 	{
@@ -1043,7 +1325,7 @@ static int _glprog_setcontrols(GLProgram_t *program, json_t *jsettings)
 				if (!strcasecmp(json_string_value(jname), uniform->name))
 				{
 					json_t *jvalue = json_object_get(jsetting, "value");
-					_glprog_uniform_setvalue(uniform, jvalue);
+					_glprog_uniform_setvalue(uniform, program, jvalue);
 				}
 			}
 		}
@@ -1058,7 +1340,7 @@ static int _glprog_setcontrols(GLProgram_t *program, json_t *jsettings)
 				if (!strcasecmp(json_string_value(jname), uniform->name))
 				{
 					json_t *jvalue = json_object_get(jsettings, "value");
-					_glprog_uniform_setvalue(uniform, jvalue);
+					_glprog_uniform_setvalue(uniform, program, jvalue);
 				}
 			}
 		}
@@ -1084,7 +1366,7 @@ static int _glprog_loadjsonsetting(GLProgram_t *programs, json_t *jprogram)
 	return ret;
 }
 
-int glprog_loadjsonsetting(GLProgram_t *programs, void *entry)
+static int glprog_loadjsonsetting(GLProgram_t *programs, void *entry)
 {
 	int ret = -1;
 	json_t *jsetting = entry;
@@ -1104,6 +1386,29 @@ int glprog_loadjsonsetting(GLProgram_t *programs, void *entry)
 	return ret;
 }
 
+static int _glprog_loadjsontexture(EGLConfig_Program_t *config, json_t *texture)
+{
+	json_t *source = NULL;
+	if (texture && json_is_object(texture))
+	{
+		texture = json_object_get(texture, "name");
+		source = json_object_get(texture, "src");
+	}
+	if (source && json_is_string(source))
+	{
+		const char *value = json_string_value(source);
+		config->input.src = value;
+	}
+	if (texture && json_is_string(texture))
+	{
+		const char *value = json_string_value(texture);
+		config->input.name = value;
+		if (!source)
+			config->input.src = value;
+	}
+	return 0;
+}
+
 static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jconfig)
 {
 	json_t *disable = json_object_get(jconfig, "disable");
@@ -1117,12 +1422,9 @@ static int _glprog_loadjsonconfiguration(EGLConfig_Program_t *config, json_t *jc
 		const char *value = json_string_value(name);
 		config->name = value;
 	}
-	json_t *tex_name = json_object_get(jconfig, "tex_name");
-	if (tex_name && json_is_string(tex_name))
-	{
-		const char *value = json_string_value(tex_name);
-		config->tex_name = value;
-	}
+	json_t *texture = json_object_get(jconfig, "texture");
+	if (texture)
+		_glprog_loadjsontexture(config, texture);
 	json_t *vertex = json_object_get(jconfig, "vertex");
 	if (vertex && json_is_string(vertex))
 	{
@@ -1193,12 +1495,12 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 				free(config);
 				continue;
 			}
+			config->entry = jfield;
 			if (first == NULL)
 				first = config;
 			if (previous)
 				previous->next = config;
 			previous = config;
-			config->type = gles2_ops.name;
 		}
 	}
 	else if (jconfig && json_is_object(jconfig))
@@ -1210,8 +1512,9 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 		}
 		else
 		{
+			config->entry = jconfig;
 			first = config;
-			config->name = gles2_ops.name;
+			config->name = _gles2_ops.name;
 		}
 	}
 	if (arg != NULL)
@@ -1225,17 +1528,20 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform)
 {
-	switch (uniform->type)
+	if (!(uniform->type & Uniform_SHARED_e))
 	{
-		case Uniform_FUNC_e:
-		break;
-		default:
-			free(uniform->value);
+		switch (uniform->type)
+		{
+			case Uniform_FUNC_e:
+			break;
+			default:
+				free(uniform->value);
+		}
 	}
 	free(uniform);
 }
 
-EGLProg_ops_t gles2_ops = {
+static EGLProg_ops_t _gles2_ops = {
 	.name = "gles2",
 	.create = glprog_create,
 	.create_controler = glprog_create_controler,
@@ -1244,6 +1550,7 @@ EGLProg_ops_t gles2_ops = {
 		.create = gltexture_create,
 		.attach = gltexture_attach,
 		.id = gltexture_id,
+		.getimage = glbuffer_getimage,
 		.destroy = gltexture_destroy,
 	},
 	.run = glprog_run,
@@ -1265,6 +1572,6 @@ static void __attribute__ ((constructor)) segl_init()
 	_segl_program_ops_append = dlsym(hdl, "segl_program_ops_append");
 	if (_segl_program_ops_append)
 	{
-		_segl_program_ops_append(&gles2_ops);
+		_segl_program_ops_append(&_gles2_ops);
 	}
 }

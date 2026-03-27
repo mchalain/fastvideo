@@ -1,7 +1,6 @@
 #ifndef __SEGL_H__
 #define __SEGL_H__
 
-#include <GLES2/gl2.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include "fastvideo.h"
@@ -33,22 +32,15 @@ typedef struct FourccFormat_s FourccFormat_t;
 struct FourccFormat_s
 {
 	uint32_t fourcc;
-	GLuint internal;
-	GLuint full;
-	GLuint data;
+	uint32_t internal;
+	uint32_t full;
+	uint32_t data;
 	int nplanes;
 	int stride_factor[4];
 };
 const FourccFormat_t *fourcc_getformat(uint32_t fourcc);
 
 typedef struct GL_Buffer_s GL_Buffer_t;
-struct GL_Buffer_s
-{
-	EGLImageKHR image;
-	GLuint texture;
-	GLenum textype;
-	EGLint egltarget;
-};
 
 typedef struct GLBuffer_s GLBuffer_t;
 struct GLBuffer_s
@@ -57,30 +49,20 @@ struct GLBuffer_s
 	uint32_t fourcc;
 	int dma_fd;
 	uint32_t *memory;
-	GLuint pitch;
-	GLuint offset;
+	uint32_t pitch;
+	uint32_t offset;
 	uint32_t size;
 	uint64_t modifiers;
 	void* private;
 	FrameBuffer_state_e state;
 };
 
-typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
-typedef struct EGLConfig_Program_s EGLConfig_Program_t;
-struct EGLConfig_Program_s
-{
-	const char *name;
-	const char *type;
-	const char *vertex;
-	const char *fragments[MAX_SHADERS];
-	const char *tex_name;
-	EGLConfig_Program_t *next;
-	GLProgram_Uniform_t *controls;
-};
-
 typedef struct GLProgram_s GLProgram_t;
+typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
 typedef struct EGLExport_s EGLExport_t;
 typedef struct EGLNative_s EGLNative_t;
+typedef struct EGLProg_ops_s EGLProg_ops_t;
+typedef struct EGLConfig_Program_s EGLConfig_Program_t;
 
 typedef struct EGLConfig_s EGLConfig_t;
 struct EGLConfig_s
@@ -89,6 +71,7 @@ struct EGLConfig_s
 	DeviceConf_t transfer;
 	const EGLNative_t *native;
 	const char *device;
+	const EGLProg_ops_t *prog_ops;
 	EGLConfig_Program_t *programs;
 	const EGLExport_t *export;
 	int type;
@@ -103,7 +86,7 @@ struct EGLNative_s
 	EGLNativeDisplayType (*display)(EGLConfig_t *config);
 	const EGLint *(*attributes)(EGLNativeDisplayType native_display);
 	EGLNativeWindowType (*createwindow)(EGLNativeDisplayType native_display,
-							GLuint width, GLuint height, const GLchar *name);
+							uint32_t width, uint32_t height, const char *name);
 	int (*fd)(EGLNativeWindowType native_win);
 	int (*flush)(EGLNativeWindowType native_win);
 	int (*sync)(EGLNativeWindowType native_win);
@@ -115,8 +98,7 @@ struct EGLExport_s
 {
 	const char *name;
 	const char *native;
-	void *(*create)(EGLConfig_t *config, EGLDisplay eglDisplay, EGLContext eglContext);
-	GLuint (*fbo)(void *arg);
+	void *(*create)(EGL_t *dev, EGLDisplay eglDisplay, EGLContext eglContext);
 	GL_Buffer_t * (*out)(void *arg);
 	int (*fd)(void *arg);
 	int (*setbuffer)(void *arg, GLBuffer_t *buffer);
@@ -127,12 +109,13 @@ struct EGLExport_s
 
 typedef void (*segl_export_append_t)(EGLExport_t *export);
 
-typedef GLProgram_t *(*glprog_create_t)(EGLConfig_Program_t *config, GLuint width, GLuint height);
-typedef int (*glprog_setup_t)(GLProgram_t *program, GLuint fbo, GL_Buffer_t *out);
-typedef GL_Buffer_t *(*glbuffer_create_t)(GLProgram_t *program, uint32_t fourcc);
+typedef GLProgram_t *(*glprog_create_t)(EGLConfig_Program_t *config, uint32_t width, uint32_t height);
+typedef int (*glprog_setup_t)(GLProgram_t *program, GL_Buffer_t *out);
+typedef GL_Buffer_t *(*glbuffer_create_t)(GLProgram_t *program, const char *name, const char *src);
 typedef void (*glbuffer_attach_t)(GL_Buffer_t *glbuffer, EGLImageKHR image);
+typedef EGLImage (*glbuffer_getimage_t)(GL_Buffer_t *buffer, EGLDisplay egldisplay, EGLContext eglcontext);
 typedef void (*glbuffer_destroy_t)(GL_Buffer_t *glbuffer);
-typedef GLuint (*glbuffer_id_t)(GL_Buffer_t *glbuffer);
+typedef uint32_t (*glbuffer_id_t)(GL_Buffer_t *glbuffer);
 typedef int (*glprog_run_t)(GLProgram_t *program, GL_Buffer_t *buffer);
 typedef void (*glprog_stop_t)(GLProgram_t *program, GL_Buffer_t *buffer);
 typedef int (*glprog_setuniform_t)(GLProgram_t *program, GLProgram_Uniform_t *uniform);
@@ -140,7 +123,6 @@ typedef void (*glprog_destroy_t)(GLProgram_t *program);
 typedef int (*glprog_loadjsonsetting_t)(GLProgram_t *program, void *entry);
 typedef int (*glprog_loadjsonconfiguration_t)(void *arg, void *entry);
 
-typedef struct EGLProg_ops_s EGLProg_ops_t;
 struct EGLProg_ops_s
 {
 	const char *name;
@@ -150,6 +132,7 @@ struct EGLProg_ops_s
 	struct {
 		glbuffer_create_t create;
 		glbuffer_attach_t attach;
+		glbuffer_getimage_t getimage;
 		glbuffer_id_t id;
 		glbuffer_destroy_t destroy;
 	} buffer;
@@ -163,6 +146,9 @@ struct EGLProg_ops_s
 
 int _egl_hasextension(EGLDisplay eglDisplay, const char *extension);
 int segl_hasextension(EGL_t *dev, const char *extension);
+const EGLConfig_t *segl_config(EGL_t *dev);
+const EGLProg_ops_t *segl_engine(EGL_t *dev);
+GLProgram_t *segl_program(EGL_t *dev);
 typedef void (*segl_program_ops_append_t)(EGLProg_ops_t *prog_ops);
 
 #ifdef HAVE_JANSSON
