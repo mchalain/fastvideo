@@ -41,6 +41,7 @@ static _V4L2_subdev_format_t _buscode2fourcc[] =
 	{.fourcc=V4L2_PIX_FMT_SBGGR10, .fourcc_packed=V4L2_PIX_FMT_SBGGR10P, .buscode=MEDIA_BUS_FMT_SBGGR10_1X10},
 	{.fourcc=V4L2_PIX_FMT_SGRBG10, .fourcc_packed=V4L2_PIX_FMT_SGRBG10P, .buscode=MEDIA_BUS_FMT_SGRBG10_1X10},
 	{.fourcc=V4L2_PIX_FMT_SRGGB10, .fourcc_packed=V4L2_PIX_FMT_SRGGB10P, .buscode=MEDIA_BUS_FMT_SRGGB10_1X10},
+	{.fourcc=V4L2_PIX_FMT_Y10,     .fourcc_packed=V4L2_PIX_FMT_Y10P,     .buscode=MEDIA_BUS_FMT_Y10_1X10},
 	{.fourcc=V4L2_PIX_FMT_SGBRG12, .fourcc_packed=V4L2_PIX_FMT_SGBRG12P, .buscode=MEDIA_BUS_FMT_SGBRG12_1X12},
 	{.fourcc=V4L2_PIX_FMT_SBGGR12, .fourcc_packed=V4L2_PIX_FMT_SBGGR12P, .buscode=MEDIA_BUS_FMT_SBGGR12_1X12},
 	{.fourcc=V4L2_PIX_FMT_SGRBG12, .fourcc_packed=V4L2_PIX_FMT_SGRBG12P, .buscode=MEDIA_BUS_FMT_SGRBG12_1X12},
