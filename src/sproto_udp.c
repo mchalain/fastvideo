@@ -37,53 +37,62 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 	struct sockaddr* saddr = NULL;
 	socklen_t saddrlen = 0;
 	struct ifaddrs *ifa_list;
-	struct ifaddrs *ifa_main;
-	int ret = -1;
-	ret = getifaddrs(&ifa_list);
-	if (ret == 0)
+	struct ifaddrs *ifa_main = NULL;
+	while (status == -1)
 	{
-		for (ifa_main = ifa_list; ifa_main != NULL; ifa_main = ifa_main->ifa_next)
+		int ret = -1;
+		ret = getifaddrs(&ifa_list);
+		if (ret == 0)
 		{
-			if (ifa_main->ifa_addr == NULL)
-				continue;
-			if (ifa_main->ifa_addr->sa_family != family)
-				continue;
-			if ((ifa_main->ifa_flags & IFF_UP) == 0)
-				continue;
-			if (ifa_main->ifa_flags & IFF_LOOPBACK)
-				continue;
-			family = ifa_main->ifa_addr->sa_family;
-			saddr = ifa_main->ifa_addr;
-			saddrlen = ifa_main->ifa_addr->sa_family == AF_INET?
-				sizeof(struct sockaddr_in) :
-				sizeof(struct sockaddr_in6);
+			for (ifa_main = ifa_list; ifa_main != NULL; ifa_main = ifa_main->ifa_next)
+			{
+				if (ifa_main->ifa_addr == NULL)
+					continue;
+				if (ifa_main->ifa_addr->sa_family != family)
+					continue;
+				if ((ifa_main->ifa_flags & IFF_UP) == 0)
+					continue;
+				if (ifa_main->ifa_flags & IFF_LOOPBACK)
+					continue;
+				if ((IN_MULTICAST(htonl(longaddress)) ||
+					(family == AF_INET6 && htonl(longaddress) == 0xff020000)) &&
+					!(ifa_main->ifa_flags & IFF_MULTICAST))
+				{
+					err("udp: %s udp multicast not supported", ifa_main->ifa_name);
+					continue;
+				}
+				family = ifa_main->ifa_addr->sa_family;
+				saddr = ifa_main->ifa_addr;
+				saddrlen = ifa_main->ifa_addr->sa_family == AF_INET?
+					sizeof(struct sockaddr_in) :
+					sizeof(struct sockaddr_in6);
 
-			char host[NI_MAXHOST];
-			getnameinfo(ifa_main->ifa_addr,
-			   (family == AF_INET) ? sizeof(struct sockaddr_in) :
-									 sizeof(struct sockaddr_in6),
-			   host, NI_MAXHOST,
-			   NULL, 0, NI_NUMERICHOST);
-			dbg("udp: interface %s %s %s %d", ifa_main->ifa_name, family == AF_INET?"IPv4": family == AF_INET6?"IPv6":"???", host, sock);
-			break;
+				char host[NI_MAXHOST];
+				getnameinfo(ifa_main->ifa_addr,
+				   (family == AF_INET) ? sizeof(struct sockaddr_in) :
+										 sizeof(struct sockaddr_in6),
+				   host, NI_MAXHOST,
+				   NULL, 0, NI_NUMERICHOST);
+				dbg("udp: interface %s %s %s %d", ifa_main->ifa_name, family == AF_INET?"IPv4": family == AF_INET6?"IPv6":"???", host, sock);
+				break;
+			}
+		}
+
+		if (saddr != NULL)
+			status = bind(sock, saddr, saddrlen);
+		if (status)
+		{
+			err("udp: search interface");
+			sleep(1);
 		}
 	}
-
-	if (saddr != NULL)
-		status = bind(sock, saddr, saddrlen);
-	if (status)
+	if (status || !ifa_main)
 		return status;
 
 	// check if the address is for multicast diffusion
 	if (IN_MULTICAST(htonl(longaddress)) ||
 		(family == AF_INET6 && htonl(longaddress) == 0xff020000))
 	{
-		if (!(ifa_main->ifa_flags & IFF_MULTICAST))
-		{
-			err("udp: udp multicast interface not supported");
-			return -1;
-		}
-
 		// Set the outgoing interface to DEFAULT
 		status = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_IF, saddr, saddrlen);
 		if (status != 0)

@@ -95,7 +95,10 @@ static int _dmabuf_open()
 int sdmabuf_create(const char *name, size_t size)
 {
 	if (_dmabuf_open() < 0)
+	{
+		err("sdmabuf: dma allocator not available");
 		return -1;
+	}
 	struct dma_heap_allocation_data alloc = { 0 };
 	alloc.len = size;
 	alloc.fd_flags = O_CLOEXEC | O_RDWR;
