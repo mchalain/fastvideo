@@ -163,6 +163,7 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 	{
 		if (errno == EAGAIN)
 		{
+			errno = 0;
 			return 0;
 		}
 		if (errno)
@@ -181,6 +182,7 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 		dbg("buffer lost from %s", output->config->name);
 		/// push back the buffer to the input device because the ouput is not ready to manage it
 		input->ops->queue(input->dev, index, mem, bytesused, flags);
+		errno = 0;
 	}
 	return 0;
 }
@@ -280,7 +282,7 @@ int main_loop(FastVideoList_t *pipes)
 				(infd > 0 && FD_ISSET(infd, &rfds)))
 			{
 				ret = main_transferbuffer(pipe->input, pipe->output);
-				if (ret && infd > 0)
+				if (ret && (infd > 0 || ! errno))
 				{
 					killdaemon(NULL);
 					break;
@@ -301,7 +303,7 @@ int main_loop(FastVideoList_t *pipes)
 				(outfd > 0 && FD_ISSET(outfd, &wfds)))
 			{
 				ret = main_transferbuffer(pipe->output, pipe->input);
-				if (ret && outfd > 0)
+				if (ret && (outfd > 0 || ! errno))
 				{
 					killdaemon(NULL);
 					break;
