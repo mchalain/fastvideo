@@ -921,93 +921,112 @@ int glprog_setuniform(GLProgram_t *program, GLProgram_Uniform_t *uniform)
 		err("segl: uniform %s not set", uniform->name);
 		return -1;
 	}
-	switch (uniform->type & ~Uniform_SHARED_e)
+	if (uniform->type & Uniform_FUNC_e)
 	{
-	case Uniform_FLOAT_e:
-	{
-		glUniform1f(uniform->loc, *(GLfloat*)uniform->value);
+		switch (uniform->type & ~Uniform_FUNC_e)
+		{
+		case Uniform_FLOAT_e:
+		{
+			GLfloat (*func)(GLProgram_Uniform_t *uniform) = uniform->value;
+			glUniform1f(uniform->loc, func(uniform));
+		}
+		break;
+		case Uniform_MAT4_e:
+		{
+			GLfloat *(*func)(GLProgram_Uniform_t *uniform) = uniform->value;
+			glUniformMatrix4fv(uniform->loc, 1, GL_FALSE, func(uniform));
+		}
+		break;
+		break;
+		default:
+			err("segl: Uniform type invalid");
+			return -1;
+		}
 	}
-	break;
-	case Uniform_INT_e:
+	else
 	{
-		glUniform1i(uniform->loc, *(GLint*)uniform->value);
-	}
-	break;
-	case Uniform_FVEC2_e:
-	{
-		glUniform2f(uniform->loc, ((GLfloat*)uniform->value)[0],
-						((GLfloat*)uniform->value)[1]);
-	}
-	break;
-	case Uniform_FVEC3_e:
-	{
-		glUniform3f(uniform->loc, ((GLfloat*)uniform->value)[0],
-						((GLfloat*)uniform->value)[1],
-						((GLfloat*)uniform->value)[2]);
-	}
-	break;
-	case Uniform_FVEC4_e:
-	{
-		glUniform4f(uniform->loc, ((GLfloat*)uniform->value)[0],
-						((GLfloat*)uniform->value)[1],
-						((GLfloat*)uniform->value)[2],
-						((GLfloat*)uniform->value)[3]);
-	}
-	break;
-	case Uniform_IVEC2_e:
-	{
-		glUniform2i(uniform->loc, ((GLint*)uniform->value)[0],
-						((GLint*)uniform->value)[1]);
-	}
-	break;
-	case Uniform_IVEC3_e:
-	{
-		GLint loc = glGetUniformLocation(program->ID, uniform->name);
-		glUniform3i(loc, ((GLint*)uniform->value)[0],
-						((GLint*)uniform->value)[1],
-						((GLint*)uniform->value)[2]);
-	}
-	break;
-	case Uniform_IVEC4_e:
-	{
-		glUniform4i(uniform->loc, ((GLint*)uniform->value)[0],
-						((GLint*)uniform->value)[1],
-						((GLint*)uniform->value)[2],
-						((GLint*)uniform->value)[3]);
-	}
-	break;
-	case Uniform_MAT2_e:
-	{
-		glUniformMatrix2fv(uniform->loc, 1, GL_FALSE, uniform->value);
-	}
-	break;
-	case Uniform_MAT3_e:
-	{
-		glUniformMatrix3fv(uniform->loc, 1, GL_FALSE, uniform->value);
-	}
-	break;
-	case Uniform_MAT4_e:
-	{
-		glUniformMatrix4fv(uniform->loc, 1, GL_FALSE, uniform->value);
-	}
-	break;
-	case Uniform_SAMPLER_e:
-	{
-		GL_Buffer_t *glbuffer = (GL_Buffer_t *)uniform->value;
-		glActiveTexture(GL_TEXTURE0 + glbuffer->unit);
-		glBindTexture(glbuffer->textype, glbuffer->texture);
-		glUniform1i(glbuffer->loc, glbuffer->unit);
-	}
-	break;
-	case Uniform_FUNC_e:
-	{
-		GLfloat (*func)(GLProgram_Uniform_t *uniform) = uniform->value;
-		glUniform1f(uniform->loc, func(uniform));
-	}
-	break;
-	default:
-		err("segl: Uniform type invalid");
-		return -1;
+		switch (uniform->type & ~Uniform_SHARED_e)
+		{
+		case Uniform_FLOAT_e:
+		{
+			glUniform1f(uniform->loc, *(GLfloat*)uniform->value);
+		}
+		break;
+		case Uniform_INT_e:
+		{
+			glUniform1i(uniform->loc, *(GLint*)uniform->value);
+		}
+		break;
+		case Uniform_FVEC2_e:
+		{
+			glUniform2f(uniform->loc, ((GLfloat*)uniform->value)[0],
+							((GLfloat*)uniform->value)[1]);
+		}
+		break;
+		case Uniform_FVEC3_e:
+		{
+			glUniform3f(uniform->loc, ((GLfloat*)uniform->value)[0],
+							((GLfloat*)uniform->value)[1],
+							((GLfloat*)uniform->value)[2]);
+		}
+		break;
+		case Uniform_FVEC4_e:
+		{
+			glUniform4f(uniform->loc, ((GLfloat*)uniform->value)[0],
+							((GLfloat*)uniform->value)[1],
+							((GLfloat*)uniform->value)[2],
+							((GLfloat*)uniform->value)[3]);
+		}
+		break;
+		case Uniform_IVEC2_e:
+		{
+			glUniform2i(uniform->loc, ((GLint*)uniform->value)[0],
+							((GLint*)uniform->value)[1]);
+		}
+		break;
+		case Uniform_IVEC3_e:
+		{
+			GLint loc = glGetUniformLocation(program->ID, uniform->name);
+			glUniform3i(loc, ((GLint*)uniform->value)[0],
+							((GLint*)uniform->value)[1],
+							((GLint*)uniform->value)[2]);
+		}
+		break;
+		case Uniform_IVEC4_e:
+		{
+			glUniform4i(uniform->loc, ((GLint*)uniform->value)[0],
+							((GLint*)uniform->value)[1],
+							((GLint*)uniform->value)[2],
+							((GLint*)uniform->value)[3]);
+		}
+		break;
+		case Uniform_MAT2_e:
+		{
+			glUniformMatrix2fv(uniform->loc, 1, GL_FALSE, uniform->value);
+		}
+		break;
+		case Uniform_MAT3_e:
+		{
+			glUniformMatrix3fv(uniform->loc, 1, GL_FALSE, uniform->value);
+		}
+		break;
+		case Uniform_MAT4_e:
+		{
+			glUniformMatrix4fv(uniform->loc, 1, GL_FALSE, uniform->value);
+		}
+		break;
+		case Uniform_SAMPLER_e:
+		{
+			GL_Buffer_t *glbuffer = (GL_Buffer_t *)uniform->value;
+			glActiveTexture(GL_TEXTURE0 + glbuffer->unit);
+			glBindTexture(glbuffer->textype, glbuffer->texture);
+			glUniform1i(glbuffer->loc, glbuffer->unit);
+		}
+		break;
+		default:
+			err("segl: Uniform type invalid");
+			return -1;
+		}
 	}
 	return 0;
 }
@@ -1127,7 +1146,7 @@ static int _glprog_uniform_setvalue(GLProgram_Uniform_t *uniform, GLProgram_t *p
 	if (jvalue && json_is_string(jvalue))
 	{
 		const char *value = json_string_value(jvalue);
-		switch (uniform->type & ~Uniform_SHARED_e)
+		switch (uniform->type & ~(Uniform_SHARED_e | Uniform_FUNC_e))
 		{
 		case Uniform_SAMPLER_e:
 		{
@@ -1277,7 +1296,7 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 			json_t *jvalue = json_object_get(jsetting, "value");
 			if (jvalue && json_is_string(jvalue))
 			{
-				uniform->type = Uniform_FUNC_e;
+				uniform->type = Uniform_FLOAT_e;
 				const char *value = NULL;
 				value = json_string_value(jvalue);
 				if (!strncasecmp(value, "time", 4))
@@ -1286,6 +1305,7 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 					uniform->value = _frame;
 				else
 					uniform->type = Uniform_UNKNOWN_e;
+				uniform->type |= Uniform_FUNC_e;
 			}
 		}
 		uniform->config = setting;
