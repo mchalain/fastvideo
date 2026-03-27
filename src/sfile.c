@@ -317,6 +317,13 @@ EXT_API int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused, int *flags
 		errno = EAGAIN;
 		return -1;
 	}
+	if (dev->type == device_input && dev->config->parent.fps)
+	{
+		useconds_t usec = -dev->config->parent.fps * 1000000;
+		if (dev->config->parent.fps > 0)
+			usec = 1000000 / dev->config->parent.fps;
+		usleep(usec);
+	}
 	if (bytesused)
 		*bytesused = buffer->bytesused;
 	if (mem && buffer->mem)
