@@ -1,5 +1,5 @@
 package = fastvideo
-version = 1.2
+version = 1.3
 
 include scripts.mk
 
