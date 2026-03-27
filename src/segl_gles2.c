@@ -54,8 +54,6 @@ struct GLProgram_s
 	GLuint vertexArrayID;
 	GLuint vertexBufferObject[3];
 	int lasttextureid;
-	GLfloat *movectx;
-	GLfloat *(*move)(GLfloat *);
 	GL_Buffer_t *out;
 	uint32_t width;
 	uint32_t height;
@@ -428,17 +426,6 @@ static GLuint buildProgramm(const char *vertex, const char *fragments[MAX_SHADER
 	return programID;
 }
 
-static GLfloat *_movestatic(GLfloat * ctx)
-{
-	if (ctx == NULL)
-	{
-		ctx = calloc(16, sizeof(GLfloat));
-		ctx[0] = ctx[5] = ctx[10] = ctx[15] = 1.0;
-	}
-	return ctx;
-}
-static GLfloat *(*_move)(GLfloat * ctx) = NULL;
-
 static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, uint32_t width, uint32_t height)
 {
 	void *uniform_data = NULL;
@@ -508,7 +495,6 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, uint32
 		}
 	}
 	GLProgram_t *program = calloc(1, sizeof(*program));
-	program->move = _move;
 	program->config = config;
 	program->controls_data = uniform_data;
 	if (config)
@@ -581,16 +567,6 @@ static GLProgram_t *glprog_create(EGLConfig_Program_t *config, uint32_t width, u
 	GLint pos = glGetAttribLocation(program->ID, "vPosition");
 	glEnableVertexAttribArray(pos);
 	glVertexAttribPointer(pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
-	GLuint moveID = glGetUniformLocation(program->ID, "vMove");
-	void *movectx = _movestatic(NULL);
-	glUniformMatrix4fv(moveID, 1, GL_FALSE, movectx);
-	free(movectx);
-	if (program->move)
-	{
-		program->movectx = program->move(program->movectx);
-		glUniformMatrix4fv(moveID, 1, GL_FALSE, program->movectx);
-	}
 
 	GLuint resolutionID = glGetUniformLocation(program->ID, "vResolution");
 	glUniform4f(resolutionID, (GLfloat)program->width, (GLfloat)program->height, 1 / (GLfloat)program->width, 1 / (GLfloat)program->height);
@@ -866,11 +842,6 @@ static int _glprog_run(GLProgram_t *program, GL_Buffer_t *buffer, GLProgram_t *p
 	glBindTexture(buffer->textype, buffer->texture);
 	glUniform1i(buffer->loc, buffer->unit);
 
-	if (program->move)
-	{
-		GLuint moveID = glGetUniformLocation(program->ID, "vMove");
-		glUniformMatrix4fv(moveID, 1, GL_FALSE, program->move(program->movectx));
-	}
 	for (GLProgram_Uniform_t *uniform = program->controls; uniform; uniform = uniform->next)
 	{
 		glprog_setuniform(program, uniform);
@@ -1067,6 +1038,19 @@ static GLfloat _frame(GLProgram_Uniform_t *uniform)
 	uniform->data = (void*)(long)++f;
 	return (GLfloat)f;
 }
+
+static GLfloat *_movestatic(GLProgram_Uniform_t *uniform)
+{
+	GLfloat *ctx = uniform->data;
+	if (ctx == NULL)
+	{
+		ctx = calloc(16, sizeof(GLfloat));
+		ctx[0] = ctx[5] = ctx[10] = ctx[15] = 1.0;
+	}
+	uniform->data = ctx;
+	return ctx;
+}
+static GLfloat *(*_move)(GLProgram_Uniform_t *uniform) = _movestatic;
 
 #ifdef HAVE_JANSSON
 #include <jansson.h>
@@ -1303,6 +1287,11 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 					uniform->value = _time;
 				else if (!strncasecmp(value, "frames", 6))
 					uniform->value = _frame;
+				else if (!strncasecmp(value, "move", 4))
+				{
+					uniform->type = Uniform_MAT4_e;
+					uniform->value = _move;
+				}
 				else
 					uniform->type = Uniform_UNKNOWN_e;
 				uniform->type |= Uniform_FUNC_e;
