@@ -1273,17 +1273,19 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 		}
 		else if (!strcmp(value, "func"))
 		{
-			uniform->type = Uniform_FUNC_e;
 			/// function are not modifiable with setting
 			json_t *jvalue = json_object_get(jsetting, "value");
 			if (jvalue && json_is_string(jvalue))
 			{
+				uniform->type = Uniform_FUNC_e;
 				const char *value = NULL;
 				value = json_string_value(jvalue);
 				if (!strncasecmp(value, "time", 4))
 					uniform->value = _time;
 				else if (!strncasecmp(value, "frames", 6))
 					uniform->value = _frame;
+				else
+					uniform->type = Uniform_UNKNOWN_e;
 			}
 		}
 		uniform->config = setting;
