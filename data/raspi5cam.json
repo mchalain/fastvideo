@@ -342,6 +342,28 @@
     "end": true
   },
   {
+    "name": ["shadertoy"],
+    "type": "gpu",
+    "native": ["x11","wayland","drm"],
+    "device": "/dev/dri/card0",
+    "programs":[{
+      "disable": false,
+      "vertex": "ShaderToy/vertex.glsl",
+      "fragment": ["ShaderToy/fragment.glsl","ShaderToy/Funny.glsl"],
+      "controls": [{
+        "name": "iTime",
+        "type": "func",
+        "value": "time"
+      },{
+        "name": "fFrame",
+        "type": "func",
+        "value": "frames"
+      }],
+      "end": true
+    }],
+    "end": true
+  },
+  {
     "name": ["gpu-isp"],
     "type": "gpu",
     "native": ["x11","wayland","drm"],
