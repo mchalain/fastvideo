@@ -715,8 +715,10 @@ static GL_Buffer_t *gltexture_create(GLProgram_t *program, const char *name, con
 
 	glTexParameteri(textype, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(textype, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	/// GL_LINEAR may request the building of "Shadow Texture".
+	/// This issue depends on the driver and it's not present with GLES3
+	glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	GL_Buffer_t *glbuffer = calloc(1, sizeof(*glbuffer));
 	glbuffer->texture = texture;
