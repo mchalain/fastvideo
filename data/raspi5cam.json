@@ -163,7 +163,7 @@
       {
         "name": ["raw-ov9281","raw-imx296","raw-imx708","raw-imx477","csi2"],
         "type": "subv4l",
-        "disable": true,
+        "disable": false,
         "device": "/dev/v4l-subdev0",
         "end": true
       },

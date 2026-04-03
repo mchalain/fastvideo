@@ -1,19 +1,19 @@
 [
   {
-    "name": ["raw-imx708","cam-imx708","imx708_wide_noir"],
+    "name": ["imx708_wide_noir"],
     "controls": [
       {
         "name": "Exposure",
         "id": 9963793,
-        "value": 1367
+        "value": 1567
       },{
         "name": "Horizontal Flip",
-	"disable": true,
+        "disable": true,
         "id": 9963796,
         "value": false
       },{
         "name": "Vertical Flip",
-	"disable": true,
+        "disable": true,
         "id": 9963797,
         "value": false
       },{
@@ -22,16 +22,17 @@
         "value": false
       },{
         "name": "Camera Orientation",
-	"read-only": true,
+        "read-only": true,
         "id": 10094882,
         "value": 2,
         "value_show": "External"
       },{
         "name": "Camera Sensor Rotation",
-	"read-only": true,
+        "read-only": true,
         "id": 10094883,
         "value": 180
       },{
+        "disable": true,
         "name": "Vertical Blanking",
         "id": 10356993,
         "value": 1198
@@ -87,7 +88,7 @@
       }
     ]
   },{
-    "name": ["cam-imx708","dw9807 10-000c"],
+    "name": ["dw9807 10-000c"],
     "controls": [
       {
         "name": "Focus, Absolute",
@@ -96,7 +97,7 @@
       }
     ]
   },{
-    "name": ["isp-in","bcm2835-isp0-output0"],
+    "name": ["bcm2835-isp0-output0"],
     "controls": [
       {
         "name": "Red Balance",
@@ -112,6 +113,7 @@
         "value": [    1,    0,    0,    0,  248,    5,    0,    0,  232,    3,    0,    0,   22,  255,  255,  255,  232,    3,    0,    0,  218,  254,  255,  255,  232,    3,    0,    0,  105,  254,  255,  255,  232,    3,    0,    0,   10,    7,    0,    0,  232,    3,    0,    0,  117,  254,  255,  255,  232,    3,    0,    0,  203,  255,  255,  255,  232,    3,    0,    0,  200,  253,  255,  255,  232,    3,    0,    0,   85,    6,    0,    0,  232,    3,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0
         ]
       },{
+        "disable": true,
         "name": "lens_shading",
         "id": 9968098,
         "value": [    1,    0,    0,    0,   64,    0,    0,    0,   37,    0,    0,    0,   37,    0,    0,    0,   22,    0,    0,    0,   20,    0,    0,    0,    0,    0,    0,    0,    1,    0,    0,    0,    7,    0,    0,    0

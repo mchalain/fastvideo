@@ -1,6 +1,6 @@
 [
   {
-    "name": ["isp1-in","bcm2835-isp0-output0"],
+    "name": ["isp1-in","bcm2835-isp1-output0"],
     "type": "v4l2",
     "device": "/dev/video20",
     "definition": [],
@@ -8,7 +8,7 @@
     "end": true
   },
   {
-    "name": ["isp1-out","bcm2835-isp0-capture1"],
+    "name": ["isp1-out","bcm2835-isp1-capture1"],
     "type": "v4l2",
     "device": "/dev/video21",
     "definition": {
@@ -20,7 +20,7 @@
     "end": true
   },
   {
-    "name": ["isp1-out2","bcm2835-isp0-capture2"],
+    "name": ["isp1-out2","bcm2835-isp1-capture2"],
     "type": "v4l2",
     "device": "/dev/video22",
     "definition": {
