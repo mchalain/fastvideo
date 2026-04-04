@@ -21,6 +21,7 @@
 
 #define segl_dbg(...)
 
+#define GLES2_ENABLE_DEBUGMESSAGES 1
 /// the program running may use "DrawElements" or "DrawArrays". The both have the same performances
 #define GLES2_DRAWELEMENTS 0
 
@@ -118,6 +119,7 @@ static const GLchar _defaultfragment[] = ""
 
 #ifndef EGL_EGLEXT_PROTOTYPES
 static PFNGLDEBUGMESSAGECALLBACKKHRPROC glDebugMessageCallbackKHR = NULL;
+static PFNGLDEBUGMESSAGECONTROLKHRPROC glDebugMessageControlKHR = NULL;
 static PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = NULL;
 static PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = NULL;
 #ifdef EGL_KHR_image
@@ -141,6 +143,7 @@ static int _egl_initprototypes(void)
 	}
 #ifdef DEBUG
 	glDebugMessageCallbackKHR = (void *) eglGetProcAddress("glDebugMessageCallbackKHR");
+	glDebugMessageControlKHR = (void *) eglGetProcAddress("glDebugMessageControlKHR");
 #endif
 #if defined(GL_OES_EGL_image)
 	glEGLImageTargetTexture2DOES = (void *) eglGetProcAddress("glEGLImageTargetTexture2DOES");
@@ -519,9 +522,9 @@ static GLProgram_t *glprog_create_controler(EGLConfig_Program_t *config, uint32_
 void _glprog_messagecb( GLenum source, GLenum type, GLuint id, GLenum severity,
                  GLsizei length, const GLchar* message, const void* userParam)
 {
-  err("segl: gles2 error %s type = 0x%x, severity = 0x%x, message = %s\n",
-           ( type == GL_DEBUG_TYPE_ERROR_KHR ? "** GL ERROR **" : "" ),
-            type, severity, message );
+  err("segl: gles2 error (%u) %s type = 0x%x, severity = 0x%x, message = %s from %#x",
+			id,( type == GL_DEBUG_TYPE_ERROR_KHR ? "** GL ERROR **" : "" ),
+			type, severity, message, source);
 }
 #endif
 
@@ -582,10 +585,12 @@ static GLProgram_t *glprog_create(EGLConfig_Program_t *config, uint32_t width, u
 		if (program->next)
 			program->next->list = program->list;
 	}
-#ifdef DEBUG
-	// During init, enable debug output
-	glEnable              ( GL_DEBUG_OUTPUT_KHR );
-	glDebugMessageCallbackKHR( _glprog_messagecb, 0 );
+#if GLES2_ENABLE_DEBUGMESSAGES && defined(DEBUG)
+	/// disable traces about the copy from dma_buf linear to tiled memory of the GPU
+	int ids[1] = {1};
+	glDebugMessageControlKHR(GL_DEBUG_SOURCE_API_KHR, GL_DEBUG_TYPE_PERFORMANCE_KHR, GL_DONT_CARE, 1, ids, GL_FALSE);
+	glEnable(GL_DEBUG_OUTPUT_KHR);
+	glDebugMessageCallbackKHR(_glprog_messagecb, 0);
 #endif
 
 	return program;
