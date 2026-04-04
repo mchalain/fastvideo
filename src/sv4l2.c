@@ -599,6 +599,12 @@ static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, uint32_t *wi
 	{
 		return -1;
 	}
+	if (ioctl(fd, VIDIOC_G_FMT, &fmt) != 0)
+	{
+		err("sv4l2: FMT not found %m");
+		return -1;
+	}
+	dbg("sv4l2: settings: %.4s stride: %u/%u field:%#x", (char*)(&fmt.fmt.pix.pixelformat), fmt.fmt.pix.bytesperline, fmt.fmt.pix.width, fmt.fmt.pix.field);
 	*width = fmt.fmt.pix.width;
 	*height = fmt.fmt.pix.height;
 	framesize = fmt.fmt.pix.sizeimage;
