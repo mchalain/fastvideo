@@ -1474,6 +1474,18 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 		return NULL;
 	}
 
+	V4L2_t *subdevs[MAX_SUBDEVS] = {0};
+#if ADD_SUBDEVICES
+	/// the subdevices must be intialized, even if they are not used after
+	for (int i = 0; config && i < MAX_SUBDEVS &&
+			i < (sizeof(config->subdev_entries) / sizeof(*(config->subdev_entries))); i++)
+	{
+		if (config->subdev_entries[i])
+		{
+			subdevs[i] = subdev_ops.create(config->subdev_entries[i]->parent.name, dtype, (DeviceConf_t *)config->subdev_entries[i]);
+		}
+	}
+#endif
 	if (dtype != device_control && _sv4l2_prepare(fd, &type, mode, config))
 	{
 		err("sv4l2: create device %s failed", name);
@@ -1490,17 +1502,8 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 	dev->type = type;
 	dev->mode = mode;
 	dev->ops.createbuffers = createbuffers_splane;
-#if ADD_SUBDEVICES
-	/// the subdevices must be intialized, even if they are not used after
-	for (int i = 0; config && i < (sizeof(dev->subdevs) / sizeof(*(dev->subdevs))) &&
-			i < (sizeof(config->subdev_entries) / sizeof(*(config->subdev_entries))); i++)
-	{
-		if (config->subdev_entries[i])
-		{
-			dev->subdevs[i] = subdev_ops.create(config->subdev_entries[i]->parent.name, dtype, (DeviceConf_t *)config->subdev_entries[i]);
-		}
-	}
-#endif
+	for (int i = 0; i < MAX_SUBDEVS && subdevs[i]; i++)
+		dev->subdevs[i] = subdevs[i];
 	if (mode & MODE_MPLANE)
 	{
 		dev->ops.createbuffers = createbuffers_mplane;
