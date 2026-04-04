@@ -663,7 +663,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	memcpy(dup, dev, sizeof(*dup));
 	*pconfig = malloc(sizeof(*(dup->config)));
 	memcpy(*pconfig, dev->config, sizeof(*(dup->config)));
-	memmove(&(*pconfig)->parent, &dev->config->transfer, sizeof((*pconfig)->parent));
+	scommon_mergedefinition(&(*pconfig)->parent, &dev->config->transfer);
 	if ((*pconfig)->parent.width == 0)
 		(*pconfig)->parent.width = dev->config->parent.width;
 	if ((*pconfig)->parent.height == 0)

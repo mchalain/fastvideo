@@ -115,36 +115,8 @@ FastVideoDevice_t *config_createdevice(const char *name, const char *configfile)
 
 int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 {
-	if (inconfig->width)
-		outconfig->width = inconfig->width;
-	else if (outconfig->width)
-		inconfig->width = outconfig->width;
-	else
-	{
-		inconfig->width = outconfig->width = 640;
-	}
-	if (inconfig->height)
-		outconfig->height = inconfig->height;
-	else if (outconfig->height)
-		inconfig->height = outconfig->height;
-	else
-	{
-		inconfig->height = outconfig->height = 480;
-	}
-	if (inconfig->stride)
-		outconfig->stride = inconfig->stride;
-	else if (outconfig->stride)
-		inconfig->stride = outconfig->stride;
-	if (inconfig->modifiers && !outconfig->modifiers)
-		outconfig->modifiers = inconfig->modifiers;
-	else if (outconfig->modifiers && !inconfig->modifiers)
-		inconfig->modifiers = outconfig->modifiers;
-	if (inconfig->fourcc && !outconfig->fourcc)
-		outconfig->fourcc = inconfig->fourcc;
-	else if (outconfig->fourcc && !inconfig->fourcc)
-		inconfig->fourcc = outconfig->fourcc;
-	else if (!inconfig->fourcc && !outconfig->fourcc)
-		inconfig->fourcc = outconfig->fourcc = FOURCC('A','B','2','4');
+	scommon_mergedefinition(outconfig, inconfig);
+	scommon_mergedefinition(inconfig, outconfig);
 	dbg("input %s size %u %u", inconfig->name, inconfig->width, inconfig->height);
 	dbg("output %s size %u %u", outconfig->name, outconfig->width, outconfig->height);
 	return 0;
@@ -163,7 +135,6 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 	{
 		if (errno == EAGAIN)
 		{
-			errno = 0;
 			return 0;
 		}
 		if (errno)

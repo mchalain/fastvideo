@@ -1555,12 +1555,7 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	dup->type = -1;
 	*pconfig = dup->config = malloc(sizeof(*dev->config));
 	memmove(dup->config, dev->config, sizeof(*dev->config));
-	if (!dev->config->transfer.width)
-		dup->config->parent.width = dev->config->parent.width;
-	if (!dev->config->transfer.height)
-		dup->config->parent.height = dev->config->parent.height;
-	if (!dev->config->transfer.fourcc)
-		dup->config->parent.fourcc = dev->config->parent.fourcc;
+	scommon_mergedefinition(&dup->config->parent, &dev->config->transfer);
 	if ((dup->mode & MODE_CAPTURE) && dup->config->periodic)
 	{
 		dup->periodicfunc = _v4l2_periodiccontrol;
@@ -2252,7 +2247,7 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevices, const char *na
 						break;
 
 					config->subdev_entries[subdev_id] = (V4l2Config_t *)subdev_ops.createconfig(name);
-					memcpy(&config->subdev_entries[subdev_id]->parent, &config->parent, sizeof(config->parent));
+					scommon_mergedefinition(&config->subdev_entries[subdev_id]->parent, &config->parent);
 					config->subdev_entries[subdev_id]->parent.entry = subdevice;
 					config->subdev_entries[subdev_id]->parent.ops.loadconfiguration(config->subdev_entries[subdev_id], subdevice);
 					if (jlastname && json_is_string(jlastname))

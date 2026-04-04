@@ -84,6 +84,7 @@ struct DeviceConf_s
  * this function is currently defined inside sv4l2.c
  */
 int scommon_loaddefinition(DeviceConf_t *config, json_t *definition);
+int scommon_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src);
 int scommon_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devconfig);
 
 typedef struct FastVideoDevice_ops_s FastVideoDevice_ops_t;

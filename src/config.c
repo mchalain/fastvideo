@@ -105,6 +105,25 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 	return 0;
 }
 
+int scommon_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src)
+{
+	if (!dest->width)
+		dest->width = src->width;
+	if (!dest->height)
+		dest->height = src->height;
+	if (!dest->width)
+		dest->width = src->width;
+	if (!dest->stride)
+		dest->stride = src->stride;
+	if (!dest->modifiers)
+		dest->modifiers = src->modifiers;
+	if (!dest->fourcc)
+		dest->fourcc = src->fourcc;
+	if (!dest->fps)
+		dest->fps = src->fps;
+	return 0;
+}
+
 static const char unknown_str[] = "unknown";
 static int main_parseconfigdevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data)
 {
