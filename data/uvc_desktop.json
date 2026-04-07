@@ -93,7 +93,7 @@
 	"type":"passthrough",
 	"end":true
 },{
-	"name":"dryrun",
+	"name":["trigger","dryrun"],
 	"type":"passthrough",
 	"controls": {
 		"dryrun": true,

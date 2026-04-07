@@ -17,3 +17,4 @@ sysconf-y+=setting-ov5647.json
 sysconf-y+=setting-imx477.json
 sysconf-y+=setting-imx708.json
 sysconf-y+=setting-imx296.json
+sysconf-y+=sshoot.json

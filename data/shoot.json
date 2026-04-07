@@ -1,0 +1,8 @@
+{
+	"name": "trigger",
+	"controls": {
+		"shoot": true,
+		"end": true
+	},
+	"end": true
+}

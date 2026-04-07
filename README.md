@@ -75,7 +75,7 @@ Theis options are the standard definition:
 The configuration for Webcam is available into "uvc-desktop.json" file.
 
 ```shell
-$ fastvideo -j /etc/fastvideo/uvc-desktop.json -i uvc -o gpu -D
+$ fastvideo -D -j /etc/fastvideo/uvc-desktop.json -i uvc -o gpu
 ```
 #### ShaderToy
 The ShaderToy is a webGL application available to [shadertoy.com](https://www.shadertoy.com), that play fragment shader to create filters.
@@ -105,7 +105,7 @@ By default the output is the GPU rendering into X11 window. The native rendering
 This camera uses a ov5647 camera sensor. The following command lines should start a stream
 
 ```bash
-$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-ov5647 -o isp-in -i isp-out -o gpu -D
+$ fastvideo -Ds -j /etc/fastvideo/raspicam.json -i cam-ov5647 -o isp-in -i isp-out -o gpu
 $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-ov5647.json
 ```
 
@@ -114,7 +114,7 @@ $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-ov5647.j
 The camera uses a imx708 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
 
 ```bash
-$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx708 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu -D
+$ fastvideo -D -j /etc/fastvideo/raspicam.json -i cam-imx708 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu
 $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx708.json
 ```
 
@@ -123,7 +123,7 @@ $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx708.j
 The camera uses a imx477 camera sensor. It needs to stream the image and the metadata at the same time. The following command lines should start a stream
 
 ```bash
-$ fastvideo -j /etc/fastvideo/raspicam.json -i cam-imx477 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu -D
+$ fastvideo -D -j /etc/fastvideo/raspicam.json -i cam-imx477 -o isp-in -i unicam-embedded -o dryrun -i isp-out -o gpu
 $ fastsetting -j /etc/fastvideo/raspicam.json -J /etc/fastvideo/setting-imx477.json
 ```
 
@@ -141,7 +141,7 @@ A 3AAlgo server is available into *utils* directory and named **rpivc4_alg**. It
 
 ```bash
 $ rpivc4_alg -D
-$ fastvideo -j /etc/fastvideo/raspicam.json -i isp-meta -o rpivc4_alg -D
+$ fastvideo -D -j /etc/fastvideo/raspicam.json -i isp-meta -o rpivc4_alg
 ```
 
 **NOTE:** As the rpivc4_alg uses a fifo file, the both process are synchronized. and each must be restarted at the same time.
@@ -193,22 +193,38 @@ To the question **disable the pisp_fe** the answer **must** be **y**.
 The ov9281 is a global shutter monochrome camera. The output is Y10 1920x1080 at 120 fps.
 
 ```shell
-$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-ov9281 -o gpu -D
+$ fastvideo -D -j /etc/fastvideo/raspi5cam.json -i raw-ov9281 -o gpu
 $ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-ov9281.json
 ```
 
 #### Raspberry Camera HQ (imx477)
 
 ```shell
-$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx477 -o gpu-isp -D
+$ fastvideo -D -j /etc/fastvideo/raspi5cam.json -i raw-imx477 -o gpu-isp
 $ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-imx477.json
 ```
 
 #### Raspberry Camera GS (imx296)
 
 ```shell
-$ fastvideo -j /etc/fastvideo/raspi5cam.json -i raw-imx296 -t toR16 -o gpu-isp -D
+$ fastvideo -D -j /etc/fastvideo/raspi5cam.json -i raw-imx296 -t toR16 -o gpu-isp
 $ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-imx296.json
+```
+
+### Soft trigger
+
+The *spassthrough* plugin offers to create a software trigger.
+
+```shell
+$ fastvideo -D -j /etc/fastvideo/uvc_desktop.json -i uvc -t trigger -o gpu
+$ fastsetting -j /etc/fastvideo/uvc_desktop.json -J /etc/fastvideo/shoot.json
+```
+
+### Performance checking
+
+The *spassthrough* plugin offers to trash all frames. And *-v* displays the framerate.
+```shell
+$ fastvideo -D -j /etc/fastvideo/uvc_desktop.json -i uvc -o dryrun
 ```
 
 # Features
