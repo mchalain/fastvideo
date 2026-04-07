@@ -237,40 +237,41 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 	int ret = 0;
 	dev->nbuffers = nmems;
 	dev->buffers = calloc(nmems, sizeof(*dev->buffers));
+	dev->size = size;
 	void **tmems = NULL;
 	int *tdmabufs = NULL;
 	if (copy)
 	{
-		tmems = calloc(nmems, sizeof(*mems));
-		tdmabufs = calloc(nmems, sizeof(*dmabufs));
+		if (mems)
+			tmems = calloc(nmems, sizeof(*mems));
+		if (dmabufs)
+			tdmabufs = calloc(nmems, sizeof(*dmabufs));
 	}
 	for (int i = 0; i < nmems; i++)
 	{
 		if (copy)
 		{
-			int dmabufs_tmp = 0;
-			dmabufs_tmp = sdmabuf_create(spassthrough, size);
-			if (dmabufs_tmp > 0)
+			if (dmabufs &&
+				(tdmabufs[i] = sdmabuf_create(spassthrough, size)) > 0)
 			{
-				tdmabufs[i] = dmabufs_tmp;
-				tmems[i] = sdmabuf_map(tdmabufs[i], size, 1);
-				if (tmems[i] == (void *)(long)-1)
-				{
-					err("spassthrough: buffer creation error");
-					ret = -1;
-				}
-				mems = tmems;
 				dmabufs = tdmabufs;
+			}
+			else if (mems && (tmems[i] = malloc(size)) != NULL)
+			{
+				mems = tmems;
 			}
 			else
 			{
-				err("spassthrough: the buffer copy is disallowed");
+				err("spassthrough: buffer allocation error %m");
 				ret = -1;
 				copy = 0;
-				free(tdmabufs);
+				if (tdmabufs)
+					free(tdmabufs);
 				tdmabufs = NULL;
-				free(tmems);
+				if (tmems)
+					free(tmems);
 				tmems = NULL;
+				size = 0;
 			}
 		}
 		if (dmabufs)
@@ -282,7 +283,6 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 	}
 	dev->mems = mems;
 	dev->dmabufs = dmabufs;
-	dev->size = size;
 	return ret;
 }
 
@@ -308,15 +308,15 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 			/**
 			 * for device_output (main dev)
 			 */
-			if (dev->buffers)
-				break;
 			int ntargets = va_arg(ap, int);
 			void **targets = va_arg(ap, void **);
 			size_t size = va_arg(ap, size_t);
 			/**
 			 * We need buffers in the first dev to allow the DRYRUN state.
 			 */
-			_passthrough_createbuffers(dev, ntargets, targets, NULL, size, 0);
+			ret = 0;
+			if (dev->buffers == NULL)
+				_passthrough_createbuffers(dev, ntargets, targets, NULL, size, 0);
 			/**
 			 * create buffers for the output dev
 			 */
@@ -329,10 +329,8 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 				_passthrough_createbuffers(dev->dup, ntargets, targets, NULL, size,
 					(dev->config->mode & MODE_COPY)) < 0)
 			{
-				/// disable copy mode on buffer allocation error
-				dev->config->mode &= ~MODE_COPY;
+				ret = -1;
 			}
-			ret = 0;
 			if (dev->type == device_input && dev->branch.dev)
 			{
 				dev->branch.ops->destroy(dev->branch.dev);
@@ -367,13 +365,12 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 		break;
 		case buf_type_dmabuf:
 		{
-			if (dev->buffers)
-				break;
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
 			ret = 0;
-			_passthrough_createbuffers(dev, ntargets, NULL, targets, size, 0);
+			if (dev->buffers == NULL)
+				_passthrough_createbuffers(dev, ntargets, NULL, targets, size, 0);
 			for (int i = 0; i < ntargets; i++)
 			{
 				dev->buffers[i].mem = sdmabuf_map(dev->buffers[i].dmabuf, size, 0); /// the write argument should be 0
@@ -384,12 +381,13 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 					break;
 				}
 			}
+			/// prepare buffers for output stream.
 			if (dev->dup &&
 				_passthrough_createbuffers(dev->dup, ntargets, NULL, targets, size,
 					(dev->config->mode & MODE_COPY)) < 0)
 			{
-				/// disable copy mode on buffer allocation error
-				dev->config->mode &= ~MODE_COPY;
+				ret = -1;
+				break;
 			}
 			if (dev->type == device_input && dev->branch.dev)
 			{
@@ -434,6 +432,13 @@ EXT_API int spassthrough_fd(Passthrough_t *dev, int writer)
 
 EXT_API int spassthrough_start(Passthrough_t *dev)
 {
+	if (dev->copy && dev->dup->buffers[0].size == 0)
+	{
+		/// disable copy mode on buffer allocation error
+		err("spassthrough: copy disabling");
+		dev->config->mode &= ~MODE_COPY;
+		dev->copy = NULL;
+	}
 	if (dev->type == device_input && dev->branch.dev)
 	{
 		dev->branch.ops->start(dev->branch.dev);
