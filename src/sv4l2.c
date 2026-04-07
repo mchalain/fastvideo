@@ -2104,6 +2104,24 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 		return -1;
 	}
 
+#if ADD_SUBDEVICES
+	json_t *subdevices = json_object_get(jconfig, "subdevices");
+	if (subdevices && json_is_array(subdevices))
+	{
+		int index;
+		json_t *subdevice;
+		json_array_foreach(subdevices, index, subdevice)
+		{
+			for (int i = 0; i < (sizeof(dev->subdevs) / sizeof(*(dev->subdevs))); i++)
+			{
+				if (dev->subdevs[i])
+				{
+					subdev_ops.loadsettings(dev->subdevs[i], subdevice);
+				}
+			}
+		}
+	}
+#endif
 	json_t *transformations = json_object_get(jconfig, "transformation");
 	if (transformations && json_is_array(transformations))
 	{
