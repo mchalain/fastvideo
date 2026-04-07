@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <errno.h>
 
 #include "fastvideo.h"
 #include "log.h"
@@ -250,3 +251,62 @@ void fastvideo_proto_append(const Proto_t *proto)
 		_protos[i] = proto;
 }
 
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/shm.h>
+
+void *fastcontrols_create(const char *dir, const char *keyname, unsigned int size)
+{
+	int curdir = open(".", O_DIRECTORY);
+	if (mkdir(dir, 0755) && errno != EEXIST)
+		err("sfastvideo: programs directory creation error %m");
+	int rootfd = open(dir, O_DIRECTORY);
+	if (rootfd == -1)
+	{
+		rootfd = AT_FDCWD;
+		err("sfastvideo: run inside current directory %m");
+	}
+#if 0
+	int ret = faccessat(rootfd, keyname, F_OK, AT_EACCESS);
+	if (!ret)
+	{
+		if (unlinkat(rootfd, keyname, 0))
+			err("sfastvideo: shm file access error %m");
+	}
+#endif
+	int fd = openat(rootfd, keyname, O_CREAT|O_RDWR, 0644);
+	if (fd < 0)
+		err("sfastvideo: shm file error %m");
+	close(fd);
+	int shmid = 0;
+	key_t key;
+	if (rootfd != AT_FDCWD)
+		fchdir(rootfd);
+	key = ftok(keyname, 'R');
+	fchdir(curdir);
+	close(curdir);
+	close(rootfd);
+	if (key == -1)
+		err("sfastvideo: shm token error %m");
+	void *controls = (void *)-1;
+	if (key != -1)
+		shmid = shmget(key, size, IPC_CREAT| 0644);
+	if (shmid > 0)
+	{
+		controls = shmat(shmid, NULL, 0);
+	}
+	warn("key=0x%x shmid=%d", key, shmid);
+	if (controls == (void *)-1)
+	{
+		err("sfastvideo: memory allocation error %m");
+		size = 0;
+		controls = NULL;
+	}
+	return controls;
+}
+
+void fastcontrols_destroy(void *controls)
+{
+	shmdt(controls);
+}

@@ -1,10 +1,5 @@
 #include <string.h>
-#include <sys/shm.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <time.h>
-#include <errno.h>
-#include <sys/stat.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -443,47 +438,7 @@ static GLProgram_t *_glprog_create_controler(EGLConfig_Program_t *config, uint32
 		}
 		if (size > 0)
 		{
-			int curdir = open(".", O_DIRECTORY);
-			const char *keyname = "program.shm";
-			if (config->name)
-				keyname = config->name;
-			if (mkdir(_segldir, 0) && errno != EEXIST)
-				err("segl: programs directory creation error %m");
-			int rootfd = open(_segldir, O_DIRECTORY);
-			if (rootfd == -1)
-				rootfd = AT_FDCWD;
-			int ret = faccessat(rootfd, keyname, F_OK, AT_EACCESS);
-			if (!ret)
-			{
-				if (unlinkat(rootfd, keyname, 0))
-					err("segl: shm file access error %m");
-			}
-			int fd = openat(rootfd, keyname, O_CREAT|O_WRONLY|O_TRUNC, 0644);
-			if (fd < 0)
-				err("segl: shm file error %m");
-			close(fd);
-			int shmid = 0;
-			key_t key;
-			fchdir(rootfd);
-			key = ftok(keyname, 'R');
-			fchdir(curdir);
-			close(curdir);
-			close(rootfd);
-			if (key == -1)
-				err("segl: shm token error %m");
-			uniform_data = (void *)-1;
-			if (key != -1)
-				shmid = shmget(key, size, IPC_CREAT|SHM_R|SHM_W);
-			if (shmid > 0)
-			{
-				uniform_data = shmat(shmid, NULL, 0);
-			}
-			if (uniform_data == (void *)-1)
-			{
-				err("segl: memory allocation error %m");
-				size = 0;
-				uniform_data = NULL;
-			}
+			uniform_data = fastcontrols_create(_segldir, config->name, size);
 		}
 		off_t offset = 0;
 		for (GLProgram_Uniform_t *uniform = config->controls; uniform_data && uniform && offset < size; uniform = uniform->next)
@@ -1025,7 +980,7 @@ static void glprog_destroy(GLProgram_t *program)
 		_glprog_uniform_destroy(uniform);
 	}
 	if (program->controls_data)
-		shmdt(program->controls_data);
+		fastcontrols_destroy(program->controls_data);
 	free(program);
 }
 
