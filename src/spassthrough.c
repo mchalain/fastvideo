@@ -140,13 +140,6 @@ static size_t _passthrough_copy(Passthrough_t *dev, PassBuffer_t *src, PassBuffe
 
 EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Passthrough_config_t *config)
 {
-#if 0
-	if (type == device_input)
-	{
-		err("spassthrough: %s bad device type", (config)?config->parent.name:"");
-		return NULL;
-	}
-#endif
 	Passthrough_t *dev = calloc(1, sizeof(*dev));
 	dev->config = config;
 	dev->name = devicename;
@@ -209,7 +202,7 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 		}
 		DeviceConf_t *devconfig = NULL;
 		if (dev->branch.ops)
-			dev->branch.ops->createconfig("");
+			devconfig = dev->branch.ops->createconfig("");
 		if (devconfig)
 		{
 			devconfig->name = dev->config->branch.name;
@@ -464,14 +457,9 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 		errno = EAGAIN;
 		return -1;
 	}
-	if (dev->branch.dev && (dev->state & MODE_SHOOTING))
+	if (dev->branch.dev && dev->state & MODE_TEE)
 	{
 		int index = dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused, NULL);
-		if (index == last->index && dev->state & MODE_SHOOT)
-		{
-			dev->state &= ~MODE_SHOOTING;
-			dev->state &= ~MODE_SHOOT; /// shoot only once
-		}
 	}
 	last->state = PassBuffer_free_e;
 	/** the real fifo is useless as the entry is immediately pushed **/
@@ -488,6 +476,12 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 		*mem = last->mem;
 	if (flags)
 		*flags = last->flags;
+
+	if ((dev->state & MODE_SHOOTING) && dev->dup != NULL)
+	{
+		dev->state |= MODE_DRYRUN;
+		dev->state &= ~MODE_SHOOTING;
+	}
 	return last->index;
 }
 
@@ -498,6 +492,12 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 		if (mem && !dev->buffers[index].mem)
 			dev->buffers[index].mem = mem;
 		bytesused = _passthrough_copy(dev, &dev->buffers[index], &dev->dup->buffers[index], bytesused);
+	}
+	if ((dev->state & MODE_SHOOT) && dev->dup != NULL)
+	{
+		dev->state &= ~MODE_DRYRUN;
+		dev->state &= ~MODE_SHOOT;
+		dev->state |= MODE_SHOOTING;
 	}
 	if (!(dev->state & MODE_DRYRUN) && dev->dup != NULL)
 	{
@@ -517,11 +517,9 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 #endif
 	/** insert into fifo **/
 	dev->fifo = buffer;
-	if ((dev->branch.dev) &&
-		(dev->state & (MODE_SHOOT | MODE_TEE)))
+	if (dev->branch.dev && dev->state & MODE_TEE)
 	{
 		dev->branch.ops->queue(dev->branch.dev, index, mem, bytesused, 0);
-		dev->state |= MODE_SHOOTING;
 	}
 	return 0;
 }
