@@ -17,6 +17,7 @@
 #define NEON_COPY 1
 #endif
 
+static const char _spassthroughdir[] = "/tmp/fastvideo.spassthrough";
 static const char spassthrough[] = "spassthrough";
 static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry);
 
@@ -66,6 +67,10 @@ struct Passthrough_s
 	} branch;
 	size_t (*copy)(void *, const char *const , char *, size_t);
 	void *convert_ctx;
+	struct
+	{
+		int state;
+	} *controls;
 };
 
 static FastVideoList_t *g_Converts = NULL;
@@ -144,6 +149,11 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 	dev->config = config;
 	dev->name = devicename;
 	dev->type = type;
+	dev->controls = fastcontrols_create(_spassthroughdir, config->parent.name, sizeof(*dev->controls));
+	warn("spassthrough: create %s", config->parent.name);
+	if (type == device_control)
+		return dev;
+	dev->controls->state = 0;
 	if (config && config->mode & MODE_COPY)
 	{
 		dev->copy = _default_copy;
@@ -493,6 +503,11 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 			dev->buffers[index].mem = mem;
 		bytesused = _passthrough_copy(dev, &dev->buffers[index], &dev->dup->buffers[index], bytesused);
 	}
+	if (dev->controls && dev->controls->state)
+	{
+		dev->state |= dev->controls->state;
+		dev->controls->state = 0;
+	}
 	if ((dev->state & MODE_SHOOT) && dev->dup != NULL)
 	{
 		dev->state &= ~MODE_DRYRUN;
@@ -569,6 +584,8 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 	if (dev->dmabufs)
 		free(dev->dmabufs);
 #endif
+	if (dev->controls)
+		fastcontrols_destroy(dev->controls);
 	free(dev);
 }
 
@@ -579,30 +596,31 @@ static int _passthrough_loadstate(Passthrough_t *dev, json_t *jconfig)
 	{
 		json_t *jdryrun = json_object_get(jconfig, "dryrun");
 		if (jdryrun && json_is_true(jdryrun))
-			dev->state |= MODE_DRYRUN;
+			dev->controls->state |= MODE_DRYRUN;
 		else if (jdryrun)
-			dev->state &= ~MODE_DRYRUN;
+			dev->controls->state &= ~MODE_DRYRUN;
 		json_t *jshoot = json_object_get(jconfig, "shoot");
 		if (jshoot && json_is_true(jshoot))
-			dev->state |= MODE_SHOOT;
+			dev->controls->state |= MODE_SHOOT;
 		else if (jshoot)
-			dev->state &= ~MODE_SHOOT;
+			dev->controls->state &= ~MODE_SHOOT;
 		json_t *jtee = json_object_get(jconfig, "tee");
 		if (jtee && json_is_true(jtee))
-			dev->state |= MODE_TEE;
+			dev->controls->state |= MODE_TEE;
 		else if (jtee)
-			dev->state &= ~MODE_TEE;
+			dev->controls->state &= ~MODE_TEE;
 	}
 	if (json_is_string(jconfig))
 	{
 		const char *value = json_string_value(jconfig);
 		if (!strcmp(value, "dryrun"))
-			dev->state |= MODE_DRYRUN;
+			dev->controls->state |= MODE_DRYRUN;
 		else if (!strcmp(value, "shoot"))
-			dev->state |= MODE_SHOOT;
+			dev->controls->state |= MODE_SHOOT;
 		else if (!strcmp(value, "tee"))
-			dev->state |= MODE_TEE;
+			dev->controls->state |= MODE_TEE;
 	}
+	dev->state = dev->controls->state;
 	return 0;
 }
 
