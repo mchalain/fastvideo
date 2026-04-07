@@ -182,17 +182,18 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 {
 	Passthrough_config_t *config = *pconfig;
 	Passthrough_t *dup = calloc(1, sizeof(*dup));
+	if (dev->type == device_input)
+	{
+		err("spassthrough: %s bad device type", (config)?config->parent.name:"");
+		return NULL;
+	}
+	dev->type = device_output;
 	dup->type = device_input;
 	dup->dup = dev;
 	dev->dup = dup;
 	*pconfig = dup->config = malloc(sizeof(*dev->config));
 	memmove(dup->config, config, sizeof(*dev->config));
-	if (config->transfer.fourcc)
-		dup->config->parent.fourcc = config->transfer.fourcc;
-	if (config->transfer.width)
-		dup->config->parent.width = config->transfer.width;
-	if (config->transfer.height)
-		dup->config->parent.height = config->transfer.height;
+	scommon_mergedefinition(&dup->config->parent, &config->transfer);
 	/// only the main dev must manage the copy buffers, but dup dev contains the buffers
 	dup->config->mode &= ~MODE_COPY;
 	if (dev->config->branch.type != 0)
