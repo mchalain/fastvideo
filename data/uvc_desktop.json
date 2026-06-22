@@ -37,6 +37,18 @@
 		"disable": true,
 		"vertex": "simplevertex.glsl",
 		"fragment": "simplefragment.glsl"
+	},{
+		"name": "textureprint",
+		"disable": true,
+		"vertex": "simplevertex.glsl",
+		"fragment": "textureprint.glsl",
+		"controls": [{
+			"name": "lTexture",
+			"type": "sampler",
+			"value": "./basemap.tga",
+			"end": true
+		}],
+		"end": true
 	}],
 	"end":true
 },{
