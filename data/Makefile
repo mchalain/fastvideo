@@ -1,8 +1,8 @@
 data-y+=simplevertex.glsl
 data-y+=simplefragment.glsl
-data-y+=mainfragment.glsl
-data-y+=defaultcolor.glsl
-data-y+=defaultpixel.glsl
+data-y+=GIST/mainfragment.glsl
+data-y+=GIST/defaultcolor.glsl
+data-y+=GIST/defaultpixel.glsl
 data-y+=ShaderToy/fragment.glsl
 data-y+=ShaderToy/vertex.glsl
 data-y+=ShaderToy/flipvertex.glsl
@@ -17,4 +17,4 @@ sysconf-y+=setting-ov5647.json
 sysconf-y+=setting-imx477.json
 sysconf-y+=setting-imx708.json
 sysconf-y+=setting-imx296.json
-sysconf-y+=sshoot.json
+sysconf-y+=shoot.json
