@@ -13,6 +13,7 @@
 
 #define MODE_DAEMONIZE 0x01
 #define MODE_KILLDAEMON 0x02
+#define MODE_AUTOGAIN 0x04
 
 static ssize_t _client_receive(void *arg, client_t *clt, const char *buffer, size_t length)
 {
@@ -29,24 +30,34 @@ static void *_control_open(int atfd, const char *name)
 		return NULL;
 	}
 	client_attach_receive(client, _client_receive, NULL);
+	return client;
+}
+
+static int _control_autogain(void *client, int autogain)
+{
+	if (client == NULL)
+		return -1;
 	char request[1024] = {0};
 	size_t length = snprintf(request, sizeof(request) - 1, "\
 	{\"cmd\":\"loadsetting\", \
 	 \"data\":{ \
 	  \"name\":\"unicam-image\", \
 	  \"controls\":[ \
-	   {\"id\":9963794,\"value\":false} \
+	   {\"id\":9963794,\"value\":%s} \
 	  ] \
 	 } \
-	}");
+	}", autogain?"true":"false");
+
 	int ret = client_request(client, (void*)request, length);
 	if (ret < 0)
 		err("fastsetting reject \"auto exposure\" control");
-	return client;
+	return 0;
 }
 
 static int _control_gain(void * client, int gain)
 {
+	if (client == NULL)
+		return -1;
 	char request[1024] = {0};
 	size_t length = snprintf(request, sizeof(request) - 1,
 "{ \
@@ -184,9 +195,9 @@ void help(void)
 	fprintf(stderr, "  -D          daemonize the process\n");
 	fprintf(stderr, "  -P <file>   set the daemonized pid into file\n");
 	fprintf(stderr, "  -U <user>   set the owner of the daemonized process\n");
-	fprintf(stderr, "  -C <file>   set the configuration file\n");
 	fprintf(stderr, "  -s <fifo>   set the statistic fifo path\n");
 	fprintf(stderr, "  -c <fifo>   set the control fifo path\n");
+	fprintf(stderr, "  -g          disable autogain at startup\n");
 }
 
 int main(int argc, char *const argv[])
@@ -202,7 +213,7 @@ int main(int argc, char *const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "hL:W:DKP:U:s:c:");
+		opt = getopt(argc, argv, "hL:W:DKP:U:s:c:g");
 		switch (opt)
 		{
 			case 'h':
@@ -233,6 +244,9 @@ int main(int argc, char *const argv[])
 			case 'c':
 				control = optarg;
 			break;
+			case 'g':
+				mode |= MODE_AUTOGAIN;
+			break;
 		}
 	} while(opt != -1);
 
@@ -261,6 +275,8 @@ int main(int argc, char *const argv[])
 
 	void * controlfd = NULL;
 	controlfd = _control_open(AT_FDCWD, control);
+	if (mode & MODE_AUTOGAIN)
+		_control_autogain(controlfd, 0);
 
 	while (isrunning())
 	{
