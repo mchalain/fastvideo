@@ -287,6 +287,9 @@ int main(int argc, char * const argv[])
 		}
 	} while(opt != -1);
 
+	if (cwd  && chdir(cwd) != 0)
+		err("main: working directory %m");
+
 	if (strcmp(logfile,"-"))
 	{
 		int logfd = open(logfile, O_WRONLY | O_CREAT | O_TRUNC, 00644);
@@ -300,7 +303,7 @@ int main(int argc, char * const argv[])
 			err("log file error %m");
 	}
 
-	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, cwd);
+	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, NULL);
 
 	FastVideoList_t *devices = NULL;
 	config_parseconfigfile(configfile, _createdevices, &devices);
