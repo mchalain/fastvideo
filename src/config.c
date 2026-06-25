@@ -111,8 +111,6 @@ int scommon_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src)
 		dest->width = src->width;
 	if (!dest->height)
 		dest->height = src->height;
-	if (!dest->width)
-		dest->width = src->width;
 	if (!dest->stride)
 		dest->stride = src->stride;
 	if (!dest->modifiers)
