@@ -134,9 +134,10 @@ static void *proto_create(Proto_Config_t *config)
 static int proto_connect_fifo(void *arg)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
-	if (faccessat(proto->rootfd, proto->filename, F_OK, 0) < 0)
+	if (faccessat(proto->rootfd, proto->filename, F_OK, 0) < 0 &&
+			mkfifoat(proto->rootfd, proto->filename, 0644))
 	{
-		mkfifoat(proto->rootfd, proto->filename, 0644);
+		err("file: fifo %s creation error %m", proto->filename);
 	}
 	struct stat sb;
 	if (fstatat(proto->rootfd, proto->filename, &sb, 0) &&
