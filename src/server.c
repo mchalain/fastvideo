@@ -138,6 +138,7 @@ static int _server_message(server_t *server, client_t *client)
 	ret = client_receive(client);
 	if (ret <= 0)
 	{
+		warn("server: client reseted %d", ret);
 		if (server->clients == client)
 			server->clients = client->next;
 		client_destroy(client);
@@ -161,6 +162,7 @@ int server_run(server_t *server)
 		}
 
 		int ret;
+		dbg("server: wait message");
 		ret = select(maxfd + 1, &rfds, NULL, NULL, NULL);
 		if (ret < 0)
 		{
@@ -169,6 +171,7 @@ int server_run(server_t *server)
 		}
 		if (ret == 0)
 			continue;
+		dbg("server: new event");
 
 		if (FD_ISSET(server->sock, &rfds))
 		{
@@ -185,6 +188,7 @@ int server_run(server_t *server)
 			}
 		}
 	}
+	dbg("server: stopped");
 	return 0;
 }
 
