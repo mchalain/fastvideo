@@ -48,7 +48,11 @@ static int _control_autogain(void *client, int autogain)
 	 } \
 	}", autogain?"true":"false");
 
+#if RPIVC4_ALG_REQUEST == y
 	int ret = client_request(client, (void*)request, length);
+#else
+	int ret = client_send(client, (void*)request, length);
+#endif
 	if (ret < 0)
 		err("fastsetting reject \"auto exposure\" control");
 	return 0;
@@ -70,7 +74,11 @@ static int _control_gain(void * client, int gain)
  } \
 }"
 	, gain);
+#if RPIVC4_ALG_REQUEST == y
 	int ret = client_request(client, (void*)request, length);
+#else
+	int ret = client_send(client, (void*)request, length);
+#endif
 	if (ret < 0)
 		err("fastsetting reject \"Analogue Gain\" control");
 	return 0;
