@@ -257,7 +257,11 @@
     "type": "v4l2",
     "device": "/dev/video16",
     "definition":{
+      "mode": ["capture","meta"],
       "fourcc": "BSTA",
+      "width": 10824,
+      "height": 1,
+      "stride": 10824,
       "end": true
     },
     "end": true
@@ -265,8 +269,7 @@
   {
     "name": ["rpivc4_alg"],
     "type": "file",
-    "path": "/tmp",
-    "filename": "statistics",
+    "path": "/tmp/statistics",
     "mode": "fifo",
     "end": true
   },
