@@ -70,8 +70,9 @@ ssize_t client_receive(client_t *client)
 		return -1;
 	}
 	buffer[ret] = 0;
-	if (ret > 0 && client->ops.receive)
-		ret = client->ops.receive(client->data, client, buffer, ret);
+	if (ret > 0 && client->ops.receive &&
+		client->ops.receive(client->data, client, buffer, ret) < 0)
+		warn("client: quit");
 
 	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
 	if (cmsg != NULL)
