@@ -143,6 +143,11 @@ static void *_fifo_open(int atfd, const char *name, int access)
 	int mode = 0;
 	if (!strcmp(name, "-"))
 		return NULL;
+	if (faccessat(atfd, name, R_OK| W_OK | F_OK, 0) < 0 &&
+		mkfifoat(atfd, name , 0664))
+	{
+		err("fifo: %s creation error", name);
+	}
 	struct stat sb;
 	if (fstatat(atfd, name, &sb, 0) &&
 		((sb.st_mode & S_IFMT) != S_IFIFO))
@@ -151,8 +156,6 @@ static void *_fifo_open(int atfd, const char *name, int access)
 		return NULL;
 	}
 	mode = O_RDONLY;
-	if (faccessat(atfd, name, R_OK, 0) < 0)
-		mkfifoat(atfd, name , access);
 
 	warn("waiting access to %s", name);
 	fd = openat(atfd, name, mode, access);
