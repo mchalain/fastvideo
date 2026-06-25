@@ -92,48 +92,98 @@ static void _control_close(void * arg)
 #define GAIN_AWB_REGION_MAIN 7
 #define GAIN_AWB_PERIOD 30
 #define GAIN_RATIO 25
+
+/* Paramètres de stabilisation */
+#define AWB_EMA_ALPHA       0.15f   /* Coefficient du filtre EMA (0 < α ≤ 1, plus petit = plus lisse) */
+#define AWB_DEADBAND        8       /* Zone morte : pas d'ajustement si |erreur| < deadband */
+#define AWB_MAX_STEP        5       /* Pas maximal d'ajustement par cycle (slew rate) */
+#define AWB_SETTLE_CYCLES   3       /* Nombre de cycles d'attente après un ajustement */
+#define AWB_GAIN_MIN        0
+#define AWB_GAIN_MAX        (1023 - 13)
+
 static int _algo_awb(struct bcm2835_isp_stats_region *stats, int nbregions, void *controlfd)
 {
 	static int gain_counter = 0;
-	gain_counter++;
-	if (gain_counter >= GAIN_AWB_PERIOD)
-	{
-		static int32_t previous = 0;
-		static int recompute = 1;
+	static float ema_gain = 0.0f;
+	static int ema_initialized = 0;
+	static int applied_gain = -1;
+	static int settle_counter = 0;
 
-		struct bcm2835_isp_stats_region *region = &stats[GAIN_AWB_REGION_MAIN];
-		if (region->counted == 0)
-			return 0;
-		int32_t gain = (region->r_sum + region->g_sum + region->b_sum) / region->counted;
-		gain /= GAIN_RATIO;
-		if (region->counted < 100)
-			gain *= 2;
-		if (previous == 0)
-			previous = gain;
-		if (recompute && (previous != gain))
-		{
-			if ((previous - gain) > 10)
-			{
-				gain += (previous - gain) / 2;
-				gain_counter = GAIN_AWB_PERIOD;
-			}
-			if ((gain - previous) > 10)
-			{
-				gain -= (gain - previous) / 2;
-				gain_counter = GAIN_AWB_PERIOD;
-			}
-			previous = gain;
-			if (gain > (1023 - 13))
-				gain = (1023 - 13);
-			recompute = 0;
-			_control_gain(controlfd, 1023 - gain);
-		}
-		if (previous != gain)
-		{
-			recompute = 1;
-		}
+	gain_counter++;
+	if (gain_counter < GAIN_AWB_PERIOD)
+		return 0;
+	gain_counter = 0;
+
+	/* Attendre que le capteur se stabilise après un ajustement */
+	if (settle_counter > 0)
+	{
+		settle_counter--;
+		return 0;
 	}
-	gain_counter %= GAIN_AWB_PERIOD;
+
+	struct bcm2835_isp_stats_region *region = &stats[GAIN_AWB_REGION_MAIN];
+	if (region->counted == 0)
+		return 0;
+
+	/* Calcul de la mesure brute */
+	int32_t raw_gain = (int32_t)((region->r_sum + region->g_sum + region->b_sum) / region->counted);
+	raw_gain /= GAIN_RATIO;
+	if (region->counted < 100)
+		raw_gain *= 2;
+
+	/* Filtre EMA pour lisser les mesures et rejeter le bruit */
+	if (!ema_initialized)
+	{
+		ema_gain = (float)raw_gain;
+		ema_initialized = 1;
+	}
+	else
+	{
+		ema_gain = AWB_EMA_ALPHA * (float)raw_gain + (1.0f - AWB_EMA_ALPHA) * ema_gain;
+	}
+
+	int32_t target_gain = (int32_t)(ema_gain + 0.5f);
+
+	/* Clamper la cible dans les limites */
+	if (target_gain < AWB_GAIN_MIN)
+		target_gain = AWB_GAIN_MIN;
+	if (target_gain > AWB_GAIN_MAX)
+		target_gain = AWB_GAIN_MAX;
+
+	/* Initialisation du gain appliqué */
+	if (applied_gain < 0)
+	{
+		applied_gain = target_gain;
+		_control_gain(controlfd, 1023 - applied_gain);
+		settle_counter = AWB_SETTLE_CYCLES;
+		return 0;
+	}
+
+	/* Zone morte : ignorer les petites variations */
+	int32_t error = target_gain - applied_gain;
+	if (abs(error) <= AWB_DEADBAND)
+		return 0;
+
+	/* Limiter le pas d'ajustement (slew rate) */
+	int32_t step = error;
+	if (step > AWB_MAX_STEP)
+		step = AWB_MAX_STEP;
+	else if (step < -AWB_MAX_STEP)
+		step = -AWB_MAX_STEP;
+
+	applied_gain += step;
+
+	/* Clamper le gain appliqué */
+	if (applied_gain < AWB_GAIN_MIN)
+		applied_gain = AWB_GAIN_MIN;
+	if (applied_gain > AWB_GAIN_MAX)
+		applied_gain = AWB_GAIN_MAX;
+
+	_control_gain(controlfd, 1023 - applied_gain);
+
+	/* Attendre la stabilisation du capteur avant le prochain ajustement */
+	settle_counter = AWB_SETTLE_CYCLES;
+
 	return 0;
 }
 

@@ -155,7 +155,7 @@ The full system should be:
  fifo rpivc4_alg --> rpivc4_alg <--> socket setting
 ```
 
-**NOTE:** Currently rpivc4\_alg contains only a simple/bad AE algorithm, prefer to use AE from camera if available.
+**NOTE:** Currently rpivc4\_alg contains only a AE algorithm.
 
 ### Raspberry Pi 5
 
