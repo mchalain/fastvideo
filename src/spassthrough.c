@@ -153,7 +153,8 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 	warn("spassthrough: create %s", config->parent.name);
 	if (type == device_control)
 		return dev;
-	dev->controls->state = 0;
+	if (dev->controls)
+		dev->controls->state = 0;
 	if (config && config->mode & MODE_COPY)
 	{
 		dev->copy = _default_copy;
@@ -184,12 +185,12 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **pconfig)
 {
 	Passthrough_config_t *config = *pconfig;
-	Passthrough_t *dup = calloc(1, sizeof(*dup));
 	if (dev->type == device_input)
 	{
 		err("spassthrough: %s bad device type", (config)?config->parent.name:"");
 		return NULL;
 	}
+	Passthrough_t *dup = calloc(1, sizeof(*dup));
 	dev->type = device_output;
 	dup->type = device_input;
 	dup->dup = dev;
@@ -574,6 +575,8 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 			dlclose(dev->config->libraryhdl);
 		free(dev->config);
 	}
+	if (dev->config->convert && dev->convert_ctx)
+		dev->config->convert->ops.destroy(dev->convert_ctx);
 #if 0
 	/**
 	 * currently this member may contain local buffers info or the pipe client
@@ -627,6 +630,8 @@ static int _passthrough_loadstate(Passthrough_t *dev, json_t *jconfig)
 static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry)
 {
 	json_t *jconfig = entry;
+	if (dev->controls == NULL)
+		return 0;
 	json_t *jcontrols = json_object_get(jconfig,"controls");
 	if (jcontrols && (json_is_array(jcontrols) || json_is_object(jcontrols)))
 	{
