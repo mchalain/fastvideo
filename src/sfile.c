@@ -20,6 +20,7 @@
 #include "log.h"
 
 #define MAX_BUFFERS 4
+#define DEFAULT_PORT 1024
 
 extern const Proto_t proto_file;
 
@@ -426,6 +427,12 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 		const char *value = json_string_value(path);
 		config->filename = value;
 	}
+	json_t *port = json_object_get(jconfig, "port");
+	if (config->port == DEFAULT_PORT && port && json_is_integer(port))
+	{
+		int value = json_integer_value(port);
+		config->port = value;
+	}
 	json_t *modes = json_object_get(jconfig, "protocol");
 	if (modes == NULL)
 		modes = json_object_get(jconfig, "proto");
@@ -499,6 +506,7 @@ DeviceConf_t * sfile_createconfig(const char *name)
 		if (filepath[0] == '/' && filepath[1] == '/') filepath += 2;
 		devconfig->filename = filepath;
 	}
+	devconfig->port = DEFAULT_PORT;
 	devconfig->parent.width = 640;
 	devconfig->parent.height = 480;
 	devconfig->parent.stride = 1280;
