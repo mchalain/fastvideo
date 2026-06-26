@@ -342,12 +342,14 @@ static const char default_addr[] = "FF02::1:FF00:56";
 #else
 static const char default_addr[] = "239.0.0.14";
 #endif
+#define DEFAULT_PORT 1024
+
 DeviceConf_t *mpegts_createconfig(const char *name)
 {
 	MPEG_TSConf_t *config = calloc(1, sizeof(*config));
 	config->parent.fourcc = FOURCC_H264;
 	config->host = NULL;
-	config->port = 1024;
+	config->port = DEFAULT_PORT;
 	config->pid = 0x41;
 	config->maxclients = 5;
 	config->proto = _protos[0];
@@ -1113,7 +1115,7 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 		config->host = strdup(value);
 	}
 	json_t *port = json_object_get(jconfig, "port");
-	if (! config->port && port && json_is_integer(port))
+	if (config->port == DEFAULT_PORT && port && json_is_integer(port))
 	{
 		int value = json_integer_value(port);
 		config->port = value;
