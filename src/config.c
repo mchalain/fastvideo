@@ -295,9 +295,13 @@ DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *
 		}
 		if (fourcc)
 		{
-			const char *end = strchr(fourcc + 7, ',');
-			if (! end || (end - fourcc - 7) > 3)
-				devconfig->fourcc = FOURCC(fourcc[7], fourcc[8], fourcc[9], fourcc[10]);
+			unsigned char _fourcc[4] = {0x20, 0x20, 0x20, 0x20};
+			const char *value = fourcc + 7; /* on saute "fourcc=" */
+
+			for (int i = 0; i < 4 && value[i] != '\0' && value[i] != ','; i++)
+				_fourcc[i] = value[i];
+
+			devconfig->fourcc = FOURCC(_fourcc[0], _fourcc[1], _fourcc[2], _fourcc[3]);
 		}
 		if (fps)
 		{
