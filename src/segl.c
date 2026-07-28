@@ -663,11 +663,25 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	memcpy(dup, dev, sizeof(*dup));
 	*pconfig = malloc(sizeof(*(dup->config)));
 	memcpy(*pconfig, dev->config, sizeof(*(dup->config)));
+	/*
+	 * the memcpy above pre-fills parent with the MAIN device's own
+	 * width/height/fourcc (its input size); clear those before merging in
+	 * "transfer" so an explicit transfer definition (e.g. a crop/resize for
+	 * the next pipeline stage) actually takes priority, with parent only
+	 * used as a fallback (below) when transfer doesn't specify a field.
+	 */
+	(*pconfig)->parent.fourcc = 0;
+	(*pconfig)->parent.width = 0;
+	(*pconfig)->parent.height = 0;
+	(*pconfig)->parent.stride = 0;
+	(*pconfig)->parent.modifiers = 0;
 	scommon_mergedefinition(&(*pconfig)->parent, &dev->config->transfer);
 	if ((*pconfig)->parent.width == 0)
 		(*pconfig)->parent.width = dev->config->parent.width;
 	if ((*pconfig)->parent.height == 0)
 		(*pconfig)->parent.height = dev->config->parent.height;
+	if ((*pconfig)->parent.fourcc == 0)
+		(*pconfig)->parent.fourcc = dev->config->parent.fourcc;
 	dup->config = *pconfig;
 	uint32_t width = dup->config->parent.width;
 	uint32_t height = dup->config->parent.height;
