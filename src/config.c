@@ -264,9 +264,11 @@ DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *
 		char *opts = strchr(name, ':');
 		if (opts && opts[1] == '/' && opts[2] == '/')
 		{
-			opts = strchr(name, ',');
-			opts[0] = '\0';
-			opts++;
+			opts = strchr(name, '?');
+			if (opts)
+			{
+				opts++;
+			}
 		}
 		const char *width = NULL;
 		const char *height = NULL;
