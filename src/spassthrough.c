@@ -146,7 +146,22 @@ static size_t _default_copy(void *dev, const char *const src, char *dst, size_t 
 
 static size_t _passthrough_copy(Passthrough_t *dev, PassBuffer_t *src, PassBuffer_t *dst, size_t bytesused)
 {
-	if (dst->size < bytesused)
+	/*
+	 * dst was allocated from a size already scaled by convert->resize
+	 * (see spassthrough_requestbuffer's buf_type_memory/buf_type_dmabuf
+	 * cases) - a converter that shrinks its output (e.g. resize={3,4} for
+	 * a 4 bytes/pixel -> 3 bytes/pixel conversion) legitimately has
+	 * dst->size < bytesused (bytesused is the SOURCE size here), so the
+	 * capacity check must compare against the same scaled expectation,
+	 * not against the raw input size.
+	 */
+	size_t expected = bytesused;
+	if (dev->config->convert && dev->config->convert->resize.denominator > 0)
+	{
+		expected *= dev->config->convert->resize.numerator;
+		expected /= dev->config->convert->resize.denominator;
+	}
+	if (dst->size < expected)
 		return -1;
 	void *srcmem = NULL;
 	if (src->mem)

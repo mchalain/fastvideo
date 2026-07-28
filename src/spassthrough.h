@@ -23,10 +23,11 @@ struct Convert_s
 	const char *name;
 	union {
 		struct {
-			int reserved:3;
+			int reserved:14;
+			int copytile:1;
 			int copy:1;
 		};
-		int mode;
+		short int mode;
 	};
 	uint32_t fourcc_in;
 	uint32_t fourcc_out;
@@ -42,6 +43,7 @@ struct Convert_s
 };
 typedef void (*spassthrough_convert_append_t)(Convert_t *convert);
 void spassthrough_convert_append(Convert_t *convert);
+Convert_t *spassthrough_convert_next(Convert_t *convert);
 
 extern FastVideoDevice_ops_t spassthrough_ops;
 #endif
