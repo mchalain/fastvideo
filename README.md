@@ -193,7 +193,7 @@ To the question **disable the pisp_fe** the answer **must** be **y**.
 The ov9281 is a global shutter monochrome camera. The output is Y10 1920x1080 at 120 fps.
 
 ```shell
-$ fastvideo -D -j /etc/fastvideo/raspi5cam.json -i raw-ov9281 -o gpu
+$ fastvideo -D -j /etc/fastvideo/raspi5cam.json -i raw-ov9281 -o gpu:fourcc="R16 "
 $ fastsetting -j /etc/fastvideo/raspi5cam.json -J /etc/fastvideo/setting-ov9281.json
 ```
 
