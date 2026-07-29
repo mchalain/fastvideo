@@ -74,21 +74,35 @@ fi
 fmt_bayer=$(echo $fmt_input | sed 's/^\([SBGRY]\+\)[0-9]*_.*/\1/')
 fmt_depth=$(echo $fmt_input | sed 's/^\([SBGRY]\+\)\([0-9]*\)_.*/\2/')
 fmt_input=${fmt_bayer}${fmt_depth}_1X${fmt_depth}
+SENSOR_BAYER=$fmt_bayer
 read -p "current fmt $fmt_input of $SENSORNAME ($SENSORENTITY). Change it (y/N)?" CHOICE
 if [ "$CHOICE" = y ]; then
   read -p "set new fmt: " fmt_input
 fi
+
+# the "media-ctl -r" reset above may have reverted the sensor's own mode -
+# CSI2's sink pad below only declares what it EXPECTS to receive, it does
+# not itself command the sensor to switch mode. Without this, the sensor
+# can stay at a different native resolution while CSI2 is told to expect
+# $framesize, causing "Wrong width or height ... (remote pad set to ...)"
+# at streamon time.
+media-ctl -d $CAMMEDIA --set-v4l2 "$SENSORENTITY:$SENSORPADIMG[fmt:$fmt_input/$framesize field:none colorspace:raw]"
 
 # set the link between SENSOR and CSI entity
 media-ctl -d $CAMMEDIA --set-v4l2 "$CSIENTITY:$CSIPADSENSOR[fmt:$fmt_input/$framesize field:none colorspace:raw]"
 
 # the output format must be Bayer 16bits for PiSP backend
 list_fmt_output=$(v4l2-ctl -d $FE --list-subdev-mbus-codes $FEPADOUT | grep -E '0x.*[0-9,a-f]')
-fmt_output=$(v4l2-ctl -d $FE --get-subdev-fmt $FEPADOUT | grep Mediabus | sed 's/[^ ].*Mediabus Code.*[ ]: 0x.*[0-9,a-f] (MEDIA_BUS_FMT_\(.*\))/\1/')
+fe_fmt_output=$(v4l2-ctl -d $FE --get-subdev-fmt $FEPADOUT | grep Mediabus | sed 's/[^ ].*Mediabus Code.*[ ]: 0x.*[0-9,a-f] (MEDIA_BUS_FMT_\(.*\))/\1/')
 
-fmt_bayer=$(echo $fmt_output | sed 's/^\([SBGRY]\+\)[0-9]*_.*/\1/')
-fmt_depth=$(echo $fmt_output | sed 's/^\([SBGRY]\+\)\([0-9]*\)_.*/\2/')
-fmt_output=${fmt_bayer}${fmt_depth}_1X${fmt_depth}
+# PiSP-FE's own reported default ($fe_fmt_output) is a generic Bayer guess -
+# it has no idea what sensor is actually connected, so for a monochrome
+# sensor (SENSOR_BAYER=Y) it still defaults to something like SRGGB16_1X16,
+# which the rp1-cfe driver's format table does NOT pair with V4L2_PIX_FMT_Y16
+# (only exact code Y16_1X16 does) - "Format mismatch!" at streamon time
+# otherwise. Derive the default from the SENSOR's own pattern instead.
+echo "pisp-fe reports $fe_fmt_output, deriving from sensor pattern instead:"
+fmt_output=${SENSOR_BAYER}16_1X16
 
 read -p "current fmt $fmt_output of $FENAME. Change it (y/N): " CHOICE
 if [ "$CHOICE" = y ]; then
@@ -144,14 +158,14 @@ fi
 
 WIDTH=$(echo $framesize | sed 's/x[0-9].*//')
 HEIGHT=$(echo $framesize | sed 's/[0-9].*x//')
-v4l2-ctl -d $OUTIMAGE -v width=$WIDTH,height=$HEIGHT,pixelformat=$FOURCC
+v4l2-ctl -d $OUTIMAGE -v width=$WIDTH,height=$HEIGHT,pixelformat="$FOURCC"
 while [ $? -ne 0 ]; do
   echo "FourCC $FOURCC for $OUTIMAGE is not available"
   read -p "enter another value: " FOURCC
   if [ -z "$FOURCC" ]; then
     break
   fi
-  v4l2-ctl -d $OUTIMAGE -v width=$WIDTH,height=$HEIGHT,pixelformat=$FOURCC
+  v4l2-ctl -d $OUTIMAGE -v width=$WIDTH,height=$HEIGHT,pixelformat="$FOURCC"
 done
 
 if [ "$OUTCSI" = "$FEENTITY" ]; then

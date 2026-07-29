@@ -43,8 +43,8 @@ framesize=$(v4l2-ctl -d $SENSOR --get-subdev-fmt $SENSORPADIMG | grep Width/Heig
 read -p "current $framesize. Change it (y/N)?" CHOICE
 if [ "$CHOICE" = y ]; then
 echo $fmt_input
-  FOURCC=$(v4l2-ctl -d $IMAGE --list-formats $fmt_input | grep "\[0\]" | sed "s/.*\[0\]: '\(.*\)' .*/\1/")
-  v4l2-ctl -d $SENSOR --list-framesizes $FOURCC
+  FOURCC="$(v4l2-ctl -d $IMAGE --list-formats $fmt_input | grep "\[0\]" | sed "s/.*\[0\]: '\(.*\)' .*/\1/")"
+  v4l2-ctl -d $SENSOR --list-framesizes "$FOURCC"
   read -p "new framesize : " framesize
 fi
 
@@ -65,8 +65,8 @@ fi
 media-ctl -d $CAMMEDIA --set-v4l2 "$SENSORENTITY:$SENSORPADIMG[fmt:$fmt_input/$framesize field:none colorspace:raw]"
 
 media-ctl -d $CAMMEDIA --link "$SENSORENTITY:$SENSORPADIMG->$IMGENTITY:$IMGPADSENSOR[1]"
-FOURCC=$(v4l2-ctl -d $OUTIMAGE --list-formats $fmt_input | grep "\[0\]" | sed "s/.*\[0\]: '\(.*\)' .*/\1/")
-echo "subdev format code $fmt_input => output fourcc $FOURCC"
+FOURCC="$(v4l2-ctl -d $OUTIMAGE --list-formats $fmt_input | grep "\[0\]" | sed "s/.*\[0\]: '\(.*\)' .*/\1/")"
+echo "subdev format code $fmt_input => output fourcc \"$FOURCC\""
 read -p "Change fourcc ? [y/N]" CHOICE
 if [ "$CHOICE" = "y" ]; then
   I=0
@@ -77,21 +77,21 @@ if [ "$CHOICE" = "y" ]; then
   done
   read -p "enter your choice: " CHOICE
   if [ -n $CHOICE ]; then
-    FOURCC=$(v4l2-ctl -d $OUTIMAGE --list-formats $fmt_input | grep "\[$CHOICE\]" | sed "s/.*\[$CHOICE\]: '\(.*\)' .*/\1/")
+    FOURCC="$(v4l2-ctl -d $OUTIMAGE --list-formats $fmt_input | grep "\[$CHOICE\]" | sed "s/.*\[$CHOICE\]: '\(.*\)' .*/\1/")"
   fi
-  echo "subdev format code $fmt_input => output fourcc $FOURCC"
+  echo "subdev format code $fmt_input => output fourcc \"$FOURCC\""
 fi
 
 WIDTH=$(echo $framesize | sed 's/x[0-9].*//')
 HEIGHT=$(echo $framesize | sed 's/[0-9].*x//')
-v4l2-ctl -d $OUTIMAGE -v width=$WIDTH,height=$HEIGHT,pixelformat=$FOURCC
+v4l2-ctl -d $OUTIMAGE -v width=$WIDTH,height=$HEIGHT,pixelformat="$FOURCC"
 while [ $? -ne 0 ]; do
-  echo "FourCC $FOURCC for $OUTIMAGE is not available"
+  echo "FourCC \"$FOURCC\" for $OUTIMAGE is not available"
   read -p "enter another value: " FOURCC
   if [ -z "$FOURCC" ]; then
     break
   fi
-  v4l2-ctl -d $OUTIMAGE -v width=$WIDTH,height=$HEIGHT,pixelformat=$FOURCC
+  v4l2-ctl -d $OUTIMAGE -v width=$WIDTH,height=$HEIGHT,pixelformat="$FOURCC"
 done
 
 setcontrol() {
