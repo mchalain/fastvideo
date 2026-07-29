@@ -22,54 +22,57 @@ static void *convert_create(Passthrough_config_t *config)
 	conv->coefs[red] = 0;
 	conv->coefs[blue] = 0;
 	return conv;
-create_error:
-	free(conv);
-	err("BG10toR16: format not supported");
-	return NULL;
 }
 
-static size_t convert_convert(void *arg, const char *const src, char *dst, size_t size)
+static size_t convert_convertline(void *arg, const char *const src, char *dest, size_t size, uint16_t coefs)
 {
-	Convert_BG10toR16_t *conv = (Convert_BG10toR16_t *)arg;
-	uint16_t *coefs = conv->coefs;
-#define BYLINE 1
-#if BYLINE
-	size_t origsize = size;
-	const char *srcline = src;
-	for (int i = 0; i < conv->config->parent.height; i++)
-	{
-		srcline = src + (i * origsize / conv->config->parent.height);
-		size = origsize / conv->config->parent.height;
-		coefs = conv->coefs + 2 * (i % 2);
-#endif
 #ifdef __ARM_NEON
-	/// only d0 to d7 accept 16 bits scalars
-	asm volatile (
-		" vld1.u16      {d7}, [%[coefs]]            \n"
-		"loop:                                      \n"
-		" subs          %[size], %[size], #32       \n"
-		" vld4.u16      {d0, d1, d2, d3}, [%[src]]! \n"
-		" vmull.u16     q12, d0, d7[0]              \n"
-		" vmull.u16     q13, d1, d7[1]              \n"
-		" vmull.u16     q14, d2, d7[0]              \n"
-		" vmull.u16     q15, d3, d7[1]              \n"
-		" vqrshrn.u16   d0, q12, #8                 \n"
-		" vqrshrn.u16   d1, q13, #8                 \n"
-		" vqrshrn.u16   d2, q14, #8                 \n"
-		" vqrshrn.u16   d3, q15, #8                 \n"
-		" vst4.u16      {d0, d1, d2, d3}, [%[dst]]! \n"
-		" bne      loop                             \n"
-		: [dst]"+r"(dst)
-		: [src]"r"(srcline), [size]"r"(size), [coefs]"r"(coefs)
-		: "d0", "d1", "d2", "d3", "d7", "q12", "q13", "q14", "q15", "cc", "memory"
-	);
+		/// only d0 to d7 accept 16 bits scalars
+		asm volatile (
+			" vld1.u16      {d7}, [%[coefs]]            \n"
+			"loop:                                      \n"
+			" subs          %[size], %[size], #32       \n"
+			" vld4.u16      {d0, d1, d2, d3}, [%[src]]! \n"
+			" vmull.u16     q12, d0, d7[0]              \n"
+			" vmull.u16     q13, d1, d7[1]              \n"
+			" vmull.u16     q14, d2, d7[0]              \n"
+			" vmull.u16     q15, d3, d7[1]              \n"
+			" vqrshrn.u16   d0, q12, #8                 \n"
+			" vqrshrn.u16   d1, q13, #8                 \n"
+			" vqrshrn.u16   d2, q14, #8                 \n"
+			" vqrshrn.u16   d3, q15, #8                 \n"
+			" vst4.u16      {d0, d1, d2, d3}, [%[dst]]! \n"
+			" bne      loop                             \n"
+			: [dst]"+r"(dst)
+			: [src]"r"(src), [size]"r"(size), [coefs]"r"(coefs)
+			: "d0", "d1", "d2", "d3", "d7", "q12", "q13", "q14", "q15", "cc", "memory"
+		);
 #else
 # warning must support ARM NEON
 #endif
-#if BYLINE
-		//dst += origsize / conv->config->parent.height;
+	return size;
+}
+
+/*
+ * size = total bytes to process, stride = bytes per row (nrows =
+ * size/stride). A whole-frame call (spassthrough) passes the real per-row
+ * stride so the Bayer row parity below (coefs alternate every other row)
+ * stays correct; stile.c's per-tile-row call passes stride == size, a
+ * single row, degenerating to one pass with i=0.
+ */
+static size_t convert_convert(void *arg, const char *const src, char *dst, size_t size, size_t stride)
+{
+	Convert_BG10toR16_t *conv = (Convert_BG10toR16_t *)arg;
+	if (stride == 0)
+		stride = size;
+	size_t nrows = size / stride;
+	char *d = dst;
+	for (size_t i = 0; i < nrows; i++)
+	{
+		const char *srcline = src + i * stride;
+		uint16_t *coefs = conv->coefs + 2 * (i % 2);
+		d += convert_convertline(conv, srcline, d, stride, coefs);
 	}
-#endif
 	return size;
 }
 
@@ -84,6 +87,7 @@ Convert_t convert_BG10toR16 =
 	.copy = 1,
 	.fourcc_in = FOURCC_GB10,
 	.fourcc_out = FOURCC_GR88,
+	.bpp = sizeof(uint16_t),
 	.ops =
 	{
 		.create = convert_create,

@@ -69,7 +69,7 @@ struct Passthrough_s
 		void *dev;
 		const FastVideoDevice_ops_t *ops;
 	} branch;
-	size_t (*copy)(void *, const char *const , char *, size_t);
+	size_t (*copy)(void *, const char *const , char *, size_t, size_t);
 	void *convert_ctx;
 	struct
 	{
@@ -105,7 +105,7 @@ DeviceConf_t * spassthrough_createconfig(const char *name)
 }
 
 #if NEON_COPY == 1
-static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t size)
+static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t size, size_t stride)
 {
 	asm volatile (
 		"1:                                               \n"
@@ -121,7 +121,7 @@ static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t siz
 	return size;
 }
 #elif NEON_COPY == 2
-static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t size)
+static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t size, size_t stride)
 {
 	/// [%[src]:256] for alignment on 256bits
 	asm volatile (
@@ -138,7 +138,7 @@ static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t siz
 }
 #endif
 
-static size_t _default_copy(void *dev, const char *const src, char *dst, size_t size)
+static size_t _default_copy(void *dev, const char *const src, char *dst, size_t size, size_t stride)
 {
 	memcpy(dst, src, size);
 	return size;
@@ -163,6 +163,15 @@ static size_t _passthrough_copy(Passthrough_t *dev, PassBuffer_t *src, PassBuffe
 	}
 	if (dst->size < expected)
 		return -1;
+	/*
+	 * a stride-aware converter (.bpp != 0, e.g. BG10toR16) needs the REAL
+	 * per-row byte width to alternate its own row-based state correctly -
+	 * anything else (stride-oblivious converters, the raw NEON/default
+	 * copy) just gets stride == size, a harmless single "row".
+	 */
+	size_t stride = bytesused;
+	if (dev->config->convert && dev->config->convert->bpp > 0 && dev->config->parent.width > 0)
+		stride = (size_t)dev->config->parent.width * dev->config->convert->bpp;
 	void *srcmem = NULL;
 	if (src->mem)
 		srcmem = src->mem;
@@ -170,7 +179,7 @@ static size_t _passthrough_copy(Passthrough_t *dev, PassBuffer_t *src, PassBuffe
 		sdmabuf_sync(src->dmabuf, 1);
 	if (dst->dmabuf)
 		sdmabuf_sync(dst->dmabuf, 1);
-	bytesused = dev->copy(dev->convert_ctx, srcmem, dst->mem, bytesused);
+	bytesused = dev->copy(dev->convert_ctx, srcmem, dst->mem, bytesused, stride);
 	if (dst->dmabuf)
 		sdmabuf_sync(dst->dmabuf, 0);
 	if (src->dmabuf)
