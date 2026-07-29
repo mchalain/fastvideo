@@ -766,7 +766,7 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 	}
 	if (dev->curbufferid != -1)
 	{
-		err("segl: device %s not ready %d", dev->config->parent.name, dev->curbufferid);
+		errno = EAGAIN;
 		return -1;
 	}
 
@@ -826,6 +826,11 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 		dev->curbufferid++;
 		dev->curbufferid %= dev->nbuffers;
 		return id;
+	}
+	if (id == -1)
+	{
+		errno = EAGAIN;
+		return -1;
 	}
 	dev->curbufferid = -1;
 	GLBuffer_t *buffer = &dev->buffers[id];
