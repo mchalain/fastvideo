@@ -126,14 +126,12 @@ static socklen_t _proto_address(Proto_Config_t *config, struct sockaddr_storage 
 	return len;
 }
 
-#if 0
 static int _proto_bindclient(int sock, struct sockaddr *saddr, socklen_t saddrlen)
 {
 	int status = -1;
 	status = connect(sock, saddr, saddrlen);
 	return status;
 }
-#endif
 
 static int _proto_bindserver(int sock, struct sockaddr *saddr, socklen_t saddrlen)
 {
@@ -214,7 +212,7 @@ static void *proto_create_server(Proto_Config_t *config)
 
 static void *proto_create_client(Proto_Config_t *config)
 {
-	Proto_TCP_t *proto = _proto_create(config, _proto_bindserver);
+	Proto_TCP_t *proto = _proto_create(config, _proto_bindclient);
 	proto->clientfd = proto->sock;
 	proto->serverfd = -1;
 	warn("tcp: client to %s:%d", config->host, config->port);
