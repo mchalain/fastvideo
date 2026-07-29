@@ -24,6 +24,21 @@
 //#define DISABLE_TRANSFER
 unsigned int _mode = 0;
 
+/*
+ * main_loop() used to relay at most one buffer per pipe per select()
+ * wakeup, even when a plugin fans one input into several ready outputs
+ * per call (e.g. stile.c/stile_perf.c writing multiple tiles into their
+ * dup's ring from a single incoming frame) - capping real throughput to
+ * the wakeup rate regardless of how many buffers were actually ready.
+ * Now each pipe is drained in a bounded loop instead, stopping as soon
+ * as main_transferbuffer() reports no more progress (0) or an error
+ * (-1). The bound only exists as a safety net against one hyperactive
+ * pipe starving the others within the same wakeup - it should never
+ * actually be hit in normal operation (a real ring/queue running dry
+ * returns 0 well before this).
+ */
+#define MAX_DRAIN_PER_ITERATION 16
+
 #define verbose_warn(f,...) do{if ((_mode & MODE_VERBOSE) != 0) warn(f,  ##__VA_ARGS__);} while(0)
 
 typedef struct FastVideoPipe_s FastVideoPipe_t;
@@ -264,12 +279,18 @@ int main_loop(FastVideoList_t *pipes)
 			if (infd < 0 ||
 				(infd > 0 && FD_ISSET(infd, &rfds)))
 			{
-				ret = main_transferbuffer(pipe->input, pipe->output);
-				if (ret && (infd > 0 || ! errno))
+				int drained = 0;
+				do
 				{
-					killdaemon(NULL);
+					ret = main_transferbuffer(pipe->input, pipe->output);
+					if (ret == -1 && (infd > 0 || ! errno))
+					{
+						killdaemon(NULL);
+						break;
+					}
+				} while (ret == 1 && ++drained < MAX_DRAIN_PER_ITERATION);
+				if (ret == -1 && (infd > 0 || ! errno))
 					break;
-				}
 			}
 		}
 
@@ -285,14 +306,20 @@ int main_loop(FastVideoList_t *pipes)
 				(outfd > 0 && FD_ISSET(outfd, &rfds)) ||
 				(outfd > 0 && FD_ISSET(outfd, &wfds)))
 			{
-				ret = main_transferbuffer(pipe->output, pipe->input);
-				if (ret && (outfd > 0 || ! errno))
+				int drained = 0;
+				do
 				{
-					killdaemon(NULL);
+					ret = main_transferbuffer(pipe->output, pipe->input);
+					if (ret == -1 && (outfd > 0 || ! errno))
+					{
+						killdaemon(NULL);
+						break;
+					}
+					if (ret == 1 && fastvideolist_islast(pipes, pipe))
+						count++;
+				} while (ret == 1 && ++drained < MAX_DRAIN_PER_ITERATION);
+				if (ret == -1 && (outfd > 0 || ! errno))
 					break;
-				}
-				if (!ret && fastvideolist_islast(pipes, pipe) && errno == 0)
-					count++;
 			}
 		}
 	}
