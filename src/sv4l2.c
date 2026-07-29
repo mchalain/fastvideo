@@ -1735,6 +1735,17 @@ DeviceConf_t * sv4l2_createconfig(const char *name)
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sv4l2_loadjsonconfiguration;
 #endif
+	/*
+	 * -1 is the real "not configured" sentinel (query-only, leave the
+	 * sensor's own vertical blanking alone) - fps==0 has its own
+	 * distinct meaning ("take one picture") and must reach
+	 * _v4l2_setfps_vblank()/_v4l2_setfps_param() unchanged. config.c's
+	 * own generic ":key=value" name-suffix parsing (config_create(),
+	 * called right after this by config_createdevice()) already applies
+	 * an explicit "name:fps=N" CLI complement on top of this default -
+	 * no need to duplicate that parsing here.
+	 */
+	devconfig->parent.fps = -1;
 	return (DeviceConf_t *)devconfig;
 }
 
