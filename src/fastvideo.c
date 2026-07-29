@@ -122,6 +122,17 @@ int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 	return 0;
 }
 
+/*
+ * return value convention (used by main_loop() to decide whether to keep
+ * draining a pipe within the same select() wakeup, instead of just one
+ * hop per pipe per iteration):
+ *   -1 : real error - caller kills the daemon
+ *    0 : no progress (nothing was available, or the output pushed the
+ *        buffer straight back to the input because it wasn't ready) -
+ *        caller stops looping on this pipe for this wakeup
+ *    1 : one buffer was genuinely relayed end to end - caller may retry
+ *        immediately, there could be more ready right now
+ */
 static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *output)
 {
 	int index = 0;
@@ -154,8 +165,9 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 		/// push back the buffer to the input device because the ouput is not ready to manage it
 		input->ops->queue(input->dev, index, mem, bytesused, flags);
 		errno = 0;
+		return 0;
 	}
-	return 0;
+	return 1;
 }
 
 int main_loop(FastVideoList_t *pipes)
