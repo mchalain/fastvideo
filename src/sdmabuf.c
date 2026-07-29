@@ -29,7 +29,7 @@ const char *scpu_queryextensions()
 	int fd = 0;
 	char buffer[1024] = {0};
 	fd = open ("/proc/cpuinfo", O_RDONLY);
-	if (fd)
+	if (fd >= 0)
 	{
 		char *features = NULL;
 		while (features == NULL)
@@ -57,7 +57,10 @@ const char *scpu_queryextensions()
 			strncpy(_cpuext, features, length);
 		}
 	}
-	_cacheextension |= (scpu_checkextension("neon") << SCPU_NEON);
+	/* AArch64 renamed NEON to "Advanced SIMD" ("asimd" in /proc/cpuinfo's
+	 * Features line) - it's mandatory baseline on that architecture, but
+	 * still absent from the string unless checked for explicitly. */
+	_cacheextension |= ((scpu_checkextension("neon") || scpu_checkextension("asimd")) << SCPU_NEON);
 	_cacheextension |= (scpu_checkextension("vfpv4") << SCPU_VFPV4);
 	return _cpuext;
 }
