@@ -304,6 +304,18 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 				(tdmabufs[i] = sdmabuf_create(spassthrough, size)) > 0)
 			{
 				dmabufs = tdmabufs;
+				/*
+				 * a freshly created dma_buf is not mapped into our own
+				 * address space yet - without this, dev->buffers[i].mem
+				 * stays NULL (mems is NULL for this dmabuf-only path) and
+				 * any Convert_t writing through the dup's mem pointer
+				 * (e.g. .ops.convert(..., dst, ...)) segfaults on a NULL
+				 * dst.
+				 */
+				if (!tmems)
+					tmems = calloc(nmems, sizeof(*tmems));
+				tmems[i] = sdmabuf_map(tdmabufs[i], size, 1);
+				mems = tmems;
 			}
 			else if (mems && (tmems[i] = malloc(size)) != NULL)
 			{
@@ -333,6 +345,35 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 	dev->mems = mems;
 	dev->dmabufs = dmabufs;
 	return ret;
+}
+
+/*
+ * spassthrough_requestbuffer()'s buf_type_memory/buf_type_dmabuf cases
+ * only (re)create dev->buffers when it is still NULL, so a SECOND
+ * negotiation attempt with a DIFFERENT buf_type (see the ladder in
+ * fastvideo.c's main_loop() setup - dmabuf tried before memory) doesn't
+ * redundantly reallocate buffers a PRIOR, successful attempt already set
+ * up. But _passthrough_createbuffers() unconditionally populates
+ * dev->buffers even when the attempt ultimately fails later on (e.g. the
+ * dup's own dma_buf allocation fails) - without cleaning up here, the
+ * next attempt's "if (dev->buffers == NULL)" guard sees non-NULL and
+ * skips recreation, silently reusing buffers/mem mapped under the
+ * FAILED, abandoned protocol instead of the one that actually gets
+ * negotiated.
+ */
+static void _passthrough_freebuffers(Passthrough_t *dev)
+{
+	if (!dev->buffers)
+		return;
+	for (int i = 0; i < dev->nbuffers; i++)
+	{
+		if (dev->buffers[i].dmabuf && dev->buffers[i].mem &&
+			dev->buffers[i].mem != (void *)(long)-1)
+			sdmabuf_unmap(dev->buffers[i].mem, dev->buffers[i].size);
+	}
+	free(dev->buffers);
+	dev->buffers = NULL;
+	dev->nbuffers = 0;
 }
 
 EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ...)
@@ -379,6 +420,8 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 					(dev->config->mode & MODE_COPY)) < 0)
 			{
 				ret = -1;
+				_passthrough_freebuffers(dev);
+				break;
 			}
 			if (dev->type == device_input && dev->branch.dev)
 			{
@@ -430,12 +473,23 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 					break;
 				}
 			}
+			if (ret < 0)
+			{
+				_passthrough_freebuffers(dev);
+				break;
+			}
 			/// prepare buffers for output stream.
+			if (config->convert && config->convert->resize.denominator > 0)
+			{
+				size *= config->convert->resize.numerator;
+				size /= config->convert->resize.denominator;
+			}
 			if (dev->dup &&
 				_passthrough_createbuffers(dev->dup, ntargets, NULL, targets, size,
 					(dev->config->mode & MODE_COPY)) < 0)
 			{
 				ret = -1;
+				_passthrough_freebuffers(dev);
 				break;
 			}
 			if (dev->type == device_input && dev->branch.dev)
