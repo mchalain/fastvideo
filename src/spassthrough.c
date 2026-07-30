@@ -217,7 +217,10 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 		{
 			dev->convert_ctx = config->convert->ops.create(config);
 			if (dev->convert_ctx)
+			{
 				dev->copy = config->convert->ops.convert;
+				config->mode |= (config->convert->copy)?MODE_COPY:0;
+			}
 		}
 		else
 			err("spassthrough: definition must be set to convert");
