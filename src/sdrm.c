@@ -1129,6 +1129,19 @@ static void page_flip_handler(int fd, unsigned int frame,
 
 EXT_API int sdrm_queue(Display_t *disp, int id, void *mem, size_t bytesused, int flags)
 {
+	if (disp->type != device_input && disp->queueid != -1)
+	{
+		/* a previous commit's page flip hasn't completed yet
+		 * (page_flip_handler() is the only place that resets queueid to
+		 * -1, once the kernel actually confirms the flip) - submitting
+		 * another atomic commit now races the still-in-flight one and
+		 * the kernel correctly refuses it with EBUSY. Signal "not ready
+		 * yet" the same way segl_queue() does, so main_loop()'s existing
+		 * EAGAIN/retry handling provides the missing backpressure
+		 * instead of racing the kernel. */
+		errno = EAGAIN;
+		return -1;
+	}
 	if (id > disp->nbuffers)
 	{
 		err("unkown %d buffer index to queue", id);
@@ -1259,11 +1272,30 @@ EXT_API int sdrm_start(Display_t *disp)
 		{
 			sdrm_queue(disp, i, disp->buffers[i].mem, 0, 0);
 		}
+		disp->queueid = -1;
 	}
 	else
 	{
 		if (disp->flags & SDRM_FLAGS_ATOMIC_COMMIT)
 		{
+			if (disp->dup)
+			{
+				/*
+				 * a writeback connector cannot be activated (CRTC_ID set)
+				 * without a WRITEBACK_FB_ID in the SAME commit - unlike a
+				 * real display connector, it has no "current image" to
+				 * keep showing. sdrm_atomic_commit() only adds that
+				 * property when disp->out_buffer is set, which normally
+				 * happens in sdrm_queue() via sdrm_pushoutbuffer() - this
+				 * very first commit bypasses sdrm_queue() entirely, so it
+				 * needs the same setup done here explicitly.
+				 */
+				FrameBuffer_t *outbuffer = sdrm_pulloutbuffer(disp->dup, 0);
+				if (sdrm_pushoutbuffer(disp, outbuffer))
+				{
+					return -1;
+				}
+			}
 			if (sdrm_atomic_commit(disp, &disp->buffers[0]))
 			{
 				return -1;
@@ -1280,8 +1312,18 @@ EXT_API int sdrm_start(Display_t *disp)
 			disp->flags |= SDRM_FLAGS_MODESET;
 			drmModePageFlip(disp->fd, disp->crtc_id, disp->buffers[0].id, DRM_MODE_PAGE_FLIP_EVENT, disp);
 		}
+		/*
+		 * this initial commit's own page-flip completion event still
+		 * needs draining (via sdrm_dequeue()'s drmHandleEvent(), the same
+		 * as any other frame) before the kernel accepts a new one -
+		 * unconditionally resetting queueid to -1 here (as opposed to
+		 * leaving it at buffers[0]'s id) made sdrm_fd()/sdrm_dequeue()
+		 * think nothing was pending, so this event was never drained and
+		 * every subsequent atomic commit failed with EBUSY forever.
+		 */
+		disp->buffers[0].state = queued;
+		disp->queueid = 0;
 	}
-	disp->queueid = -1;
 	return 0;
 }
 
