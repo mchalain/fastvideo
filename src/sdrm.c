@@ -541,6 +541,11 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 		case FOURCC_NV12:
 			bpp = 8;
 		break;
+		case FOURCC_P010:
+		case FOURCC_P012:
+		case FOURCC_P016:
+			bpp = 16;
+		break;
 	}
 
 	buffer->size = width * height * bpp / 8;
@@ -569,6 +574,19 @@ static int sdrm_buffer_generic(Display_t *disp, uint32_t width, uint32_t height,
 			buffer->strides[1] = buffer->strides[0];
 			buffer->offsets[1] = buffer->strides[0] * height;
 			buffer->nplanes = 2;
+			/* 4:2:0 subsampled Cb:Cr plane, half as many rows as Y - the
+			 * Y-only size computed above doesn't account for it */
+			buffer->size += buffer->strides[1] * height / 2;
+		break;
+		case FOURCC_P010:
+		case FOURCC_P012:
+		case FOURCC_P016:
+			buffer->strides[1] = buffer->strides[0];
+			buffer->offsets[1] = buffer->strides[0] * height;
+			buffer->nplanes = 2;
+			/* 4:2:0 subsampled Cr:Cb plane (16-bit pairs), half as many
+			 * rows as Y - same reasoning as NV12 above */
+			buffer->size += buffer->strides[1] * height / 2;
 		break;
 	}
 	dbg("sdrm: buffer for width %u height %u size %zu", width, height, buffer->size);
@@ -581,7 +599,16 @@ static int sdrm_buffer_dumb(Display_t *disp, FrameBuffer_t *buffer)
 	uint32_t stride;
 	uint64_t size;
 	uint32_t bo_handle;
-	drmModeCreateDumbBuffer(disp->fd, buffer->width, buffer->height, buffer->bpp, 0, &bo_handle, &stride, &size);
+	/*
+	 * buffer->bpp only describes the Y (first) plane's own per-pixel
+	 * width - for a multi-plane format (NV12, P010...) buffer->size
+	 * already accounts for every plane combined (see
+	 * sdrm_buffer_generic()). CREATE_DUMB has no concept of multiple
+	 * planes, so request it size the allocation off the real total
+	 * instead of re-deriving a (too small) size from bpp alone.
+	 */
+	uint32_t allocbpp = buffer->size * 8 / (buffer->width * buffer->height);
+	drmModeCreateDumbBuffer(disp->fd, buffer->width, buffer->height, allocbpp, 0, &bo_handle, &stride, &size);
 	buffer->private = (void *)(long)bo_handle;
 	if (size != buffer->size)
 	{
@@ -773,8 +800,8 @@ static int sdrm_atomic_commit(Display_t *disp, FrameBuffer_t *buffer)
 		drmModeAtomicAddProperty(req, disp->plane_id, disp->properties[SDRM_PROPID_ROTATION], disp->rotation);
 	if (disp->out_buffer && disp->dup != NULL && disp->dup->type == device_input)
 	{
-		drmModeAtomicAddProperty(req, disp->connector_id, disp->properties[SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR], (uint64_t)(long)&disp->out_fd);
 		FrameBuffer_t *out_buffer = disp->out_buffer;
+		drmModeAtomicAddProperty(req, disp->connector_id, disp->properties[SDRM_PROPID_WRITEBACK_OUT_FENCE_PTR], (uint64_t)(long)&disp->out_fd);
 		drmModeAtomicAddProperty(req, disp->connector_id, disp->properties[SDRM_PROPID_WRITEBACK_FB_ID], out_buffer->id);
 	}
 

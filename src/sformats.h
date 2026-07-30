@@ -30,6 +30,14 @@
 #define FOURCC_NV12  FOURCC('N','V','1','2')
 #define FOURCC_U008  FOURCC('U','0','0','8')
 
+/* 2 plane YCbCr MSB aligned, 2x2 subsampled Cr:Cb plane - real precision
+ * bits left-justified into a 16-bit little-endian container (matches
+ * this project's own Y16 sensor sources bit-for-bit, see
+ * sconvert_Y16toP010.c) */
+#define FOURCC_P010  FOURCC('P','0','1','0')
+#define FOURCC_P012  FOURCC('P','0','1','2')
+#define FOURCC_P016  FOURCC('P','0','1','6')
+
 #define FOURCC_BA81  FOURCC('B','A','8','1')
 #define FOURCC_RGGB  FOURCC('R','G','G','B')
 #define FOURCC_GRBG  FOURCC('G','R','B','G')
@@ -42,6 +50,14 @@
 #define FOURCC_GB12  FOURCC('G','B','1','2')
 #define FOURCC_BA12  FOURCC('B','A','1','2')
 #define FOURCC_RG12  FOURCC('R','G','1','2')
+
+/* "genuine" 16-bit V4L2 raw bayer fourccs (as opposed to the BG10/GB10/
+ * BA10/RG10 "10-bit unpacked" family above) - same MSB-justified 10-in-16
+ * layout as Y16/BG10, just the real V4L2_PIX_FMT name the rp1-cfe driver
+ * negotiates for some sensors (e.g. imx296 reports BYR2, not BG10) */
+#define FOURCC_BYR2  FOURCC('B','Y','R','2')
+#define FOURCC_GB16  FOURCC('G','B','1','6')
+#define FOURCC_GR16  FOURCC('G','R','1','6')
 
 #define FOURCC_JPEG  FOURCC('J','P','E','G')
 #define FOURCC_MJPG  FOURCC('M','J','P','G')
