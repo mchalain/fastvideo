@@ -241,7 +241,18 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 	dev->dup = dup;
 	*pconfig = dup->config = malloc(sizeof(*dev->config));
 	memmove(dup->config, config, sizeof(*dev->config));
+#if 0
 	scommon_mergedefinition(&dup->config->parent, &config->transfer);
+#else
+	if (config->transfer.fourcc)
+		dup->config->parent.fourcc = config->transfer.fourcc;
+	if (config->transfer.width)
+		dup->config->parent.width = config->transfer.width;
+	if (config->transfer.height)
+		dup->config->parent.height = config->transfer.height;
+	if (config->transfer.stride)
+		dup->config->parent.stride = config->transfer.stride;
+#endif
 	/// only the main dev must manage the copy buffers, but dup dev contains the buffers
 	dup->config->mode &= ~MODE_COPY;
 	if (dev->config->branch.type != 0)
