@@ -203,6 +203,31 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 				(encoder_id && connector->encoder_id && connector->encoder_id != encoder_id))
 				encoder_id = connector->encoder_id;
 
+			/*
+			 * the "free encoder" search above only avoids encoders
+			 * currently claimed by some OTHER connector - it never
+			 * checks that encoder_id is actually one this connector
+			 * can drive. A writeback connector reports encoder_id==0
+			 * (never bound yet), so the guess survives unchecked and
+			 * can point at an encoder this connector doesn't support
+			 * (e.g. the real HDMI encoder instead of the writeback's
+			 * own virtual encoder) - the kernel then derives a CRTC
+			 * from that wrong encoder's possible_crtcs and rejects
+			 * the commit with "[ENCODER:x] incompatible with [CRTC:y]".
+			 * Fall back to the connector's own valid encoder list.
+			 */
+			int valid = 0;
+			for (int e = 0; e < connector->count_encoders; e++)
+			{
+				if (connector->encoders[e] == encoder_id)
+				{
+					valid = 1;
+					break;
+				}
+			}
+			if (!valid && connector->count_encoders > 0)
+				encoder_id = connector->encoders[0];
+
 			/// search the modeinfo to store into a blob and push into the CRTC
 			drmModeModeInfo *preferred = NULL;
 			if (mode->hdisplay && mode->vdisplay)
