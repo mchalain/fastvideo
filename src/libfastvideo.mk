@@ -7,6 +7,7 @@ fastvideo_SOURCES+=sproto_unix.c
 fastvideo_SOURCES+=sproto_file.c
 fastvideo_SOURCES+=sdmabuf.c
 fastvideo_SOURCES+=spassthrough.c
+fastvideo_SOURCES+=stile.c
 fastvideo_SOURCES+=sv4l2.c
 fastvideo_SOURCES-$(V4L2_SUBDEV)+=sv4l2_subdev.c
 fastvideo_SOURCES+=client.c
