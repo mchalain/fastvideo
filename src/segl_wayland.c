@@ -20,7 +20,7 @@
 #define WL_SHELL
 #define XDG_WM_BASE
 #ifdef XDG_WM_BASE
-#include "xdg-shell-client-protocol.h"
+#include "stable/xdg-shell/xdg-shell.xml.wliext.h"
 #endif
 
 #ifndef TRUE

@@ -195,19 +195,8 @@ ifeq ($(findstring gcc,$(TARGETCC)),gcc)
   SYSROOT?=$(shell $(TARGETCC) -print-sysroot)
 endif
 
-ifneq ($(SYSROOT),)
- ifeq ($(DESTDIR),)
-   DESTDIR=$(SYSROOT)
- endif
-endif
-
 ifeq ($(destdir),)
   destdir:=$(abspath $(DESTDIR))
-  export destdir
-endif
-
-ifneq ($(CROSS_COMPILE),)
-  destdir?=$(sysroot)
 endif
 
 ifneq ($(SYSROOT),)
@@ -224,13 +213,26 @@ SYSROOT_LDFLAGS+=-L=/usr/lib
 ifneq ($(strip $(includedir)),)
   SYSROOT_CFLAGS+=$(addprefix -I=,$(includedir))
 endif
+ifeq ($(DEBUG),y)
+CFLAGS+=-Wall
+rpath=$(libdir)
 ifneq ($(strip $(libdir)),)
-  RPATHFLAGS+=-Wl,-rpath,$(libdir)
+  RPATHFLAGS+=-Wl,-rpath,$(rpath)
   SYSROOT_LDFLAGS+=$(addprefix -L=,$(libdir))
 endif
 ifneq ($(strip $(pkglibdir)),)
-  RPATHFLAGS+=-Wl,-rpath,$(pkglibdir)
+  RPATHFLAGS+=-Wl,-rpath,$(rpath)
   SYSROOT_LDFLAGS+=$(addprefix -L=,$(pkglibdir))
+endif
+else
+ifneq ($(strip $(libdir)),)
+  RPATHFLAGS+=-Wl,--disable-new-dtags -Wl,--as-needed
+  SYSROOT_LDFLAGS+=$(addprefix -L=,$(libdir))
+endif
+ifneq ($(strip $(pkglibdir)),)
+  RPATHFLAGS+=-Wl,--disable-new-dtags -Wl,--as-needed
+  SYSROOT_LDFLAGS+=$(addprefix -L=,$(pkglibdir))
+endif
 endif
 
 ifneq ($(destdir),)
@@ -379,9 +381,10 @@ $(foreach t,$(slib-y) $(lib-y) $(bin-y) $(sbin-y) $(modules-y) $(hostslib-y) $(h
 $(foreach t,$(slib-y) $(lib-y) $(bin-y) $(sbin-y) $(modules-y) $(hostslib-y) $(hostbin-y), $(eval $(t)_GENERATED+=$(patsubst %.y,%.tab.c,$(filter %.y,$($(t)_SOURCES)))))
 $(foreach t,$(slib-y) $(lib-y) $(bin-y) $(sbin-y) $(modules-y) $(hostslib-y) $(hostbin-y), $(eval $(t)_SOURCES:=$(filter-out %.y,$($(t)_SOURCES))))
 
+# create object list for each binaries
 $(foreach t,$(slib-y) $(lib-y) $(bin-y) $(sbin-y) $(modules-y) $(hostslib-y) $(hostbin-y), $(eval $(t)-objs+=$(addsuffix .o,$(call notext,$($(t)_GENERATED)))))
 $(foreach t,$(slib-y) $(lib-y) $(bin-y) $(sbin-y) $(modules-y) $(hostslib-y) $(hostbin-y), $(eval $(t)-objs+=$(addsuffix .o,$(call notext,$($(t)_SOURCES)))))
-
+# case where the SOURCES is not defined and the binary name is the same as the source
 $(foreach t,$(slib-y) $(lib-y) $(bin-y) $(sbin-y) $(modules-y) $(hostslib-y) $(hostbin-y), $(if $($(t)-objs),,$(eval $(t)-objs+=$(t))))
 
 $(foreach t,$(slib-y) $(lib-y) $(bin-y) $(sbin-y) $(modules-y) $(hostbin-y),$(eval $(t)_CFLAGS:=$($(t)_CFLAGS) $($(t)_CFLAGS-y)))
@@ -396,7 +399,7 @@ $(foreach t,$(lib-y) $(modules-y),$(eval $(t)_CFLAGS+=-fPIC))
 $(foreach t,$(slib-y) $(lib-y),$(eval include-y+=$($(t)_HEADERS)))
 
 define cmd_pkgconfig
-	$(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH):$(builddir) $(PKGCONFIG) --silence-errors $(2) $(1))
+	$(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) $(PKGCONFIG) --silence-errors $(2) $(1))
 endef
 # LIBRARY may contain libraries name to check
 # The name may terminate with {<version>} informations like LIBRARY+=usb{1.0}
@@ -487,6 +490,15 @@ hook-target:=$(hook-$(action:_%=%)) $(hook-$(action:_%=%)-y)
 ###############################################################################
 # scripts extensions
 ##
+
+ifneq ($(wildcard $(dir $(makemore))scripts/deps.mk),)
+  include $(dir $(makemore))scripts/deps.mk
+endif
+
+ifneq ($(wildcard $(dir $(makemore))scripts/cppcheck.mk),)
+  include $(dir $(makemore))scripts/cppcheck.mk
+endif
+
 ifneq ($(wildcard $(dir $(makemore))scripts/download.mk),)
   include $(dir $(makemore))scripts/download.mk
 endif
@@ -499,17 +511,17 @@ ifneq ($(wildcard $(dir $(makemore))scripts/qt.mk),)
   include $(dir $(makemore))scripts/qt.mk
 endif
 
+ifneq ($(wildcard $(dir $(makemore))scripts/wayland.mk),)
+  include $(dir $(makemore))scripts/wayland.mk
+endif
+
 ##
 # install recipes generation
 ##
-ifneq ($(CROSS_COMPILE),)
-  destdir?=$(sysroot)
-endif
-
-sysconf-install:=$(addprefix $(destdir)$(sysconfdir:%/=%)/,$(sysconf-y))
-data-install:=$(addprefix $(destdir)$(datadir:%/=%)/,$(data-target))
-doc-install:=$(addprefix $(destdir)$(docdir:%/=%)/,$(doc-y))
-include-install:=$(addprefix $(destdir)$(includedir:%/=%)/,$(include-y))
+sysconf-install:=$(addprefix $(destdir)$(sysconfdir:%/=%)/,$(sort $(sysconf-y)))
+data-install:=$(addprefix $(destdir)$(datadir:%/=%)/,$(sort $(data-target)))
+doc-install:=$(addprefix $(destdir)$(docdir:%/=%)/,$(sort $(doc-y)))
+include-install:=$(addprefix $(destdir)$(includedir:%/=%)/,$(sort $(include-y)))
 lib-static-install:=$(addprefix $(destdir)$(libdir:%/=%)/,$(addsuffix $(slib-ext:%=.%),$(addprefix lib,$(slib-y))))
 lib-dynamic-install:=$(addprefix $(destdir)$(libdir:%/=%)/,$(addsuffix $(version:%=.%),$(addsuffix $(dlib-ext:%=.%),$(addprefix lib,$(lib-y)))))
 modules-install:=$(addprefix $(destdir)$(pkglibdir:%/=%)/,$(addsuffix $(dlib-ext:%=.%),$(modules-y)))
@@ -716,6 +728,7 @@ quiet_cmd_generate_makefile=MAKEFILE $(notdir $@/Makefile)
 ##
 # build rules
 ##
+
 .SECONDEXPANSION:
 $(sort $(hostobjdir) $(objdir) $(builddir) $(buildpath)): $(file)
 	$(Q)$(call cmd,mkdir,$@)
