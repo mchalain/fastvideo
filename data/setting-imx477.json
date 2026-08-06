@@ -97,11 +97,11 @@
       {
         "name": "Red Balance",
         "id": 9963790,
-        "value": 2576
+        "value": 3200
       },{
         "name": "Blue Balance",
         "id": 9963791,
-        "value": 2107
+        "value": 1600
       },{
         "name": "colour_correction_matrix",
         "id": 9968097,
