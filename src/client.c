@@ -52,7 +52,7 @@ int client_attach_receivefd(client_t *client, client_receivefd_t callback, void 
 ssize_t client_receive(client_t *client)
 {
 	ssize_t ret = -1;
-	char buffer[UNIXSOCKET_PACKETSIZE];
+	char buffer[UNIXSOCKET_PACKETSIZE + 1];
 
 	struct msghdr msg = {0};
 	struct iovec iov[1] = {{.iov_base = buffer, .iov_len = UNIXSOCKET_PACKETSIZE}};
