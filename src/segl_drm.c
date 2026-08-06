@@ -219,7 +219,8 @@ static drmModeConnector *find_connector(int fd, drmModeRes *resources, uint32_t 
 			connector = NULL;
 			continue;
 		}
-		if (writeback && connector->connector_type != DRM_MODE_CONNECTOR_WRITEBACK)
+		if ((writeback && connector->connector_type != DRM_MODE_CONNECTOR_WRITEBACK) ||
+			(!writeback && connector->connector_type == DRM_MODE_CONNECTOR_WRITEBACK))
 		{
 			drmModeFreeConnector(connector);
 			connector = NULL;
