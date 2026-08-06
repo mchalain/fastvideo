@@ -1,6 +1,7 @@
 HAVE_WAYLAND=$(sort $(HAVE_WAYLAND_EGL) $(HAVE_WAYLAND_PROTOCOLS))
 lib-y+=fastvideo
 fastvideo_SOURCES+=sfastvideo.c
+fastvideo_SOURCES-$(HAVE_JANSSON)+=config.c
 fastvideo_SOURCES+=sproto_udp.c
 fastvideo_SOURCES+=sproto_tcp.c
 fastvideo_SOURCES+=sproto_unix.c
