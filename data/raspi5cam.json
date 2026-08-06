@@ -325,7 +325,7 @@
   {
     "name": ["screen"],
     "type": "screen",
-    "device": "/dev/dri/card0",
+    "device": "/dev/dri/card1",
     "end": true
   },
   {
@@ -338,14 +338,27 @@
     "name": ["gpu"],
     "type": "gpu",
     "native": ["x11","wayland","drm"],
-    "device": "/dev/dri/card0",
+    "device": "/dev/dri/card1",
+    "programs":[{
+      "disable": false,
+      "vertex": "simplevertex.glsl",
+      "fragment": "grey.glsl",
+      "end": true
+    },{
+      "disable": true,
+      "vertex": "simplevertex.glsl",
+      "fragment": "debayer.glsl"
+    }],
+    "transfer": {
+      "fourcc": "XB24"
+    },
     "end": true
   },
   {
     "name": ["shadertoy"],
     "type": "gpu",
     "native": ["x11","wayland","drm"],
-    "device": "/dev/dri/card0",
+    "device": "/dev/dri/card1",
     "programs":[{
       "disable": false,
       "vertex": "ShaderToy/vertex.glsl",
