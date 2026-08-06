@@ -76,7 +76,7 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 	dev->width = config->parent.width;
 	dev->height = config->parent.height;
 	dev->fourcc = config->parent.fourcc;
-	dev->bpp = config->parent.stride / dev->width;
+	dev->bpp = dev->width ? (config->parent.stride / dev->width) : 0;
 	if (strstr(dev->path, ".pam") != NULL)
 		config->header = File_PAM_e;
 	if (type == device_output)
@@ -427,6 +427,9 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 		const char *value = json_string_value(path);
 		config->filename = value;
 	}
+	json_t *definition = json_object_get(jconfig, "definition");
+	if (definition)
+		config_loaddefinition(&config->parent, definition);
 	json_t *port = json_object_get(jconfig, "port");
 	if (config->port == DEFAULT_PORT && port && json_is_integer(port))
 	{
@@ -507,10 +510,6 @@ DeviceConf_t * sfile_createconfig(const char *name)
 		devconfig->filename = filepath;
 	}
 	devconfig->port = DEFAULT_PORT;
-	devconfig->parent.width = 640;
-	devconfig->parent.height = 480;
-	devconfig->parent.stride = 1280;
-	devconfig->parent.fourcc = FOURCC_YUYV;
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sfile_loadjsonconfiguration;
 #endif
