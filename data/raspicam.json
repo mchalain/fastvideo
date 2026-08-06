@@ -269,8 +269,11 @@
   {
     "name": ["rpivc4_alg"],
     "type": "file",
-    "path": "/tmp/statistics",
+    "path": "/tmp/camera/statistics",
     "mode": "fifo",
+    "definition": {
+      "end": true
+    },
     "end": true
   },
   {
@@ -350,7 +353,7 @@
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "pBCC",
+          "fourcc": "BG12",
           "width": 2028,
           "height": 1080,
           "end": true
@@ -396,6 +399,19 @@
       "export": "drmwriteback",
       "end": true
     },
+    "programs": [{
+      "name": "textureprint",
+      "disable": true,
+      "vertex": "simplevertex.glsl",
+      "fragment": "textureprint.glsl",
+      "controls": [{
+        "name": "lTexture",
+        "type": "sampler",
+        "value": "./basemap.tga",
+        "end": true
+      }],
+      "end":true
+    }],
     "end":true
   },
   {

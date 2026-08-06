@@ -1,5 +1,7 @@
 data-y+=simplevertex.glsl
 data-y+=simplefragment.glsl
+data-y+=textureprint.glsl
+data-y+=basemap.tga
 data-y+=GIST/mainfragment.glsl
 data-y+=GIST/defaultcolor.glsl
 data-y+=GIST/defaultpixel.glsl
