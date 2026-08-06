@@ -44,6 +44,11 @@ struct Convert_BG10toR16_s
 static void *bg10tor16_create(Passthrough_config_t *config)
 {
 	int format;
+	if (!config)
+	{
+		err("BG10toR16: no config, unable to determine bayer format");
+		return NULL;
+	}
 	switch (config->parent.fourcc)
 	{
 		case FOURCC_BG10:
