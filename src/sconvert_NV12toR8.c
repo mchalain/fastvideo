@@ -16,13 +16,9 @@ static void *convert_create(Passthrough_config_t *config)
 	Convert_NV12toR8_t *conv = calloc(1, sizeof(*conv));
 	conv->config = config;
 	return conv;
-create_error:
-	free(conv);
-	err("BG10toR16: format not supported");
-	return NULL;
 }
 
-static size_t convert_convert(void *arg, const char *const src, char *dst, size_t size)
+static size_t convert_convert(void *arg, const char *const src, char *dst, size_t size, size_t stride)
 {
 	size *= 2;
 	size /= 3;
@@ -44,7 +40,7 @@ Convert_t convert_NV12toR8 =
 	.ops =
 	{
 		.create = convert_create,
-		.convert = NULL,
+		.convert = convert_convert,
 		.destroy = convert_destroy,
 	},
 };
@@ -58,13 +54,13 @@ static void __attribute__ ((constructor)) convert_NV12toR8_init()
 	if (hdl != NULL)
 		_spassthrough_convert_append = dlsym(hdl, "spassthrough_convert_append");
 	else
-		err("BG10toR16: library not found");
+		err("NV12toR8: library not found");
 	if (_spassthrough_convert_append)
 	{
 		_spassthrough_convert_append(&convert_NV12toR8);
 	}
 	else
 	{
-		err("bayer2rgb: spassthrough is not loaded");
+		err("NV12toR8: spassthrough is not loaded");
 	}
 }
