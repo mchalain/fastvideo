@@ -26,7 +26,7 @@ static void *_control_open(int atfd, const char *name)
 	client = client_create(name);
 	if (client == NULL)
 	{
-		err("fastsetting not found");
+		err("rpivc4_alg: fastsetting not found");
 		return NULL;
 	}
 	client_attach_receive(client, _client_receive, NULL);
@@ -54,7 +54,7 @@ static int _control_autogain(void *client, int autogain)
 	int ret = client_send(client, (void*)request, length);
 #endif
 	if (ret < 0)
-		err("fastsetting reject \"auto exposure\" control");
+		err("rpivc4_alg: fastsetting reject \"auto exposure\" control");
 	return 0;
 }
 
@@ -80,7 +80,7 @@ static int _control_gain(void * client, int gain)
 	int ret = client_send(client, (void*)request, length);
 #endif
 	if (ret < 0)
-		err("fastsetting reject \"Analogue Gain\" control");
+		err("rpivc4_alg: fastsetting reject \"Analogue Gain\" control");
 	return 0;
 }
 
@@ -196,25 +196,25 @@ static void *_fifo_open(int atfd, const char *name, int access)
 	if (faccessat(atfd, name, R_OK| W_OK | F_OK, 0) < 0 &&
 		mkfifoat(atfd, name , 0664))
 	{
-		err("fifo: %s creation error", name);
+		err("rpivc4_alg: %s creation error", name);
 	}
 	struct stat sb;
 	if (fstatat(atfd, name, &sb, 0) &&
 		((sb.st_mode & S_IFMT) != S_IFIFO))
 	{
-		err("sfile: file %s is not a named pipe", name);
+		err("rpivc4_alg: file %s is not a named pipe", name);
 		return NULL;
 	}
 	mode = O_RDONLY;
 
-	warn("waiting access to %s", name);
+	warn("rpivc4_alg: waiting access to %s", name);
 	fd = openat(atfd, name, mode, access);
 	if (fd <= 0)
 	{
-		err("fifo: opening %s error: %m", name);
+		err("rpivc4_alg: opening %s error: %m", name);
 		return NULL;
 	}
-	warn("fifo: %s opened", name);
+	warn("rpivc4_alg: %s opened", name);
 	return (void*)(long)fd;
 }
 
@@ -327,7 +327,7 @@ int main(int argc, char *const argv[])
 			close(logfd);
 		}
 		else
-			err("log file error %m");
+			err("rpivc4_alg: slog file error %m");
 	}
 	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, rootfs);
 
@@ -347,6 +347,6 @@ int main(int argc, char *const argv[])
 	_control_close(controlfd);
 
 	killdaemon(pidfile);
-	dbg("process died");
+	dbg("rpivc4_alg: process died");
 	return 0;
 }
