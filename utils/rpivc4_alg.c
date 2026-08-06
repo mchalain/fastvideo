@@ -89,19 +89,37 @@ static void _control_close(void * arg)
 	client_destroy(arg);
 }
 
-#define GAIN_AWB_REGION_MAIN 7
-#define GAIN_AWB_PERIOD 30
-#define GAIN_RATIO 25
+/*
+ * region index into the 16x12 AWB region grid (AWB_REGIONS, rows 0-11 x
+ * cols 0-15 - see linux/bcm2835-isp.h) used as the exposure/gain metering
+ * point. row 6 (of 12) / col 8 (of 16) is the closest grid cell to true
+ * center (12 and 16 are both even, so there's no single exact center
+ * cell). Kept as a file-global variable, not a #define, so it's easy to
+ * retarget/tune while iterating on hardware without touching the
+ * algorithm itself.
+ */
+#define AGC_REGION_DEFAULT (6 * 16 + 8)
+static int agc_region_main = AGC_REGION_DEFAULT;
 
-/* Paramètres de stabilisation */
-#define AWB_EMA_ALPHA       0.15f   /* Coefficient du filtre EMA (0 < α ≤ 1, plus petit = plus lisse) */
-#define AWB_DEADBAND        8       /* Zone morte : pas d'ajustement si |erreur| < deadband */
-#define AWB_MAX_STEP        5       /* Pas maximal d'ajustement par cycle (slew rate) */
-#define AWB_SETTLE_CYCLES   3       /* Nombre de cycles d'attente après un ajustement */
-#define AWB_GAIN_MIN        0
-#define AWB_GAIN_MAX        (1023 - 13)
+#define GAIN_AGC_PERIOD 30
+/* divides the raw region brightness sum into a gain-scale value (see
+ * _algo_agc() below) - there is no separate explicit "target brightness"
+ * setpoint in this algorithm, this ratio is what implicitly determines
+ * it. Kept as a file-global variable, settable via -r, for the same
+ * on-hardware tuning reason as agc_region_main above. */
+#define GAIN_RATIO_DEFAULT 30
+static int gain_ratio = GAIN_RATIO_DEFAULT;
 
-static int _algo_awb(struct bcm2835_isp_stats_region *stats, int nbregions, void *controlfd)
+/* Stabilization parameters */
+#define AGC_EMA_ALPHA       0.15f   /* EMA filter coefficient (0 < α ≤ 1, smaller = smoother) */
+#define AGC_DEADBAND        8       /* Deadband: no adjustment if |error| < deadband */
+#define AGC_STEP_DIVISOR    3       /* Step proportional to the error (error / divisor) */
+#define AGC_MAX_STEP        80      /* Safety cap on the step (avoids too abrupt a jump) */
+#define AGC_SETTLE_CYCLES   3       /* Number of wait cycles after an adjustment */
+#define AGC_GAIN_MIN        13
+#define AGC_GAIN_MAX        (1023 - 13)
+
+static int _algo_agc(struct bcm2835_isp_stats_region *stats, int nbregions, void *controlfd)
 {
 	static int gain_counter = 0;
 	static float ema_gain = 0.0f;
@@ -110,79 +128,87 @@ static int _algo_awb(struct bcm2835_isp_stats_region *stats, int nbregions, void
 	static int settle_counter = 0;
 
 	gain_counter++;
-	if (gain_counter < GAIN_AWB_PERIOD)
+	if (gain_counter < GAIN_AGC_PERIOD)
 		return 0;
 	gain_counter = 0;
 
-	/* Attendre que le capteur se stabilise après un ajustement */
 	if (settle_counter > 0)
 	{
 		settle_counter--;
 		return 0;
 	}
 
-	struct bcm2835_isp_stats_region *region = &stats[GAIN_AWB_REGION_MAIN];
-	if (region->counted == 0)
-		return 0;
-
-	/* Calcul de la mesure brute */
-	int32_t raw_gain = (int32_t)((region->r_sum + region->g_sum + region->b_sum) / region->counted);
-	raw_gain /= GAIN_RATIO;
-	if (region->counted < 100)
-		raw_gain *= 2;
-
-	/* Filtre EMA pour lisser les mesures et rejeter le bruit */
-	if (!ema_initialized)
+	if (agc_region_main < 0 || agc_region_main >= nbregions)
 	{
-		ema_gain = (float)raw_gain;
-		ema_initialized = 1;
+		err("rpivc4_alg: agc region %d out of range (0-%d)", agc_region_main, nbregions - 1);
+		return -1;
+	}
+	struct bcm2835_isp_stats_region *region = &stats[agc_region_main];
+
+	int32_t target_gain;
+	if (region->counted == 0)
+	{
+		target_gain = AGC_GAIN_MIN;
+		warn("rpivc4_alg: region %d starved (counted=0) - driving for max gain", agc_region_main);
 	}
 	else
 	{
-		ema_gain = AWB_EMA_ALPHA * (float)raw_gain + (1.0f - AWB_EMA_ALPHA) * ema_gain;
+		int32_t raw_gain = (int32_t)((region->r_sum + region->g_sum + region->b_sum) / region->counted);
+		raw_gain /= gain_ratio;
+		if (region->counted < 100)
+			raw_gain *= 2;
+
+		if (!ema_initialized)
+		{
+			ema_gain = (float)raw_gain;
+			ema_initialized = 1;
+		}
+		else
+		{
+			ema_gain = AGC_EMA_ALPHA * (float)raw_gain + (1.0f - AGC_EMA_ALPHA) * ema_gain;
+		}
+
+		target_gain = (int32_t)(ema_gain + 0.5f);
 	}
 
-	int32_t target_gain = (int32_t)(ema_gain + 0.5f);
+	/* Clamp the target within the limits */
+	if (target_gain < AGC_GAIN_MIN)
+		target_gain = AGC_GAIN_MIN;
+	if (target_gain > AGC_GAIN_MAX)
+		target_gain = AGC_GAIN_MAX;
 
-	/* Clamper la cible dans les limites */
-	if (target_gain < AWB_GAIN_MIN)
-		target_gain = AWB_GAIN_MIN;
-	if (target_gain > AWB_GAIN_MAX)
-		target_gain = AWB_GAIN_MAX;
-
-	/* Initialisation du gain appliqué */
 	if (applied_gain < 0)
 	{
 		applied_gain = target_gain;
 		_control_gain(controlfd, 1023 - applied_gain);
-		settle_counter = AWB_SETTLE_CYCLES;
+		warn("rpivc4_alg: region %d counted=%u target_gain=%d applied_gain=%d (init)",
+			agc_region_main, region->counted, target_gain, applied_gain);
+		settle_counter = AGC_SETTLE_CYCLES;
 		return 0;
 	}
 
-	/* Zone morte : ignorer les petites variations */
 	int32_t error = target_gain - applied_gain;
-	if (abs(error) <= AWB_DEADBAND)
+	if (abs(error) <= AGC_DEADBAND)
 		return 0;
 
-	/* Limiter le pas d'ajustement (slew rate) */
-	int32_t step = error;
-	if (step > AWB_MAX_STEP)
-		step = AWB_MAX_STEP;
-	else if (step < -AWB_MAX_STEP)
-		step = -AWB_MAX_STEP;
+	int32_t step = error / AGC_STEP_DIVISOR;
+	if (step > AGC_MAX_STEP)
+		step = AGC_MAX_STEP;
+	else if (step < -AGC_MAX_STEP)
+		step = -AGC_MAX_STEP;
 
 	applied_gain += step;
 
-	/* Clamper le gain appliqué */
-	if (applied_gain < AWB_GAIN_MIN)
-		applied_gain = AWB_GAIN_MIN;
-	if (applied_gain > AWB_GAIN_MAX)
-		applied_gain = AWB_GAIN_MAX;
+	if (applied_gain < AGC_GAIN_MIN)
+		applied_gain = AGC_GAIN_MIN;
+	if (applied_gain > AGC_GAIN_MAX)
+		applied_gain = AGC_GAIN_MAX;
 
 	_control_gain(controlfd, 1023 - applied_gain);
+	warn("rpivc4_alg: region %d counted=%u target_gain=%d applied_gain=%d step=%d",
+		agc_region_main, region->counted, target_gain, applied_gain, step);
 
-	/* Attendre la stabilisation du capteur avant le prochain ajustement */
-	settle_counter = AWB_SETTLE_CYCLES;
+	settle_counter = AGC_SETTLE_CYCLES;
 
 	return 0;
 }
@@ -239,10 +265,18 @@ int _fifo_receive(void *arg, void * controlfd)
 		struct bcm2835_isp_stats statistics = {0};
 		ret = read(fd, &statistics, sizeof(uint32_t) * 2);
 		if (ret > 0)
-			ret = read(fd, (unsigned char *)(&statistics) + sizeof(uint32_t) * 2,
-					statistics.size - sizeof(uint32_t) * 2);
+		{
+			size_t remaining = statistics.size - sizeof(uint32_t) * 2;
+			if (statistics.size > sizeof(statistics))
+			{
+				err("rpivc4_alg: stats size %u exceeds local struct size %zu, clamping",
+					statistics.size, sizeof(statistics));
+				remaining = sizeof(statistics) - sizeof(uint32_t) * 2;
+			}
+			ret = read(fd, (unsigned char *)(&statistics) + sizeof(uint32_t) * 2, remaining);
+		}
 		if (ret > 0)
-			ret = _algo_awb(statistics.awb_stats, AWB_REGIONS, controlfd);
+			ret = _algo_agc(statistics.awb_stats, AWB_REGIONS, controlfd);
 	}
 	return ret;
 }
@@ -259,6 +293,7 @@ void help(void)
 	fprintf(stderr, "  -s <fifo>   set the statistic fifo path\n");
 	fprintf(stderr, "  -c <fifo>   set the control fifo path\n");
 	fprintf(stderr, "  -g          disable autogain at startup\n");
+	fprintf(stderr, "  -r <ratio>  gain ratio divisor (default %d)\n", GAIN_RATIO_DEFAULT);
 }
 
 int main(int argc, char *const argv[])
@@ -274,7 +309,7 @@ int main(int argc, char *const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "hL:W:DKP:U:s:c:g");
+		opt = getopt(argc, argv, "hL:W:DKP:U:s:c:gr:");
 		switch (opt)
 		{
 			case 'h':
@@ -307,6 +342,9 @@ int main(int argc, char *const argv[])
 			break;
 			case 'g':
 				mode |= MODE_AUTOGAIN;
+			break;
+			case 'r':
+				gain_ratio = atoi(optarg);
 			break;
 		}
 	} while(opt != -1);
