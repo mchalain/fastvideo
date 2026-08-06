@@ -31,11 +31,24 @@ struct STileBuffer_s
 	enum { STile_free_e, STile_fill_e } state;
 };
 
+typedef struct STileConf_s STileConf_t;
+struct STileConf_s
+{
+	union {
+		struct {
+			DeviceConf_t parent;
+			DeviceConf_t transfer;
+		};
+		Passthrough_config_t passconfig;
+	};
+	int ntiles;
+};
+
 typedef struct STile_s STile_t;
 struct STile_s
 {
 	device_type_e type;
-	Passthrough_config_t *config;
+	STileConf_t *config;
 	STile_t *dup;
 
 	uint32_t src_width;
@@ -71,7 +84,7 @@ EXT_API int stile_loadjsonconfiguration(void *arg, void *entry);
 
 EXT_API DeviceConf_t *stile_createconfig(const char *name)
 {
-	Passthrough_config_t *config = calloc(1, sizeof(*config));
+	STileConf_t *config = calloc(1, sizeof(*config));
 	config->parent.name = stile_name;
 	config->parent.ops.loadconfiguration = stile_loadjsonconfiguration;
 	return &config->parent;
@@ -92,10 +105,11 @@ static size_t copy_pixel(STile_t *dev, const char *src, char *dst, size_t stride
 	return stride;
 }
 
-EXT_API void *stile_create(const char *devicename, device_type_e type, Passthrough_config_t *config)
+EXT_API void *stile_create(const char *devicename, device_type_e type, STileConf_t *config)
 {
 	if (!config)
 		return NULL;
+	Passthrough_config_t *passconfig = &config->passconfig;
 	if (type != device_transfer)
 	{
 		err("stile: %s bad device type", config ? config->parent.name : "");
@@ -106,7 +120,7 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, Passthrou
 		err("stile: %s unknown source size", config->parent.name);
 		return NULL;
 	}
-	if (!config->convert)
+	if (!passconfig->convert)
 	{
 		err("stile: %s no tile-copy converter configured (\"convert\" JSON field)", config->parent.name);
 		return NULL;
@@ -142,14 +156,19 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, Passthrou
 		free(dev);
 		return NULL;
 	}
+	if (config->ntiles && config->ntiles < dev->ntiles && config->ntiles < dev->ntiles_x)
+	{
+		dev->ntiles_x = config->ntiles;
+		dev->ntiles_y = 1;
+	}
 
 	/* real config passed (not NULL): a converter that needs to inspect
 	 * config->parent.fourcc to pick its actual behaviour (e.g.
 	 * BG10toR16's bayer order) can now do so correctly, and cleanly
 	 * rejects a fourcc it doesn't support by returning NULL here instead
 	 * of being called blind and crashing */
-	dev->copy_conv = config->convert;
-	dev->copy_ctx = dev->copy_conv->ops.create(config);
+	dev->copy_conv = passconfig->convert;
+	dev->copy_ctx = dev->copy_conv->ops.create(passconfig);
 	if (!dev->copy_ctx)
 	{
 		err("stile: %s tile-copy converter '%s' rejected fourcc %.4s",
@@ -178,7 +197,7 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, Passthrou
 	return dev;
 }
 
-EXT_API void *stile_duplicate(STile_t *dev, Passthrough_config_t **pconfig)
+EXT_API void *stile_duplicate(STile_t *dev, STileConf_t **pconfig)
 {
 	if (dev->type != device_transfer)
 	{
@@ -192,7 +211,7 @@ EXT_API void *stile_duplicate(STile_t *dev, Passthrough_config_t **pconfig)
 	dup->tile_out_bytes = dev->tile_out_bytes;
 	dev->dup = dup;
 
-	Passthrough_config_t *config = calloc(1, sizeof(*config));
+	STileConf_t *config = calloc(1, sizeof(*config));
 	memcpy(config, dev->config, sizeof(*config));
 	config->parent.fourcc = config->transfer.fourcc ? config->transfer.fourcc : dev->copy_conv->fourcc_out;
 	config->parent.width = dev->dst_width;
@@ -546,7 +565,8 @@ EXT_API void stile_destroy(STile_t *dev)
 EXT_API int stile_loadjsonconfiguration(void *arg, void *entry)
 {
 	json_t *jconfig = entry;
-	Passthrough_config_t *config = (Passthrough_config_t *)arg;
+	Passthrough_config_t *passconfig = (Passthrough_config_t *)arg;
+	STileConf_t *config = (STileConf_t *)arg;
 
 	json_t *definition = json_object_get(jconfig, "definition");
 	config_loaddefinition(&config->parent, definition);
@@ -568,12 +588,16 @@ EXT_API int stile_loadjsonconfiguration(void *arg, void *entry)
 		{
 			if (conv->name && !strcmp(value, conv->name))
 			{
-				config->convert = conv;
+				passconfig->convert = conv;
 				break;
 			}
 		}
 	}
-
+	json_t *ntiles = json_object_get(jconfig, "ntiles");
+	if (ntiles && json_is_integer(ntiles))
+	{
+		config->ntiles = json_integer_value(ntiles);
+	}
 	return 0;
 }
 
