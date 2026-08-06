@@ -30,3 +30,8 @@ rpivc4_alg_SOURCES+=$(srcdir)src/client.c
 rpivc4_alg_SOURCES+=$(srcdir)src/daemonize.c
 rpivc4_alg_CFLAGS+=-I$(srcdir)src
 rpivc4_alg_LDFLAGS+=-L$(builddir)src
+
+bin-$(HAVE_DRM)+=hdmi_connected
+hdmi_connected_SOURCES+=hdmi_connected.c
+hdmi_connected_CFLAGS+=-I$(SYSROOT)/usr/include/libdrm
+hdmi_connected_LIBRARY+=libdrm
