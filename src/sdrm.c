@@ -190,8 +190,10 @@ static int sdrm_ids(Display_t *disp, uint32_t *conn_id, uint32_t *enc_id, uint32
 		drmModeConnectorPtr connector = drmModeGetConnector(disp->fd, resources->connectors[i]);
 		if (! connector)
 			continue;
-		if (disp->type == device_transfer &&
-			connector->connector_type != DRM_MODE_CONNECTOR_WRITEBACK)
+		if ((disp->type == device_transfer &&
+			connector->connector_type != DRM_MODE_CONNECTOR_WRITEBACK) ||
+			(disp->type != device_transfer &&
+			connector->connector_type == DRM_MODE_CONNECTOR_WRITEBACK))
 		{
 			drmModeFreeConnector(connector);
 			continue;
