@@ -1064,7 +1064,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 		dbg_buffer((&dev->buffers[i].v4l2));
 	}
 #endif
-	dbg("sv4l2: %s %dx%d, %.4s %u", dev->name, dev->width, dev->height, (char*)&dev->fourcc, (dev->buffers)?dev->buffers[0].length:0);
+	dbg("sv4l2: %s %dx%d, %.4s %zu", dev->name, dev->width, dev->height, (char*)&dev->fourcc, (dev->buffers)?dev->buffers[0].length:0);
 	return ret;
 }
 
@@ -2165,7 +2165,6 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 	int ret = -1;
 	ret = scommon_loaddefinition(&config->parent, definition);
 
-	json_t *fps = NULL;
 	json_t *mode = NULL;
 	if (definition && json_is_array(definition))
 	{
@@ -2176,11 +2175,6 @@ static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 			if (json_is_object(field))
 			{
 				json_t *name = json_object_get(field, "name");
-				if (name && json_is_string(name) &&
-					!strcmp(json_string_value(name), "fps"))
-				{
-					fps = json_object_get(field, "value");
-				}
 				if (name && json_is_string(name) &&
 					!strcmp(json_string_value(name), "mode"))
 				{
