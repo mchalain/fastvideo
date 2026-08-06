@@ -627,6 +627,10 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 		dev->state &= ~MODE_SHOOT;
 		dev->state |= MODE_SHOOTING;
 	}
+	if (dev->branch.dev && dev->state & MODE_TEE)
+	{
+		dev->branch.ops->queue(dev->branch.dev, index, mem, bytesused, 0);
+	}
 	if (!(dev->state & MODE_DRYRUN) && dev->dup != NULL)
 	{
 		dev = dev->dup;
@@ -645,10 +649,6 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 #endif
 	/** insert into fifo **/
 	dev->fifo = buffer;
-	if (dev->branch.dev && dev->state & MODE_TEE)
-	{
-		dev->branch.ops->queue(dev->branch.dev, index, mem, bytesused, 0);
-	}
 	return 0;
 }
 
