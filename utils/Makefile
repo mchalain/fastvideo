@@ -1,18 +1,18 @@
-subdir-y+=fastsetting-cli.mk
+subdir-$(CLIENTS)+=fastsetting-cli.mk
 
-bin-y+=mpegts-sync
+hostbin-y+=mpegts-sync
 mpegts-sync_SOURCES+=mpegts-sync.c
 mpegts-sync_SOURCES+=$(srcdir)src/client.c
 mpegts-sync_CFLAGS+=-I$(srcdir)src
 mpegts-sync_LDFLAGS+=-L$(builddir)src
 
-bin-y+=unixclient
+hostbin-y+=unixclient
 unixclient_SOURCES+=unixclient.c
 unixclient_SOURCES+=$(srcdir)src/client.c
 unixclient_CFLAGS+=-I$(srcdir)src
 unixclient_LDFLAGS+=-L$(builddir)src
 
-bin-y+=unixproxy
+hostbin-y+=unixproxy
 unixproxy_SOURCES+=unixproxy.c
 unixproxy_SOURCES+=$(srcdir)src/client.c
 unixproxy_CFLAGS+=-I$(srcdir)src
