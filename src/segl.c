@@ -675,7 +675,7 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	(*pconfig)->parent.height = 0;
 	(*pconfig)->parent.stride = 0;
 	(*pconfig)->parent.modifiers = 0;
-	scommon_mergedefinition(&(*pconfig)->parent, &dev->config->transfer);
+	config_mergedefinition(&(*pconfig)->parent, &dev->config->transfer);
 	if ((*pconfig)->parent.width == 0)
 		(*pconfig)->parent.width = dev->config->parent.width;
 	if ((*pconfig)->parent.height == 0)
@@ -974,9 +974,9 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 		config->device = value;
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
-	scommon_loaddefinition(&config->parent, definition);
+	config_loaddefinition(&config->parent, definition);
 	json_t *transfer = json_object_get(jconfig, "transfer");
-	scommon_loaddefinition(&config->transfer, transfer);
+	config_loaddefinition(&config->transfer, transfer);
 	if (config->transfer.width == 0)
 		config->transfer.width = config->parent.width;
 	if (config->transfer.height == 0)

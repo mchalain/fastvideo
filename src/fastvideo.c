@@ -138,8 +138,8 @@ FastVideoDevice_t *config_createdevice(const char *name, const char *configfile)
 
 int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 {
-	scommon_mergedefinition(outconfig, inconfig);
-	scommon_mergedefinition(inconfig, outconfig);
+	config_mergedefinition(outconfig, inconfig);
+	config_mergedefinition(inconfig, outconfig);
 	dbg("input %s size %u %u", inconfig->name, inconfig->width, inconfig->height);
 	dbg("output %s size %u %u", outconfig->name, outconfig->width, outconfig->height);
 	return 0;

@@ -1564,7 +1564,7 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	dup->type = -1;
 	*pconfig = dup->config = malloc(sizeof(*dev->config));
 	memmove(dup->config, dev->config, sizeof(*dev->config));
-	scommon_mergedefinition(&dup->config->parent, &dev->config->transfer);
+	config_mergedefinition(&dup->config->parent, &dev->config->transfer);
 	if ((dup->mode & MODE_CAPTURE) && dup->config->periodic)
 	{
 		dup->periodicfunc = _v4l2_periodiccontrol;
@@ -2163,7 +2163,7 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 {
 	int ret = -1;
-	ret = scommon_loaddefinition(&config->parent, definition);
+	ret = config_loaddefinition(&config->parent, definition);
 
 	json_t *mode = NULL;
 	if (definition && json_is_array(definition))
@@ -2279,7 +2279,7 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevices, const char *na
 						break;
 
 					config->subdev_entries[subdev_id] = (V4l2Config_t *)subdev_ops.createconfig(name);
-					scommon_mergedefinition(&config->subdev_entries[subdev_id]->parent, &config->parent);
+					config_mergedefinition(&config->subdev_entries[subdev_id]->parent, &config->parent);
 					config->subdev_entries[subdev_id]->parent.entry = subdevice;
 					config->subdev_entries[subdev_id]->parent.ops.loadconfiguration(config->subdev_entries[subdev_id], subdevice);
 					if (jlastname && json_is_string(jlastname))
@@ -2326,7 +2326,7 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	_v4l2_parsedefinition(definition, config);
 
 	json_t *transfer = json_object_get(jconfig, "transfer");
-	scommon_loaddefinition(&config->transfer, transfer);
+	config_loaddefinition(&config->transfer, transfer);
 	if (config->transfer.width == 0)
 		config->transfer.width = config->parent.width;
 	if (config->transfer.height == 0)

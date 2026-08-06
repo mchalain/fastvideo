@@ -549,10 +549,10 @@ EXT_API int stile_loadjsonconfiguration(void *arg, void *entry)
 	Passthrough_config_t *config = (Passthrough_config_t *)arg;
 
 	json_t *definition = json_object_get(jconfig, "definition");
-	scommon_loaddefinition(&config->parent, definition);
+	config_loaddefinition(&config->parent, definition);
 
 	json_t *transfer = json_object_get(jconfig, "transfer");
-	scommon_loaddefinition(&config->transfer, transfer);
+	config_loaddefinition(&config->transfer, transfer);
 
 	/* same "convert" JSON model as spassthrough.c: either
 	 * {"convert": "Name"} or {"convert": {"name": "Name"}} - resolved to

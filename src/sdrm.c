@@ -1641,9 +1641,9 @@ int sdrm_loadjsonconfiguration(void *arg, void *entry)
 		config->device = value;
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
-	scommon_loaddefinition(&config->parent, definition);
+	config_loaddefinition(&config->parent, definition);
 	json_t *transfer = json_object_get(jconfig, "transfer");
-	scommon_loaddefinition(&config->transfer, transfer);
+	config_loaddefinition(&config->transfer, transfer);
 	if (config->transfer.width == 0)
 		config->transfer.width = config->parent.width;
 	if (config->transfer.height == 0)

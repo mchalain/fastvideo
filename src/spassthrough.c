@@ -245,7 +245,7 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 	*pconfig = dup->config = malloc(sizeof(*dev->config));
 	memmove(dup->config, config, sizeof(*dev->config));
 #if 0
-	scommon_mergedefinition(&dup->config->parent, &config->transfer);
+	config_mergedefinition(&dup->config->parent, &config->transfer);
 #else
 	if (config->transfer.fourcc)
 		dup->config->parent.fourcc = config->transfer.fourcc;
@@ -774,10 +774,10 @@ EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry)
 
 	Passthrough_config_t *config = (Passthrough_config_t *)arg;
 	json_t *definition = json_object_get(jconfig, "definition");
-	scommon_loaddefinition(&config->parent, definition);
+	config_loaddefinition(&config->parent, definition);
 
 	json_t *transfer = json_object_get(jconfig, "transfer");
-	scommon_loaddefinition(&config->transfer, transfer);
+	config_loaddefinition(&config->transfer, transfer);
 	if (config->transfer.width == 0)
 		config->transfer.width = config->parent.width;
 	if (config->transfer.height == 0)

@@ -2,7 +2,6 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <dlfcn.h>
 
 #include <jansson.h>
 
@@ -13,7 +12,7 @@
 #include "sdrm.h"
 static json_t *g_jconfig = NULL;
 
-int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
+int config_loaddefinition(DeviceConf_t *config, json_t *definition)
 {
 	json_t *width = NULL;
 	json_t *height = NULL;
@@ -105,7 +104,7 @@ int scommon_loaddefinition(DeviceConf_t *config, json_t *definition)
 	return 0;
 }
 
-int scommon_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src)
+int config_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src)
 {
 	if (!dest->width)
 		dest->width = src->width;
@@ -199,32 +198,6 @@ json_t *config_getdevices(json_t *jconfig)
 			jconfig = devices;
 	}
 	return jconfig;
-}
-
-struct _common_getdevice_s
-{
-	const char *name;
-	json_t *entry;
-};
-static int _common_finddevice(void *data, const char *name, const char *type, void *config)
-{
-	int ret = -1;
-	struct _common_getdevice_s *search = data;
-	if (scommon_isnamed(config, search->name))
-	{
-		search->entry = config;
-		ret = 0;
-	}
-	return ret;
-}
-
-json_t *scommon_getdevice(const char *name)
-{
-	struct _common_getdevice_s search = {0};
-	search.name = name;
-	if (g_jconfig)
-		config_loaddevice(g_jconfig, _common_finddevice, &search);
-	return	search.entry;
 }
 
 int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data)
@@ -338,40 +311,6 @@ int scommon_isnamed(json_t *jdevice, const char *name)
 	return 0;
 }
 
-int scommon_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devconfig)
-{
-	if (jconfig && json_is_array(jconfig))
-	{
-		int index = 0;
-		json_t *jdevice = NULL;
-		json_array_foreach(jconfig, index, jdevice)
-		{
-			json_t *disable = json_object_get(jdevice, "disable");
-			if (disable && json_is_true(disable))
-				continue;
-			if (!json_is_object(jdevice))
-				continue;
-			if (scommon_isnamed(jdevice, name))
-			{
-				jconfig = jdevice;
-				break;
-			}
-		}
-	}
-	if (jconfig && json_is_object(jconfig))
-	{
-		json_t *disable = json_object_get(jconfig, "disable");
-		if (disable && json_is_true(disable))
-			return -1;
-		if (!scommon_isnamed(jconfig, name))
-			return -1;
-		json_t *definition = json_object_get(jconfig, "definition");
-		if (definition)
-			scommon_loaddefinition(devconfig, definition);
-	}
-	return 0;
-}
-
 int scommon_loadconfiguration(void *arg, void *entry)
 {
 	DeviceConf_t *devconfig = (DeviceConf_t *)arg;
@@ -381,7 +320,7 @@ int scommon_loadconfiguration(void *arg, void *entry)
 	{
 		json_t *definition = json_object_get(jconfig, "definition");
 		if (definition)
-			scommon_loaddefinition(devconfig, definition);
+			config_loaddefinition(devconfig, definition);
 	}
 	return 0;
 }

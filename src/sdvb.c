@@ -289,7 +289,7 @@ int sdvb_loadjsonconfiguration(void *arg, void *entry)
 		config->pid = json_integer_value(pid) & 0xFFFF;
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
-	scommon_loaddefinition(&config->parent, definition);
+	config_loaddefinition(&config->parent, definition);
 	return 0;
 }
 #endif

@@ -80,15 +80,11 @@ struct DeviceConf_s
 	}
 
 #ifdef HAVE_JANSSON
-/**
- * this function is currently defined inside sv4l2.c
- */
-int scommon_loaddefinition(DeviceConf_t *config, json_t *definition);
-int scommon_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src);
-int scommon_parsedevices(const char *name, json_t *jconfig, DeviceConf_t *devconfig);
-
 typedef struct FastVideoDevice_ops_s FastVideoDevice_ops_t;
 DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *entry);
+
+int config_loaddefinition(DeviceConf_t *config, json_t *definition);
+int config_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src);
 
 int config_isnamed(DeviceConf_t *devconfig, const char *name);
 
@@ -101,7 +97,6 @@ int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, c
  */
 int scommon_loadconfiguration(void *arg, void *entry);
 
-json_t *scommon_getdevice(const char *name);
 int scommon_isnamed(json_t *jdevice, const char *name);
 #else
 inline int config_parseconfigfile(const char *name, const char *configfile, DeviceConf_t *devconfig) {return -1;};
