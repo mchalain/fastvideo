@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <sys/timerfd.h>
 #include <fcntl.h>
+#include <dlfcn.h>
 
 #include "fastvideo.h"
 #include "log.h"
@@ -40,6 +41,13 @@ unsigned int _mode = 0;
 #define MAX_DRAIN_PER_ITERATION 16
 
 #define verbose_warn(f,...) do{if ((_mode & MODE_VERBOSE) != 0) warn(f,  ##__VA_ARGS__);} while(0)
+
+int scommon_loadlibrary(const char *path)
+{
+	void *hd = NULL;
+	hd = dlopen(path, RTLD_NOW);
+	return (hd)?0:-1;
+}
 
 typedef struct FastVideoPipe_s FastVideoPipe_t;
 struct FastVideoPipe_s
@@ -437,7 +445,7 @@ int main(int argc, char * const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "+L:W:DP:Ivj:");
+		opt = getopt(argc, argv, "+L:W:DP:Ivj:l:");
 		switch (opt)
 		{
 			case 'D':
@@ -460,6 +468,9 @@ int main(int argc, char * const argv[])
 			break;
 			case 'j':
 				configfile = optarg;
+			break;
+			case 'l':
+				scommon_loadlibrary(optarg);
 			break;
 		}
 	} while(opt != -1);
