@@ -943,7 +943,9 @@ EXT_API Display_t *sdrm_duplicate(Display_t *dev, DisplayConf_t **pconfig)
 	dev->type = device_output;
 	*pconfig = calloc(1, sizeof(**pconfig));
 	memcpy(*pconfig, dev->config, sizeof(**pconfig));
-	memmove(&(*pconfig)->parent, &dev->config->transfer, sizeof((*pconfig)->parent));
+	memset(&(*pconfig)->parent, 0, sizeof((*pconfig)->parent));
+	config_mergedefinition(&(*pconfig)->parent, &dev->config->transfer);
+	config_mergedefinition(&(*pconfig)->parent, &dev->config->parent);
 
 	disp = calloc(1, sizeof(*disp));
 	if (!disp)
@@ -954,6 +956,8 @@ EXT_API Display_t *sdrm_duplicate(Display_t *dev, DisplayConf_t **pconfig)
 	disp->dup = dev;
 	disp->config = *pconfig;
 	disp->mode = dev->mode;
+	if (disp->config->parent.fourcc)
+		disp->fourcc = disp->config->parent.fourcc;
 #ifdef DEBUG
 	uint64_t blob_id = sdrm_properties(disp, DRM_MODE_OBJECT_CONNECTOR, disp->connector_id, "WRITEBACK_PIXEL_FORMATS", -1);
 	drmModePropertyBlobRes *blob = NULL;
