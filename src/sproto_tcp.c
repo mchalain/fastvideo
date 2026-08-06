@@ -24,6 +24,9 @@
 
 #define Proto_TCP_Http 0x01
 
+#define PROTO_TCP_SEND_RETRY_MAX 5
+#define PROTO_TCP_SEND_RETRY_DELAY_US 200
+
 typedef struct Proto_TCP_s Proto_TCP_t;
 struct Proto_TCP_s
 {
@@ -237,7 +240,11 @@ static int proto_connect_server(void *arg)
 	/// this is currently a blocked socket
 	proto->clientfd = accept(proto->serverfd, NULL, 0);
 	if (proto->clientfd > 0)
+	{
+		int flags = fcntl(proto->clientfd, F_GETFL, 0);
+		fcntl(proto->clientfd, F_SETFL, flags | O_NONBLOCK);
 		warn("tcp: new connection");
+	}
 	if (proto->clientfd > 0 && proto->mode & Proto_TCP_Http)
 	{
 		const char buf[] = "HTTP/1.1 200 OK\r\n\
@@ -287,9 +294,14 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 	sflags = MSG_NOSIGNAL;
 	if (flags & Proto_More)
 		sflags |= MSG_MORE;
-	while (ret == -1 && errno == EAGAIN)
+	int retries = 0;
+	ret = send(proto->clientfd, buf, len, sflags);
+	while (ret < 0 && errno == EAGAIN && ++retries < PROTO_TCP_SEND_RETRY_MAX)
+	{
+		usleep(PROTO_TCP_SEND_RETRY_DELAY_US);
 		ret = send(proto->clientfd, buf, len, sflags);
-	if (ret < 0)
+	}
+	if (ret < 0 && errno != EAGAIN)
 	{
 		if (errno == ECONNRESET || errno == EPIPE)
 			warn("tcp: connection closed");
@@ -301,8 +313,6 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 			ret = 0;
 	}
 
-	if (errno == EAGAIN)
-		errno = 0;
 	return ret;
 }
 
