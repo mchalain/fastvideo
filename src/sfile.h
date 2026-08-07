@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include "fastvideo.h"
-#include "config.h"
+#include "sconfig.h"
 
 #define FILECONFIG(config, ...) config = { \
 	.DEVICECONFIG(parent, config, sfile_loadconfiguration), \

@@ -2,7 +2,7 @@
 #include <errno.h>
 
 #include "fastvideo.h"
-#include "config.h"
+#include "sconfig.h"
 #include "log.h"
 
 #define MAX_BUFFERS 4

@@ -2,7 +2,7 @@
 #define __SPASSTROUGHT_H__
 
 #include "fastvideo.h"
-#include "config.h"
+#include "sconfig.h"
 
 typedef struct Passthrough_config_s Passthrough_config_t;
 typedef struct Convert_s Convert_t;

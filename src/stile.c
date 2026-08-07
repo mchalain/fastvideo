@@ -9,7 +9,7 @@
 #include <jansson.h>
 
 #include "fastvideo.h"
-#include "config.h"
+#include "sconfig.h"
 #include "log.h"
 #include "sdmabuf.h"
 #include "spassthrough.h"
@@ -569,10 +569,10 @@ EXT_API int stile_loadjsonconfiguration(void *arg, void *entry)
 	STileConf_t *config = (STileConf_t *)arg;
 
 	json_t *definition = json_object_get(jconfig, "definition");
-	config_loaddefinition(&config->parent, definition);
+	sconfig_loaddefinition(&config->parent, definition);
 
 	json_t *transfer = json_object_get(jconfig, "transfer");
-	config_loaddefinition(&config->transfer, transfer);
+	sconfig_loaddefinition(&config->transfer, transfer);
 
 	/* same "convert" JSON model as spassthrough.c: either
 	 * {"convert": "Name"} or {"convert": {"name": "Name"}} - resolved to

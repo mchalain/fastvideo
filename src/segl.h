@@ -4,7 +4,7 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include "fastvideo.h"
-#include "config.h"
+#include "sconfig.h"
 #include "log.h"
 
 #define EGLCONFIG(name, _native) name = { \

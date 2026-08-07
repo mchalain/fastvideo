@@ -15,7 +15,7 @@
 #endif
 
 #include "sfile.h"
-#include "config.h"
+#include "sconfig.h"
 #include "sdmabuf.h"
 #include "log.h"
 
@@ -429,7 +429,7 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
 	if (definition)
-		config_loaddefinition(&config->parent, definition);
+		sconfig_loaddefinition(&config->parent, definition);
 	json_t *port = json_object_get(jconfig, "port");
 	if (config->port == DEFAULT_PORT && port && json_is_integer(port))
 	{

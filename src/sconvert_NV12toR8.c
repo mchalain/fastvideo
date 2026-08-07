@@ -1,7 +1,7 @@
 #include <stdint.h>
 
 #include "log.h"
-#include "config.h"
+#include "sconfig.h"
 #include "sdmabuf.h"
 #include "spassthrough.h"
 

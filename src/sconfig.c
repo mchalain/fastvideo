@@ -6,13 +6,13 @@
 #include <jansson.h>
 
 #include "log.h"
-#include "config.h"
+#include "sconfig.h"
 #include "sv4l2.h"
 #include "segl.h"
 #include "sdrm.h"
 static json_t *g_jconfig = NULL;
 
-int config_loaddefinition(DeviceConf_t *config, json_t *definition)
+int sconfig_loaddefinition(DeviceConf_t *config, json_t *definition)
 {
 	json_t *width = NULL;
 	json_t *height = NULL;
@@ -104,7 +104,7 @@ int config_loaddefinition(DeviceConf_t *config, json_t *definition)
 	return 0;
 }
 
-int config_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src)
+int sconfig_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src)
 {
 	if (!dest->width)
 		dest->width = src->width;
@@ -162,7 +162,7 @@ static int main_parseconfigdevice(json_t *jconfig, int (*cb)(void *data, const c
 	return ret;
 }
 
-int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data)
+int scommon_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data)
 {
 	int ret = -1;
 	if (json_is_array(jconfig))
@@ -185,7 +185,7 @@ int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, c
 	return ret;
 }
 
-json_t *config_getdevices(json_t *jconfig)
+json_t *scommon_getdevice(json_t *jconfig)
 {
 	if (json_is_object(jconfig))
 	{
@@ -200,7 +200,13 @@ json_t *config_getdevices(json_t *jconfig)
 	return jconfig;
 }
 
-int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data)
+json_t *sconfig_getdevice(DeviceConf_t *config)
+{
+	json_t *jconfig = config->entry;
+	return scommon_getdevice(jconfig);
+}
+
+int scommon_parseconfigfile(const char *configfile, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data)
 {
 	int ret = -1;
 	FILE *cf = fopen(configfile, "r");
@@ -217,8 +223,8 @@ int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data,
 		err("config %s:%d error %s", configfile, error.line, error.text);
 		return -1;
 	}
-	jconfig = config_getdevices(jconfig);
-	ret = config_loaddevice(jconfig, loaddevice, data);
+	jconfig = scommon_getdevice(jconfig);
+	ret = scommon_loaddevice(jconfig, loaddevice, data);
 	g_jconfig = jconfig;
 	fclose(cf);
 	return ret;
@@ -286,7 +292,7 @@ DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *
 	return devconfig;
 }
 
-int config_isnamed(DeviceConf_t *devconfig, const char *name)
+int sconfig_isnamed(DeviceConf_t *devconfig, const char *name)
 {
 	return scommon_isnamed(devconfig->entry, name);
 }
@@ -320,7 +326,7 @@ int scommon_loadconfiguration(void *arg, void *entry)
 	{
 		json_t *definition = json_object_get(jconfig, "definition");
 		if (definition)
-			config_loaddefinition(devconfig, definition);
+			sconfig_loaddefinition(devconfig, definition);
 	}
 	return 0;
 }

@@ -1564,7 +1564,7 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	dup->type = -1;
 	*pconfig = dup->config = malloc(sizeof(*dev->config));
 	memmove(dup->config, dev->config, sizeof(*dev->config));
-	config_mergedefinition(&dup->config->parent, &dev->config->transfer);
+	sconfig_mergedefinition(&dup->config->parent, &dev->config->transfer);
 	if ((dup->mode & MODE_CAPTURE) && dup->config->periodic)
 	{
 		dup->periodicfunc = _v4l2_periodiccontrol;
@@ -2102,7 +2102,7 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 		json_t *jentry = NULL;
 		json_array_foreach(jname, index, jentry)
 		{
-			if (dev->config && config_isnamed(&dev->config->parent, json_string_value(jentry)))
+			if (dev->config && sconfig_isnamed(&dev->config->parent, json_string_value(jentry)))
 			{
 				jname = jentry;
 				break;
@@ -2110,7 +2110,7 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 		}
 	}
 	if (jname && json_is_string(jname) &&
-			!config_isnamed(&dev->config->parent, json_string_value(jname)))
+			!sconfig_isnamed(&dev->config->parent, json_string_value(jname)))
 	{
 		return -1;
 	}
@@ -2163,7 +2163,7 @@ int sv4l2_loadjsonsettings(V4L2_t *dev, void *entry)
 static int _v4l2_parsedefinition(json_t *definition, V4l2Config_t *config)
 {
 	int ret = -1;
-	ret = config_loaddefinition(&config->parent, definition);
+	ret = sconfig_loaddefinition(&config->parent, definition);
 
 	json_t *mode = NULL;
 	if (definition && json_is_array(definition))
@@ -2279,7 +2279,7 @@ int _v4l2_addsubdevices(V4l2Config_t *config, json_t *subdevices, const char *na
 						break;
 
 					config->subdev_entries[subdev_id] = (V4l2Config_t *)subdev_ops.createconfig(name);
-					config_mergedefinition(&config->subdev_entries[subdev_id]->parent, &config->parent);
+					sconfig_mergedefinition(&config->subdev_entries[subdev_id]->parent, &config->parent);
 					config->subdev_entries[subdev_id]->parent.entry = subdevice;
 					config->subdev_entries[subdev_id]->parent.ops.loadconfiguration(config->subdev_entries[subdev_id], subdevice);
 					if (jlastname && json_is_string(jlastname))
@@ -2326,7 +2326,7 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	_v4l2_parsedefinition(definition, config);
 
 	json_t *transfer = json_object_get(jconfig, "transfer");
-	config_loaddefinition(&config->transfer, transfer);
+	sconfig_loaddefinition(&config->transfer, transfer);
 	if (config->transfer.width == 0)
 		config->transfer.width = config->parent.width;
 	if (config->transfer.height == 0)

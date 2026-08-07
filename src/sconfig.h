@@ -1,5 +1,5 @@
-#ifndef __FASTVIDEO_CONFIG_H__
-#define __FASTVIDEO_CONFIG_H__
+#ifndef __FASTVIDEO_SCONFIG_H__
+#define __FASTVIDEO_SCONFIG_H__
 
 #ifdef HAVE_JANSSON
 # include <jansson.h>
@@ -83,23 +83,23 @@ struct DeviceConf_s
 typedef struct FastVideoDevice_ops_s FastVideoDevice_ops_t;
 DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *entry);
 
-int config_loaddefinition(DeviceConf_t *config, json_t *definition);
-int config_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src);
+int sconfig_loaddefinition(DeviceConf_t *config, json_t *definition);
+int sconfig_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src);
 
-int config_isnamed(DeviceConf_t *devconfig, const char *name);
+int sconfig_isnamed(DeviceConf_t *devconfig, const char *name);
+json_t *sconfig_getdevice(DeviceConf_t *config);
 
-int config_parseconfigfile(const char *configfile, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data);
-json_t *config_getdevices(json_t *jconfig);
-int config_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data);
-
+int scommon_parseconfigfile(const char *configfile, int (*loaddevice)(void *data, const char *name, const char *type, void *config), void *data);
+json_t *scommon_getdevice(json_t *jconfig);
+int scommon_isnamed(json_t *jdevice, const char *name);
+int scommon_loaddevice(json_t *jconfig, int (*cb)(void *data, const char *name, const char *type, void *config), void *data);
 /**
  * default configuration callback for the devices
  */
 int scommon_loadconfiguration(void *arg, void *entry);
 
-int scommon_isnamed(json_t *jdevice, const char *name);
 #else
-inline int config_parseconfigfile(const char *name, const char *configfile, DeviceConf_t *devconfig) {return -1;};
+inline int scommon_parseconfigfile(const char *name, const char *configfile, DeviceConf_t *devconfig) {return -1;};
 #endif
 
 #endif

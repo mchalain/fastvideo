@@ -8,7 +8,7 @@
 #include "log.h"
 #include "sv4l2.h"
 #include "sfile.h"
-#include "config.h"
+#include "sconfig.h"
 
 int main_loop(V4L2_t *cam, File_t *file)
 {
@@ -146,10 +146,10 @@ int main(int argc, char * const argv[])
 	{
 		inconfig.parent.name = input;
 		inconfig.parent.type = "v4l2";
-		config_parseconfigfile(configfile, _config_createdevice, &inconfig.parent);
+		scommon_parseconfigfile(configfile, _config_createdevice, &inconfig.parent);
 		outconfig.parent.name = output;
 		outconfig.parent.type = "file";
-		config_parseconfigfile(configfile, _config_createdevice, &outconfig.parent);
+		scommon_parseconfigfile(configfile, _config_createdevice, &outconfig.parent);
 	}
 
 	V4L2_t *cam = sv4l2_ops.create(inconfig.device, device_input, &inconfig.parent);

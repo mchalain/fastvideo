@@ -20,7 +20,7 @@
 #include "segl.h"
 #include "sfile.h"
 #include "sdvb.h"
-#include "config.h"
+#include "sconfig.h"
 #include "unixsocket.h"
 
 #define MODE_DAEMONIZE 0x01
@@ -66,7 +66,7 @@ int _loadjsonsetting(FastVideoList_t *devices, const char *name, json_t *jentry)
 	for (FastVideoDevice_t *device = fastvideolist_next(devices);
 			device != NULL; device = fastvideolist_next(devices))
 	{
-		if (device->config && config_isnamed(device->config, name) &&
+		if (device->config && sconfig_isnamed(device->config, name) &&
 			device->ops->loadsettings && device->dev)
 		{
 			warn("loadsttings for %s", name);
@@ -306,7 +306,7 @@ int main(int argc, char * const argv[])
 	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, NULL);
 
 	FastVideoList_t *devices = NULL;
-	config_parseconfigfile(configfile, _createdevices, &devices);
+	scommon_parseconfigfile(configfile, _createdevices, &devices);
 	if (devices == NULL)
 		return -1;
 
@@ -320,11 +320,11 @@ int main(int argc, char * const argv[])
 		{
 			dbg("loadsettings");
 			device->ops->loadsettings(device->dev, device->config->entry);
-			json_t *subdevices = config_getdevices(device->config->entry);
+			json_t *subdevices = sconfig_getdevice(device->config);
 			if (subdevices != device->config->entry)
 			{
 				err("subdevices are presents");
-				config_loaddevice(subdevices, _createdevices, &devices);
+				scommon_loaddevice(subdevices, _createdevices, &devices);
 			}
 		}
 	}

@@ -17,7 +17,7 @@
 #include "segl.h"
 #include "sfile.h"
 #include "sdvb.h"
-#include "config.h"
+#include "sconfig.h"
 
 #define MODE_DAEMONIZE 0x01
 #define MODE_INITIALIZE 0x02
@@ -129,7 +129,7 @@ FastVideoDevice_t *config_createdevice(const char *name, const char *configfile)
 	FastVideo_t fastvideo = {0};
 	fastvideo.name = name;
 	if (configfile != NULL &&
-		config_parseconfigfile(configfile, _config_createdevice, &fastvideo) == 0)
+		scommon_parseconfigfile(configfile, _config_createdevice, &fastvideo) == 0)
 	{
 		device =  fastvideo.device;
 	}
@@ -138,8 +138,8 @@ FastVideoDevice_t *config_createdevice(const char *name, const char *configfile)
 
 int choice_config(DeviceConf_t *inconfig, DeviceConf_t *outconfig)
 {
-	config_mergedefinition(outconfig, inconfig);
-	config_mergedefinition(inconfig, outconfig);
+	sconfig_mergedefinition(outconfig, inconfig);
+	sconfig_mergedefinition(inconfig, outconfig);
 	dbg("input %s size %u %u", inconfig->name, inconfig->width, inconfig->height);
 	dbg("output %s size %u %u", outconfig->name, outconfig->width, outconfig->height);
 	return 0;

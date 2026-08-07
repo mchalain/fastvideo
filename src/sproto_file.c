@@ -9,7 +9,7 @@
 #include <time.h>
 
 #include "fastvideo.h"
-#include "config.h"
+#include "sconfig.h"
 #include "smpegts.h"
 #include "log.h"
 

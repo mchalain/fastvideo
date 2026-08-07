@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <linux/v4l2-subdev.h>
 
-#include "config.h"
+#include "sconfig.h"
 #include "sv4l2.h"
 
 typedef struct sv4l2_subdev_stream_s sv4l2_subdev_stream_t;

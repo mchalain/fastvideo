@@ -2,7 +2,7 @@
 #define __SDVB_H__
 
 #include "fastvideo.h"
-#include "config.h"
+#include "sconfig.h"
 
 typedef struct DVB_s DVB_t;
 

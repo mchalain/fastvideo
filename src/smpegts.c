@@ -13,7 +13,7 @@
 
 #include "fastvideo.h"
 #include "smpegts.h"
-#include "config.h"
+#include "sconfig.h"
 #include "log.h"
 
 #define MAX_BUFFERS 4

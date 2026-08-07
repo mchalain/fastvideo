@@ -664,8 +664,8 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	*pconfig = malloc(sizeof(*(dup->config)));
 	memcpy(*pconfig, dev->config, sizeof(*(dup->config)));
 	memset(&(*pconfig)->parent, 0, sizeof((*pconfig)->parent));
-	config_mergedefinition(&(*pconfig)->parent, &dev->config->transfer);
-	config_mergedefinition(&(*pconfig)->parent, &dev->config->parent);
+	sconfig_mergedefinition(&(*pconfig)->parent, &dev->config->transfer);
+	sconfig_mergedefinition(&(*pconfig)->parent, &dev->config->parent);
 	dup->config = *pconfig;
 	uint32_t width = dup->config->parent.width;
 	uint32_t height = dup->config->parent.height;
@@ -958,9 +958,9 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 		config->device = value;
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
-	config_loaddefinition(&config->parent, definition);
+	sconfig_loaddefinition(&config->parent, definition);
 	json_t *transfer = json_object_get(jconfig, "transfer");
-	config_loaddefinition(&config->transfer, transfer);
+	sconfig_loaddefinition(&config->transfer, transfer);
 	if (config->transfer.width == 0)
 		config->transfer.width = config->parent.width;
 	if (config->transfer.height == 0)

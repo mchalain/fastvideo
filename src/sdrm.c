@@ -946,8 +946,8 @@ EXT_API Display_t *sdrm_duplicate(Display_t *dev, DisplayConf_t **pconfig)
 	*pconfig = calloc(1, sizeof(**pconfig));
 	memcpy(*pconfig, dev->config, sizeof(**pconfig));
 	memset(&(*pconfig)->parent, 0, sizeof((*pconfig)->parent));
-	config_mergedefinition(&(*pconfig)->parent, &dev->config->transfer);
-	config_mergedefinition(&(*pconfig)->parent, &dev->config->parent);
+	sconfig_mergedefinition(&(*pconfig)->parent, &dev->config->transfer);
+	sconfig_mergedefinition(&(*pconfig)->parent, &dev->config->parent);
 
 	disp = calloc(1, sizeof(*disp));
 	if (!disp)
@@ -1647,9 +1647,9 @@ int sdrm_loadjsonconfiguration(void *arg, void *entry)
 		config->device = value;
 	}
 	json_t *definition = json_object_get(jconfig, "definition");
-	config_loaddefinition(&config->parent, definition);
+	sconfig_loaddefinition(&config->parent, definition);
 	json_t *transfer = json_object_get(jconfig, "transfer");
-	config_loaddefinition(&config->transfer, transfer);
+	sconfig_loaddefinition(&config->transfer, transfer);
 	if (config->transfer.width == 0)
 		config->transfer.width = config->parent.width;
 	if (config->transfer.height == 0)

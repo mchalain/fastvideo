@@ -5,7 +5,7 @@
 #include <linux/videodev2.h>
 
 #include "fastvideo.h"
-#include "config.h"
+#include "sconfig.h"
 
 #define MAX_SUBDEVS 4
 #define MAX_SUBDEVPADS 10

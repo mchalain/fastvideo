@@ -2,7 +2,7 @@
 #define __SDRM_H__
 
 #include "fastvideo.h"
-#include "config.h"
+#include "sconfig.h"
 
 #define DISPLAYCONFIG(name, defaultdevice) name = { \
 	.DEVICECONFIG(parent, sdrm_loadconfiguration), \
