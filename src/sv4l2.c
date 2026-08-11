@@ -1956,7 +1956,11 @@ static int _v4l2_loadjsontransformation(V4L2_t *dev, json_t *transformation)
 	if (width == NULL && json_is_object(bounds))
 	{
 		top = json_object_get(bounds, "top");
+		if (!top)
+			top = json_object_get(bounds, "y");
 		left = json_object_get(bounds, "left");
+		if (!left)
+			left = json_object_get(bounds, "x");
 		width = json_object_get(bounds, "width");
 		height = json_object_get(bounds, "height");
 	}
