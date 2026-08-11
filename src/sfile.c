@@ -450,6 +450,7 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 			if (mode && json_is_string(mode))
 			{
 				const char *value = json_string_value(mode);
+				config->protoconf.mode = value;
 				for (int i = 0; i < (sizeof(_protos)/sizeof(*_protos)); i++)
 				{
 					if (_protos[i] && !strcasecmp(value, _protos[i]->name))
@@ -466,6 +467,7 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 	if (modes && json_is_string(modes))
 	{
 		const char *value = json_string_value(modes);
+		config->protoconf.mode = value;
 		for (int i = 0; i < (sizeof(_protos)/sizeof(*_protos)); i++)
 		{
 			if (_protos[i] && !strcasecmp(value, _protos[i]->name))
