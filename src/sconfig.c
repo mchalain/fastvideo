@@ -14,6 +14,8 @@ static json_t *g_jconfig = NULL;
 
 int sconfig_loaddefinition(DeviceConf_t *config, json_t *definition)
 {
+	json_t *x = NULL;
+	json_t *y = NULL;
 	json_t *width = NULL;
 	json_t *height = NULL;
 	json_t *fourcc = NULL;
@@ -30,6 +32,16 @@ int sconfig_loaddefinition(DeviceConf_t *config, json_t *definition)
 			if (json_is_object(field))
 			{
 				json_t *name = json_object_get(field, "name");
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "x"))
+				{
+					x = field;
+				}
+				if (name && json_is_string(name) &&
+					!strcmp(json_string_value(name), "y"))
+				{
+					y = field;
+				}
 				if (name && json_is_string(name) &&
 					!strcmp(json_string_value(name), "width"))
 				{
@@ -65,6 +77,8 @@ int sconfig_loaddefinition(DeviceConf_t *config, json_t *definition)
 	}
 	else if (definition && json_is_object(definition))
 	{
+		x = json_object_get(definition, "x");
+		y = json_object_get(definition, "y");
 		width = json_object_get(definition, "width");
 		height = json_object_get(definition, "height");
 		fourcc = json_object_get(definition, "fourcc");
@@ -78,6 +92,14 @@ int sconfig_loaddefinition(DeviceConf_t *config, json_t *definition)
 		width = json_object_get(width, "value");
 	if (width && !config->width && json_is_integer(width))
 		config->width = json_integer_value(width);
+	if (x && json_is_object(x))
+		x = json_object_get(x, "value");
+	if (x && !config->x && json_is_integer(x))
+		config->x = json_integer_value(x);
+	if (y && json_is_object(y))
+		y = json_object_get(y, "value");
+	if (y && !config->y && json_is_integer(y))
+		config->y = json_integer_value(y);
 	if (height && json_is_object(height))
 		height = json_object_get(height, "value");
 	if (height && !config->height && json_is_integer(height))
@@ -106,6 +128,10 @@ int sconfig_loaddefinition(DeviceConf_t *config, json_t *definition)
 
 int sconfig_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src)
 {
+	if (!dest->x)
+		dest->x = src->x;
+	if (!dest->y)
+		dest->y = src->y;
 	if (!dest->width)
 		dest->width = src->width;
 	if (!dest->height)
@@ -249,6 +275,8 @@ DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *
 				opts++;
 			}
 		}
+		const char *x = NULL;
+		const char *y = NULL;
 		const char *width = NULL;
 		const char *height = NULL;
 		const char *stride = NULL;
@@ -256,11 +284,21 @@ DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *
 		const char *fps = NULL;
 		if (opts)
 		{
+			x = strstr(opts, "x=");
+			y = strstr(opts, "y=");
 			width = strstr(opts, "width=");
 			height = strstr(opts, "height=");
 			stride = strstr(opts, "stride=");
 			fourcc = strstr(opts, "fourcc=");
 			fps = strstr(opts, "fps=");
+		}
+		if (x)
+		{
+			devconfig->x = strtol(x + 2, NULL, 10);
+		}
+		if (y)
+		{
+			devconfig->y = strtol(y + 2, NULL, 10);
 		}
 		if (width)
 		{
