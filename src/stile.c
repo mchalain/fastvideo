@@ -78,8 +78,11 @@ struct STile_s
 	void *copy_ctx;
 	size_t tile_out_bytes;
 
+#ifdef DEBUG
 	size_t frame_count;
+	size_t overrun_count;
 	struct timespec last_report;
+#endif
 };
 
 EXT_API int stile_loadjsonconfiguration(void *arg, void *entry);
@@ -190,7 +193,9 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, STileConf
 			/ dev->copy_conv->resize.denominator;
 	}
 
+#ifdef DEBUG
 	clock_gettime(CLOCK_MONOTONIC, &dev->last_report);
+#endif
 
 	warn("stile: device %s using '%s' tile copy (%zu bytes/tile)",
 		config->parent.name, dev->copy_conv->name, dev->tile_out_bytes);
@@ -442,7 +447,9 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 				dup->pending++;
 				if (dup->pending > dup->nbuffers)
 				{
-					err("stile: tile ring overrun (consumer too slow), dropping oldest tile");
+#ifdef DEBUG
+					dev->overrun_count++;
+#endif
 					dup->pending = dup->nbuffers;
 				}
 			}
@@ -453,6 +460,7 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 
 	dev->curbufferid = id;
 
+#ifdef DEBUG
 	dev->frame_count++;
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
@@ -460,11 +468,13 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 		+ (now.tv_nsec - dev->last_report.tv_nsec) / 1000000;
 	if (elapsed_ms >= 1000)
 	{
-		warn("stile: %s real capture throughput: %zu frames/s (%zu tiles/s)",
-			dev->config->parent.name, dev->frame_count, dev->frame_count * dev->ntiles);
+		dbg("stile: %s real capture throughput: %zu frames/s (%zu tiles/s), %zu overrun(s)",
+			dev->config->parent.name, dev->frame_count, dev->frame_count * dev->ntiles, dev->overrun_count);
 		dev->frame_count = 0;
+		dev->overrun_count = 0;
 		dev->last_report = now;
 	}
+#endif
 	return 0;
 }
 
@@ -559,10 +569,6 @@ EXT_API int stile_loadjsonconfiguration(void *arg, void *entry)
 	json_t *transfer = json_object_get(jconfig, "transfer");
 	sconfig_loaddefinition(&config->transfer, transfer);
 
-	/* same "convert" JSON model as spassthrough.c: either
-	 * {"convert": "Name"} or {"convert": {"name": "Name"}} - resolved to
-	 * a Convert_t* right away so stile_create() can pass the real config
-	 * to ops.create() (see there for why that matters) */
 	json_t *convert = json_object_get(jconfig, "convert");
 	if (convert && json_is_object(convert))
 		convert = json_object_get(convert, "name");
