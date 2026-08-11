@@ -19,7 +19,9 @@
 #define HLS_ENTRY "#EXTINF:%ld.%ld\n"
 #define HLS_FOOTER "#EXT-X-ENDLIST\n"
 
-#define Proto_FILE_Hls 0x010001
+#define Proto_FILE_Hls 0x010000
+#define Proto_FILE_Static 0x020000
+#define Proto_FILE_Loop 0x030000
 typedef struct Proto_FILE_s Proto_FILE_t;
 struct Proto_FILE_s
 {
@@ -88,7 +90,11 @@ static void *proto_create(Proto_Config_t *config)
 	proto->config = config;
 	proto->mtu = mtu;
 	proto->rootfd = rootfd;
-	if (config->mode && !strncasecmp(config->mode, "hls", 3))
+	if (config->mode && strstr(config->mode, "static"))
+		proto->mode |= Proto_FILE_Static;
+	if (config->mode && strstr(config->mode, "loop"))
+		proto->mode |= Proto_FILE_Loop;
+	if (config->mode && strstr(config->mode, "hls"))
 		proto->mode |= Proto_FILE_Hls;
 	if (proto->mode & Proto_FILE_Hls)
 	{
@@ -151,6 +157,7 @@ static int proto_connect_fifo(void *arg)
 	if (proto->fd[0] < 0)
 		return -1;
 	proto->currentfd = 0;
+	proto->mode &= ~Proto_FILE_Static;
 	return 0;
 }
 
@@ -214,6 +221,13 @@ static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 
 	if(proto->currentfd >= 0)
 		ret = read(proto->fd[proto->currentfd], buf, len);
+	if (ret > 0 && proto->mode & Proto_FILE_Static)
+		lseek(proto->fd[proto->currentfd], 0, SEEK_SET);
+	if (ret == 0 && proto->mode & Proto_FILE_Loop)
+	{
+		lseek(proto->fd[proto->currentfd], 0, SEEK_SET);
+		ret = read(proto->fd[proto->currentfd], buf, len);
+	}
 	return ret;
 }
 
