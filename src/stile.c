@@ -14,6 +14,8 @@
 #include "sdmabuf.h"
 #include "spassthrough.h"
 
+#define MODE_MASTER 0x10
+
 /*
  * Splits a full video frame into several tiles
  */
@@ -231,14 +233,6 @@ static void _stile_createtilebuffers(STile_t *dup, int nframes, uint32_t ntiles)
 	dup->buffers = calloc(nslots, sizeof(*dup->buffers));
 	dup->mems = calloc(nslots, sizeof(*dup->mems));
 
-	/*
-	 * try to back the whole ring with dma_buf so the next stage (e.g.
-	 * shailo10h.cpp) can import it via buf_type_dmabuf instead of a plain
-	 * host-memory copy - HailoRT can then DMA straight from these tiles.
-	 * All-or-nothing: fall back to malloc for the entire ring the moment
-	 * the first allocation fails (no dma-heap on this system/permission
-	 * issue), rather than mixing buffer kinds within one ring.
-	 */
 	int fd0 = sdmabuf_create(stile_name, tile_bytes);
 	int use_dmabuf = (fd0 > 0);
 	if (use_dmabuf)
@@ -257,7 +251,6 @@ static void _stile_createtilebuffers(STile_t *dup, int nframes, uint32_t ntiles)
 				use_dmabuf = 0;
 				free(dup->dmabufs);
 				dup->dmabufs = NULL;
-				/* re-do already-allocated slots as malloc below */
 				for (int j = 0; j < i; j++)
 				{
 					sdmabuf_unmap(dup->buffers[j].mem, tile_bytes);
@@ -309,7 +302,7 @@ EXT_API int stile_requestbuffer(STile_t *dev, enum buf_type_e t, ...)
 				dev->buffers[i].mem = targets[i];
 				dev->buffers[i].size = size;
 			}
-			if (dev->dup)
+			if (dev->dup && (dev->dup->config->passconfig.mode & MODE_MASTER))
 				_stile_createtilebuffers(dev->dup, ntargets, dev->ntiles);
 			ret = 0;
 		}
@@ -336,13 +329,12 @@ EXT_API int stile_requestbuffer(STile_t *dev, enum buf_type_e t, ...)
 					break;
 				}
 			}
-			if (dev->dup)
+			if (dev->dup && (dev->dup->config->passconfig.mode & MODE_MASTER))
 				_stile_createtilebuffers(dev->dup, ntargets, dev->ntiles);
 		}
 		break;
 		case buf_type_memory_master:
 		{
-			/* dup dev: export our own tile buffers to the next stage */
 			if (!dev->buffers || !dev->mems)
 				break;
 			int *ntargets = va_arg(ap, int *);
@@ -359,13 +351,6 @@ EXT_API int stile_requestbuffer(STile_t *dev, enum buf_type_e t, ...)
 		break;
 		case buf_type_dmabuf_master:
 		{
-			/* dup dev: export our own dma_buf-backed tile buffers, so the
-			 * next stage (e.g. shailo10h.cpp) can import them as buf_type_dmabuf
-			 * instead of a plain host-memory pointer. Only advertised when
-			 * the ring actually got dma_buf-backed (see
-			 * _stile_createtilebuffers); returning -1 here makes
-			 * fastvideo.c's negotiation ladder fall back to
-			 * buf_type_memory_master transparently. */
 			if (!dev->buffers || !dev->dmabufs)
 				break;
 			int *ntargets = va_arg(ap, int *);
@@ -598,6 +583,10 @@ EXT_API int stile_loadjsonconfiguration(void *arg, void *entry)
 	{
 		config->ntiles = json_integer_value(ntiles);
 	}
+	json_t *jmaster = json_object_get(jconfig, "master");
+	if (jmaster && json_is_true(jmaster))
+		passconfig->mode |= MODE_MASTER;
+
 	return 0;
 }
 
