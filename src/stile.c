@@ -14,6 +14,8 @@
 #include "sdmabuf.h"
 #include "spassthrough.h"
 
+#define STILE_CHECK_BUFFER 0
+
 #define MODE_MASTER 0x10
 
 /*
@@ -153,6 +155,11 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, STileConf
 		dev->ntiles_y = dev->src_height / dev->dst_height;
 		dev->tile_yoff = (dev->src_height - dev->ntiles_y * dev->dst_height) / 2;
 	}
+	if (config->ntiles && config->ntiles < (dev->ntiles_x * dev->ntiles_y) && config->ntiles < dev->ntiles_x)
+	{
+		dev->ntiles_x = config->ntiles;
+		dev->ntiles_y = 1;
+	}
 	dev->ntiles = dev->ntiles_x * dev->ntiles_y;
 	if (dev->ntiles == 0)
 	{
@@ -161,17 +168,7 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, STileConf
 		free(dev);
 		return NULL;
 	}
-	if (config->ntiles && config->ntiles < dev->ntiles && config->ntiles < dev->ntiles_x)
-	{
-		dev->ntiles_x = config->ntiles;
-		dev->ntiles_y = 1;
-	}
 
-	/* real config passed (not NULL): a converter that needs to inspect
-	 * config->parent.fourcc to pick its actual behaviour (e.g.
-	 * BG10toR16's bayer order) can now do so correctly, and cleanly
-	 * rejects a fourcc it doesn't support by returning NULL here instead
-	 * of being called blind and crashing */
 	dev->copy_conv = passconfig->convert;
 	dev->copy_ctx = dev->copy_conv->ops.create(passconfig);
 	if (!dev->copy_ctx)
@@ -201,6 +198,7 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, STileConf
 		config->parent.name, dev->copy_conv->name, dev->tile_out_bytes);
 	warn("stile: device %s ready, %ux%u source -> %u tile(s) of %ux%u",
 		config->parent.name, dev->src_width, dev->src_height, dev->ntiles, dev->dst_width, dev->dst_height);
+	warn("stile: tilling %dx%d tiles", dev->ntiles_x, dev->ntiles_y);
 	return dev;
 }
 
@@ -211,6 +209,7 @@ EXT_API void *stile_duplicate(STile_t *dev, STileConf_t **pconfig)
 		err("stile: device may not be duplicated");
 		return NULL;
 	}
+	dev->type = device_output;
 	STile_t *dup = calloc(1, sizeof(*dup));
 	dup->type = device_input;
 	dup->curbufferid = -1;
@@ -394,17 +393,14 @@ EXT_API int stile_stop(STile_t *dev)
 
 EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int flags)
 {
-	if (dev->type == device_input)
+	if (dev->type != device_output)
 	{
-		/* buffer hand-back from the downstream stage's reverse pass
-		 * (main_transferbuffer's recycling call) - our own ring bookkeeping
-		 * in dequeue() already tracks free/filled slots, nothing to do. */
+		if (id < 0 || id >= dev->nbuffers)
+		{
+			err("stile: unknown buffer id %d to push back", id);
+			return -1;
+		}
 		return 0;
-	}
-	if (dev->type != device_transfer)
-	{
-		err("stile: bad device for queue");
-		return -1;
 	}
 	if (id < 0 || id >= dev->nbuffers)
 	{
@@ -426,9 +422,31 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 		{
 			for (uint32_t tx = 0; tx < dev->ntiles_x; tx++)
 			{
+				int slot = dup->writeid;
+				if (dup->buffers[slot].state != STile_free_e)
+				{
+					err("stile: too slow");
+					errno = EAGAIN;
+					return -1;
+				}
 				uint32_t x0 = tx * dev->dst_width;
 				uint32_t y0 = dev->tile_yoff + ty * dev->dst_height;
-				int slot = dup->writeid % dup->nbuffers;
+#if STILE_CHECK_BUFFER
+				if (!dup->buffers[slot].mem || dup->buffers[slot].size < dev->tile_out_bytes)
+				{
+					/* the "convert" copy below trusts dup->buffers[slot] to
+					 * be a real, correctly-sized allocation - it isn't
+					 * always: when the downstream stage ends up importing
+					 * ITS OWN too-small/unallocated buffers into this ring
+					 * (e.g. a buffer-master negotiation that didn't
+					 * actually size them for a tile), writing
+					 * dev->tile_out_bytes into them corrupts the heap
+					 * instead of failing cleanly. Catch it here instead. */
+					err("stile: %s output tile buffer %d not usable (size %zu, need %zu)",
+						dev->config->parent.name, slot, dup->buffers[slot].size, dev->tile_out_bytes);
+					return -1;
+				}
+#endif
 				uint8_t *d = (uint8_t *)dup->buffers[slot].mem;
 				if (dup->buffers[slot].dmabuf)
 					sdmabuf_sync(dup->buffers[slot].dmabuf, 1);
@@ -444,6 +462,7 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 				dup->buffers[slot].bytesused = dev->tile_out_bytes;
 				dup->buffers[slot].state = STile_fill_e;
 				dup->writeid++;
+				dup->writeid %= dup->nbuffers;
 				dup->pending++;
 				if (dup->pending > dup->nbuffers)
 				{
@@ -488,8 +507,8 @@ EXT_API int stile_dequeue(STile_t *dev, void **mem, size_t *bytesused, int *flag
 			errno = EAGAIN;
 			return -1;
 		}
-		int slot = dev->readid % dev->nbuffers;
-		STileBuffer_t *buffer = &dev->buffers[slot];
+		int id = dev->readid;
+		STileBuffer_t *buffer = &dev->buffers[id];
 		if (mem)
 			*mem = buffer->mem;
 		if (bytesused)
@@ -498,8 +517,9 @@ EXT_API int stile_dequeue(STile_t *dev, void **mem, size_t *bytesused, int *flag
 			*flags = 0;
 		buffer->state = STile_free_e;
 		dev->readid++;
+		dev->readid  %= dev->nbuffers;
 		dev->pending--;
-		return slot;
+		return id;
 	}
 
 	if (dev->curbufferid == -1)
