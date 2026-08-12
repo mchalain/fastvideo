@@ -5,6 +5,8 @@
 #include <stdarg.h>
 #include <dlfcn.h>
 #include <time.h>
+#include <unistd.h>
+#include <sys/eventfd.h>
 
 #include <jansson.h>
 
@@ -59,7 +61,7 @@ struct STile_s
 	FrameBuffer_t *buffers;
 	void **mems;
 	int *dmabufs;
-	int curbufferid;
+	FrameBuffer_t *curbuffer;
 	int writeid;
 	int readid;
 	int pending;
@@ -68,6 +70,8 @@ struct STile_s
 	const Convert_t *copy_conv;
 	void *copy_ctx;
 	size_t tile_out_bytes;
+
+	int completion_fd;
 
 #ifdef DEBUG
 	size_t frame_count;
@@ -125,7 +129,9 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, STileConf
 	STile_t *dev = calloc(1, sizeof(*dev));
 	dev->type = type;
 	dev->config = config;
-	dev->curbufferid = -1;
+	dev->completion_fd = eventfd(0, EFD_NONBLOCK);
+	if (dev->completion_fd < 0)
+		warn("stile: %s eventfd creation failed %m, falling back to unconditional polling", dev->config->parent.name);
 	dev->src_width = config->parent.width;
 	dev->src_height = config->parent.height;
 	dev->ntiles_x = 2;
@@ -201,7 +207,7 @@ EXT_API void *stile_duplicate(STile_t *dev, STileConf_t **pconfig)
 	dev->type = device_output;
 	STile_t *dup = calloc(1, sizeof(*dup));
 	dup->type = device_input;
-	dup->curbufferid = -1;
+	dup->completion_fd = -1;
 	dup->ntiles = dev->ntiles;
 	dup->tile_out_bytes = dev->tile_out_bytes;
 	dev->dup = dup;
@@ -306,6 +312,12 @@ static void _stile_createtilebuffers(STile_t *dup, int nframes, uint32_t ntiles)
 	dup->pending = 0;
 }
 
+static void _stile_linkring(FrameBuffer_t *buffers, int n)
+{
+	for (int i = 0; i < n; i++)
+		buffers[i].next = &buffers[(i + 1) % n];
+}
+
 EXT_API int stile_requestbuffer(STile_t *dev, enum buf_type_e t, ...)
 {
 	int ret = -1;
@@ -327,6 +339,7 @@ EXT_API int stile_requestbuffer(STile_t *dev, enum buf_type_e t, ...)
 				dev->buffers[i].mem = targets[i];
 				dev->buffers[i].size = size;
 			}
+			_stile_linkring(dev->buffers, ntargets);
 			if (dev->dup && (dev->dup->config->passconfig.mode & MODE_MASTER))
 				_stile_createtilebuffers(dev->dup, ntargets, dev->ntiles);
 			ret = 0;
@@ -354,6 +367,7 @@ EXT_API int stile_requestbuffer(STile_t *dev, enum buf_type_e t, ...)
 					break;
 				}
 			}
+			_stile_linkring(dev->buffers, ntargets);
 			if (dev->dup && (dev->dup->config->passconfig.mode & MODE_MASTER))
 				_stile_createtilebuffers(dev->dup, ntargets, dev->ntiles);
 		}
@@ -399,11 +413,15 @@ EXT_API int stile_requestbuffer(STile_t *dev, enum buf_type_e t, ...)
 
 EXT_API int stile_fd(STile_t *dev, int writer)
 {
+	if (dev->type == device_output && writer != 1)
+		return dev->completion_fd;
 	return -1;
 }
 
 EXT_API int stile_start(STile_t *dev)
 {
+	if (dev->type == device_output)
+		dev->curbuffer = &dev->buffers[0];
 	return 0;
 }
 
@@ -490,7 +508,12 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 			sdmabuf_sync(src_dmabuf, 0);
 	}
 
-	dev->curbufferid = id;
+	dev->buffers[id].state = ready;
+	if (dev->completion_fd >= 0)
+	{
+		uint64_t one = 1;
+		(void)write(dev->completion_fd, &one, sizeof(one));
+	}
 
 #ifdef DEBUG
 	dev->frame_count++;
@@ -535,17 +558,24 @@ EXT_API int stile_dequeue(STile_t *dev, void **mem, size_t *bytesused, int *flag
 		return id;
 	}
 
-	if (dev->curbufferid == -1)
+	FrameBuffer_t *buffer = dev->curbuffer;
+	if (buffer->state != ready)
 	{
 		errno = EAGAIN;
 		return -1;
 	}
-	int id = dev->curbufferid;
-	dev->curbufferid = -1;
+	if (dev->completion_fd >= 0)
+	{
+		uint64_t val;
+		(void)read(dev->completion_fd, &val, sizeof(val));
+	}
+	buffer->state = dequeued;
+	int id = buffer->id;
+	dev->curbuffer = buffer->next;
 	if (mem)
-		*mem = dev->buffers[id].mem;
+		*mem = buffer->mem;
 	if (bytesused)
-		*bytesused = dev->buffers[id].size;
+		*bytesused = buffer->size;
 	return id;
 }
 
@@ -556,6 +586,8 @@ EXT_API void stile_destroy(STile_t *dev)
 	_stile_destroytilebuffers(dev);
 	if (dev->config)
 		free(dev->config);
+	if (dev->completion_fd >= 0)
+		close(dev->completion_fd);
 	free(dev);
 }
 
