@@ -24,17 +24,6 @@
 
 static const char stile_name[] = "tile";
 
-typedef struct STileBuffer_s STileBuffer_t;
-struct STileBuffer_s
-{
-	int id;
-	void *mem;
-	int dmabuf;
-	size_t size;
-	size_t bytesused;
-	enum { STile_free_e, STile_fill_e } state;
-};
-
 typedef struct STileConf_s STileConf_t;
 struct STileConf_s
 {
@@ -67,7 +56,7 @@ struct STile_s
 	int using_dmabuf;
 
 	int nbuffers;
-	STileBuffer_t *buffers;
+	FrameBuffer_t *buffers;
 	void **mems;
 	int *dmabufs;
 	int curbufferid;
@@ -229,6 +218,41 @@ EXT_API void *stile_duplicate(STile_t *dev, STileConf_t **pconfig)
 	return dup;
 }
 
+static void _stile_destroytilebuffers(STile_t *dev)
+{
+	if (!dev->buffers)
+		return;
+	/**
+	 * dev->mems is NULL if buffers come from the other part of the pipe
+	 */
+	if (!dev->mems)
+		return;
+	for (int i = 0; i < dev->nbuffers; i++)
+	{
+		if (dev->buffers[i].dma_buf)
+		{
+			sdmabuf_unmap(dev->buffers[i].mem, dev->buffers[i].size);
+			dev->buffers[i].mem = NULL;
+			sdmabuf_destroy(dev->buffers[i].dma_buf);
+			dev->buffers[i].dma_buf = 0;
+		}
+		if (dev->buffers[i].mem)
+		{
+			free(dev->buffers[i].mem);
+			dev->buffers[i].mem = NULL;
+		}
+	}
+	if (dev->dmabufs)
+	{
+		free(dev->dmabufs);
+		dev->dmabufs = NULL;
+	}
+	free(dev->mems);
+	dev->mems = NULL;
+	free(dev->buffers);
+	dev->buffers = NULL;
+}
+
 static void _stile_createtilebuffers(STile_t *dup, int nframes, uint32_t ntiles)
 {
 	int nslots = nframes * (int)ntiles;
@@ -246,28 +270,25 @@ static void _stile_createtilebuffers(STile_t *dup, int nframes, uint32_t ntiles)
 	{
 		dup->buffers[i].id = i;
 		dup->buffers[i].size = tile_bytes;
+		if (i > 0)
+			dup->buffers[i - 1].next = &dup->buffers[i];
+		dup->buffers[i].next = &dup->buffers[0];
 		if (use_dmabuf)
 		{
 			int fd = (i == 0) ? fd0 : sdmabuf_create(stile_name, tile_bytes);
 			if (fd <= 0)
 			{
 				err("stile: dma_buf allocation failed for tile slot %d, falling back to malloc for the whole ring", i);
+				_stile_destroytilebuffers(dup);
+				dup->buffers = calloc(nslots, sizeof(*dup->buffers));
+				dup->mems = calloc(nslots, sizeof(*dup->mems));
 				use_dmabuf = 0;
-				free(dup->dmabufs);
-				dup->dmabufs = NULL;
-				for (int j = 0; j < i; j++)
-				{
-					sdmabuf_unmap(dup->buffers[j].mem, tile_bytes);
-					sdmabuf_destroy(dup->buffers[j].dmabuf);
-					dup->buffers[j].dmabuf = 0;
-					dup->buffers[j].mem = malloc(tile_bytes);
-					dup->mems[j] = dup->buffers[j].mem;
-				}
-				dup->buffers[i].mem = malloc(tile_bytes);
+				i = -1;
+				continue;
 			}
 			else
 			{
-				dup->buffers[i].dmabuf = fd;
+				dup->buffers[i].dma_buf = fd;
 				dup->buffers[i].mem = sdmabuf_map(fd, tile_bytes, 1);
 				dup->dmabufs[i] = fd;
 			}
@@ -324,7 +345,7 @@ EXT_API int stile_requestbuffer(STile_t *dev, enum buf_type_e t, ...)
 			{
 				dev->buffers[i].id = i;
 				dev->buffers[i].size = size;
-				dev->buffers[i].dmabuf = targets[i];
+				dev->buffers[i].dma_buf = targets[i];
 				dev->buffers[i].mem = sdmabuf_map(targets[i], size, 0);
 				if (dev->buffers[i].mem == (void *)(long)-1)
 				{
@@ -409,7 +430,7 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 	}
 	if (!mem)
 		mem = dev->buffers[id].mem;
-	int src_dmabuf = dev->using_dmabuf ? dev->buffers[id].dmabuf : 0;
+	int src_dmabuf = dev->using_dmabuf ? dev->buffers[id].dma_buf : 0;
 
 	STile_t *dup = dev->dup;
 	if (dup && dup->nbuffers > 0)
@@ -423,7 +444,7 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 			for (uint32_t tx = 0; tx < dev->ntiles_x; tx++)
 			{
 				int slot = dup->writeid;
-				if (dup->buffers[slot].state != STile_free_e)
+				if (dup->buffers[slot].state == ready)
 				{
 					err("stile: too slow");
 					errno = EAGAIN;
@@ -434,33 +455,25 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 #if STILE_CHECK_BUFFER
 				if (!dup->buffers[slot].mem || dup->buffers[slot].size < dev->tile_out_bytes)
 				{
-					/* the "convert" copy below trusts dup->buffers[slot] to
-					 * be a real, correctly-sized allocation - it isn't
-					 * always: when the downstream stage ends up importing
-					 * ITS OWN too-small/unallocated buffers into this ring
-					 * (e.g. a buffer-master negotiation that didn't
-					 * actually size them for a tile), writing
-					 * dev->tile_out_bytes into them corrupts the heap
-					 * instead of failing cleanly. Catch it here instead. */
 					err("stile: %s output tile buffer %d not usable (size %zu, need %zu)",
 						dev->config->parent.name, slot, dup->buffers[slot].size, dev->tile_out_bytes);
 					return -1;
 				}
 #endif
 				uint8_t *d = (uint8_t *)dup->buffers[slot].mem;
-				if (dup->buffers[slot].dmabuf)
-					sdmabuf_sync(dup->buffers[slot].dmabuf, 1);
+				if (dup->buffers[slot].dma_buf)
+					sdmabuf_sync(dup->buffers[slot].dma_buf, 1);
 				size_t stride = dev->dst_width * dev->copy_conv->bpp;
 				for (uint32_t row = 0; row < dev->dst_height; row++)
 				{
 					const uint8_t *s = src + ((size_t)(y0 + row) * srcw + x0) * dev->copy_conv->bpp;
-					size_t written = dev->copy(dev,	(const char *)s, (char *)d, stride);
+					size_t written = dev->copy(dev, (const char *)s, (char *)d, stride);
 					d += written;
 				}
-				if (dup->buffers[slot].dmabuf)
-					sdmabuf_sync(dup->buffers[slot].dmabuf, 0);
+				if (dup->buffers[slot].dma_buf)
+					sdmabuf_sync(dup->buffers[slot].dma_buf, 0);
 				dup->buffers[slot].bytesused = dev->tile_out_bytes;
-				dup->buffers[slot].state = STile_fill_e;
+				dup->buffers[slot].state = ready;
 				dup->writeid++;
 				dup->writeid %= dup->nbuffers;
 				dup->pending++;
@@ -508,14 +521,14 @@ EXT_API int stile_dequeue(STile_t *dev, void **mem, size_t *bytesused, int *flag
 			return -1;
 		}
 		int id = dev->readid;
-		STileBuffer_t *buffer = &dev->buffers[id];
+		FrameBuffer_t *buffer = &dev->buffers[id];
 		if (mem)
 			*mem = buffer->mem;
 		if (bytesused)
 			*bytesused = buffer->bytesused;
 		if (flags)
 			*flags = 0;
-		buffer->state = STile_free_e;
+		buffer->state = dequeued;
 		dev->readid++;
 		dev->readid  %= dev->nbuffers;
 		dev->pending--;
@@ -538,40 +551,9 @@ EXT_API int stile_dequeue(STile_t *dev, void **mem, size_t *bytesused, int *flag
 
 EXT_API void stile_destroy(STile_t *dev)
 {
-	if (dev->type == device_transfer)
-	{
-		if (dev->copy_conv && dev->copy_conv->ops.destroy)
-			dev->copy_conv->ops.destroy(dev->copy_ctx);
-		if (dev->using_dmabuf)
-		{
-			for (int i = 0; i < dev->nbuffers; i++)
-				if (dev->buffers[i].mem)
-					sdmabuf_unmap(dev->buffers[i].mem, dev->buffers[i].size);
-		}
-	}
-	else
-	{
-		for (int i = 0; i < dev->nbuffers; i++)
-		{
-			if (dev->dmabufs)
-			{
-				if (dev->buffers[i].mem)
-					sdmabuf_unmap(dev->buffers[i].mem, dev->buffers[i].size);
-				if (dev->buffers[i].dmabuf)
-					sdmabuf_destroy(dev->buffers[i].dmabuf);
-			}
-			else
-			{
-				free(dev->buffers[i].mem);
-			}
-		}
-		if (dev->mems)
-			free(dev->mems);
-		if (dev->dmabufs)
-			free(dev->dmabufs);
-	}
-	if (dev->buffers)
-		free(dev->buffers);
+	if (dev->copy_conv && dev->copy_conv->ops.destroy)
+		dev->copy_conv->ops.destroy(dev->copy_ctx);
+	_stile_destroytilebuffers(dev);
 	if (dev->config)
 		free(dev->config);
 	free(dev);
