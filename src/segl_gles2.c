@@ -542,7 +542,7 @@ static GLProgram_t *glprog_create(EGLConfig_Program_t *config, uint32_t width, u
 	}
 #if GLES2_ENABLE_DEBUGMESSAGES && defined(DEBUG)
 	/// disable traces about the copy from dma_buf linear to tiled memory of the GPU
-	int ids[1] = {1};
+	unsigned int ids[1] = {1};
 	glDebugMessageControlKHR(GL_DEBUG_SOURCE_API_KHR, GL_DEBUG_TYPE_PERFORMANCE_KHR, GL_DONT_CARE, 1, ids, GL_FALSE);
 	glEnable(GL_DEBUG_OUTPUT_KHR);
 	glDebugMessageCallbackKHR(_glprog_messagecb, 0);
@@ -1490,15 +1490,10 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform)
 {
-	if (!(uniform->type & Uniform_SHARED_e))
+	if (!(uniform->type & Uniform_SHARED_e) &&
+		!(uniform->type & Uniform_FUNC_e))
 	{
-		switch (uniform->type)
-		{
-			case Uniform_FUNC_e:
-			break;
-			default:
-				free(uniform->value);
-		}
+		free(uniform->value);
 	}
 	free(uniform);
 }
