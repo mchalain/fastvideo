@@ -882,6 +882,21 @@ DeviceConf_t * segl_createconfig(const char *name)
 #endif
 	devconfig->export = NULL;
 	devconfig->native = _natives[0];
+	const char *program = strstr(name, "program=");
+	if (program)
+	{
+		devconfig->program = program + 8;
+	}
+	const char *native = strstr(name, "native=");
+	if (native != NULL)
+	{
+		for (int i = 0; i < (sizeof(_natives) / sizeof(*_natives)); i++)
+		{
+			if (_natives[i] && strstr(native + 7, _natives[i]->name) != NULL)
+				devconfig->native = _natives[i];
+		}
+		dbg("segl: config %s", devconfig->native->name);
+	}
 	if (strstr(name, "noprogram") != NULL)
 		devconfig->mode |= SEGL_NOPROGRAM;
 	return (DeviceConf_t *)devconfig;
@@ -921,21 +936,37 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	const EGLProg_ops_t *prog_ops = _prog_ops[0];
 	json_t *jengine = json_object_get(jconfig, "engine");
 	json_t *jprograms = json_object_get(jconfig, "programs");
-	for (int i = 0; i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
+	if (config->program && jprograms && json_is_array(jprograms))
+	{
+		json_t *jprogram = NULL;
+		int i = 0;
+		json_array_foreach(jprograms, i, jprogram)
+		{
+			json_t *name = json_object_get(jprogram, "name");
+			if (name == NULL || strstr(config->program, json_string_value(name)) == NULL)
+				continue;
+			json_t *disable = json_object_get(jprogram, "disable");
+			if (disable && json_is_true(disable))
+			{
+				json_object_set(jprogram, "disable", json_false());
+			}
+		}
+	}
+	for (int i = 0; !(config->mode & SEGL_NOPROGRAM) && i < sizeof(_prog_ops)/sizeof(*_prog_ops); i++)
 	{
 		if (_prog_ops[i])
 		{
 			if (jengine && json_is_string(jengine) &&
 				strcmp(json_string_value(jengine), _prog_ops[i]->name))
 				continue;
-			if (!(config->mode & SEGL_NOPROGRAM) &&
-				_prog_ops[i]->loadjsonconfiguration(&config->programs, jprograms))
+			if (_prog_ops[i]->loadjsonconfiguration(&config->programs, jprograms))
 				continue;
 			prog_ops = _prog_ops[i];
 			break;
 		}
 	}
-	config->prog_ops = prog_ops;
+	if (config->prog_ops == NULL)
+		config->prog_ops = prog_ops;
 
 	json_t *native = json_object_get(jconfig, "native");
 	if (native && json_is_array(native))
@@ -946,7 +977,7 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 	{
 		const char *value = json_string_value(native);
 		const EGLNative_t *native = _segl_get_native(value);
-		if (native != NULL)
+		if (native != NULL && config->native == _natives[0])
 		{
 			config->native = native;
 		}

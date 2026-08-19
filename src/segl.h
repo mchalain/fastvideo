@@ -72,6 +72,7 @@ struct EGLConfig_s
 	const EGLNative_t *native;
 	const char *device;
 	const EGLProg_ops_t *prog_ops;
+	const char *program;
 	EGLConfig_Program_t *programs;
 	const EGLExport_t *export;
 	int type;
