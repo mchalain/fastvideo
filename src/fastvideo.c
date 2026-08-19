@@ -421,7 +421,7 @@ int main(int argc, char * const argv[])
 	const char *owner = NULL;
 	const char *pidfile= NULL;
 	const char *configfile = NULL;
-	const char *logfile = "-";
+	const char *logfile = NULL;
 	const char *cwd = PKG_DATADIR;
 	FastVideoList_t *pipes = NULL;
 	FastVideoPipe_t *pipe = NULL;
@@ -462,18 +462,8 @@ int main(int argc, char * const argv[])
 		}
 	} while(opt != -1);
 
-	if (strcmp(logfile,"-"))
-	{
-		int logfd = open(logfile, O_WRONLY | O_CREAT | O_TRUNC, 00644);
-		if (logfd > 0)
-		{
-			dup2(logfd, 1);
-			dup2(logfd, 2);
-			close(logfd);
-		}
-		else
-			err("log file error %m");
-	}
+	if (logfile)
+		daemon_setlogfile(logfile);
 
 	if (cwd  && chdir(cwd) != 0)
 		err("main: working directory %m");
@@ -568,7 +558,7 @@ int main(int argc, char * const argv[])
 		verbose_warn("pipe %s => %s ready", input->config->name, output->config->name);
 	}
 
-	daemonize((_mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, NULL);
+	daemonize((_mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, NULL, pidfile, owner, NULL);
 
 	if ((_mode & MODE_INITIALIZE) == 0)
 		main_loop(pipes);

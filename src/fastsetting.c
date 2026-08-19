@@ -290,20 +290,7 @@ int main(int argc, char * const argv[])
 	if (cwd  && chdir(cwd) != 0)
 		err("main: working directory %m");
 
-	if (strcmp(logfile,"-"))
-	{
-		int logfd = open(logfile, O_WRONLY | O_CREAT | O_TRUNC, 00644);
-		if (logfd > 0)
-		{
-			dup2(logfd, 1);
-			dup2(logfd, 2);
-			close(logfd);
-		}
-		else
-			err("log file error %m");
-	}
-
-	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, NULL);
+	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, logfile, pidfile, owner, NULL);
 
 	FastVideoList_t *devices = NULL;
 	scommon_parseconfigfile(configfile, _createdevices, &devices);
