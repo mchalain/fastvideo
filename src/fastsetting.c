@@ -257,7 +257,7 @@ int main(int argc, char * const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "j:J:s:L:W:IDP:");
+		opt = getopt(argc, argv, "j:J:s:L:W:IDP:l:");
 		switch (opt)
 		{
 			case 'j':
