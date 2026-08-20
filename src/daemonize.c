@@ -103,6 +103,8 @@ int daemon_setlogfile(const char *logfile)
 			err("log file error %m");
 		}
 	}
+	else
+		return 0;
 	return (logfd == -1);
 }
 

@@ -233,19 +233,25 @@ static int proto_connect_client(void *arg)
 
 static int proto_connect_server(void *arg)
 {
+	int ret = -1;
 	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
 	if (proto->serverfd == -1)
 		return -1;
 
-	/// this is currently a blocked socket
+	/// the listening socket is non-blocking (see _proto_create()) - this
+	/// polls for a pending client, it never waits for one.
 	proto->clientfd = accept(proto->serverfd, NULL, 0);
-	if (proto->clientfd > 0)
+	if (proto->clientfd < 0)
 	{
-		int flags = fcntl(proto->clientfd, F_GETFL, 0);
-		fcntl(proto->clientfd, F_SETFL, flags | O_NONBLOCK);
-		warn("tcp: new connection");
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+			return 0;
+		err("tcp: error on client connection %m");
+		return -1;
 	}
-	if (proto->clientfd > 0 && proto->mode & Proto_TCP_Http)
+	int flags = fcntl(proto->clientfd, F_GETFL, 0);
+	ret = fcntl(proto->clientfd, F_SETFL, flags | O_NONBLOCK);
+	warn("tcp: new connection");
+	if (proto->mode & Proto_TCP_Http)
 	{
 		const char buf[] = "HTTP/1.1 200 OK\r\n\
 Server: "PACKAGE_NAME"/"PACKAGE_VERSION"\r\n\
@@ -263,11 +269,11 @@ Connection: Close\r\n\
 		setsockopt(proto->clientfd, IPPROTO_TCP, TCP_NODELAY, (char *) &sflag, sizeof(int));
 		size_t len = sizeof(buf);
 		int flags = MSG_NOSIGNAL;
-		int ret = send(proto->clientfd, buf, len, flags);
+		ret = send(proto->clientfd, buf, len, flags);
 		if (ret > 0)
 			warn("tcp: send HTTP response");
 	}
-	return 0;
+	return ret;
 }
 
 static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t flags)

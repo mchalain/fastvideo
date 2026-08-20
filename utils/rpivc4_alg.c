@@ -298,7 +298,7 @@ void help(void)
 
 int main(int argc, char *const argv[])
 {
-	const char *logfile = "-";
+	const char *logfile = NULL;
 	const char *rootfs = NULL;
 	const char *pidfile= NULL;
 	const char *owner= NULL;
@@ -355,19 +355,7 @@ int main(int argc, char *const argv[])
 		exit(0);
 	}
 
-	if (strcmp(logfile,"-"))
-	{
-		int logfd = open(logfile, O_WRONLY | O_CREAT | O_TRUNC, 00644);
-		if (logfd > 0)
-		{
-			dup2(logfd, 1);
-			dup2(logfd, 2);
-			close(logfd);
-		}
-		else
-			err("rpivc4_alg: slog file error %m");
-	}
-	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, pidfile, owner, rootfs);
+	daemonize((mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, logfile, pidfile, owner, rootfs);
 
 	void *statisticsfd = NULL;
 	statisticsfd = _fifo_open(AT_FDCWD, statistics, 0644);
