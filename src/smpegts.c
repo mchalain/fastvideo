@@ -1079,7 +1079,9 @@ EXT_API int mpegts_dequeue(Dev_t *dev, void **mem, size_t *bytesused, int *flags
 EXT_API int mpegts_start(Dev_t *dev)
 {
 	dev->currentid = 0;
-	return dev->proto->connect(dev->protoctx);
+	if (dev->proto->connect(dev->protoctx) == -1)
+		warn("mpegts: initial connect failed, will retry every %u frames", dev->config->maxframes);
+	return 0;
 }
 
 EXT_API int mpegts_stop(Dev_t *dev)
