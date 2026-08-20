@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "fastvideo.h"
 #include "sconfig.h"
+#include "spassthrough.h"
 
 #define FILECONFIG(config, ...) config = { \
 	.DEVICECONFIG(parent, config, sfile_loadconfiguration), \
@@ -33,6 +34,7 @@ struct FileConfig_s
 		File_Input_e = 0x01,
 		File_Output_e = 0x02,
 	} direction;
+	Convert_t *convert;
 };
 
 typedef struct File_s File_t;

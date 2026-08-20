@@ -44,9 +44,36 @@ struct File_s
 	int lastbufferid;
 	char header[128];
 	size_t headerlen;
+	Convert_t *convert;
+	void *convert_ctx;
+	void *outmem;
+	size_t outsize;
 };
 
 EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int flags);
+
+static int _sfile_convert_init(File_t *dev, size_t outsize)
+{
+	dev->convert = dev->config->convert;
+	if (!dev->convert)
+		return 0;
+	dev->convert_ctx = dev->convert->ops.create((Passthrough_config_t *)dev->config);
+	if (!dev->convert_ctx)
+	{
+		err("sfile: %s convert '%s' rejected this device's configuration", dev->path, dev->convert->name);
+		return -1;
+	}
+	dev->outsize = outsize;
+	dev->outmem = calloc(1, dev->outsize);
+	if (!dev->outmem)
+	{
+		err("sfile: %s convert scratch allocation error %m", dev->path);
+		dev->convert->ops.destroy(dev->convert_ctx);
+		dev->convert_ctx = NULL;
+		return -1;
+	}
+	return 0;
+}
 
 EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConfig_t *config)
 {
@@ -112,8 +139,14 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 				/// add TIFF header for other fourcc
 				char format[16] = {0};
 				int ret = ops->recv(dev->ctx, dev->header, sizeof(dev->header), 0);
+				if (ret < sizeof(dev->header))
+				{
+					err("sfile: bad input file");
+					free(dev);
+					return NULL;
+				}
 				dev->headerlen = sscanf(dev->header,
-					"P7 WIDTH %d HEIGHT %d DEPTH %d MAXVAL 255 TUPLTYPE %s ENDHDR",
+					"P7 WIDTH %d HEIGHT %d DEPTH %hhd MAXVAL 255 TUPLTYPE %s ENDHDR",
 					&dev->width, &dev->height, &dev->bpp, format);
 				if (!strncasecmp(format, "RGB_ALPHA", 16))
 					dev->fourcc = FOURCC_XB24;
@@ -144,13 +177,24 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 		size_t size = dev->width;
 		size *= dev->height;
 		size *= dev->bpp;
+		size_t outsize = size;
+		if (config->convert)
+		{
+			if (_sfile_convert_init(dev, size) < 0)
+				return NULL;
+			if (dev->convert->resize.denominator > 0)
+			{
+				outsize *= dev->convert->resize.numerator;
+				outsize /= dev->convert->resize.denominator;
+			}
+		}
 		for (int i = 0; i < MAX_BUFFERS; i++, dev->nbuffers++)
 		{
-			int dma_buf = sdmabuf_create("sfile", size);
+			int dma_buf = sdmabuf_create("sfile", outsize);
 			if (dma_buf < 0)
-				dev->buffers[i].mem = calloc(1, size);
+				dev->buffers[i].mem = calloc(1, outsize);
 			else
-				dev->buffers[i].mem = sdmabuf_map(dma_buf, size, 1);
+				dev->buffers[i].mem = sdmabuf_map(dma_buf, outsize, 1);
 			if (!dev->buffers[i].mem)
 			{
 				err("sfile: buffer allocation error %m");
@@ -158,7 +202,7 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 			}
 			dev->buffers[i].dma_buf = dma_buf;
 			dev->buffers[i].id = i;
-			dev->buffers[i].size = size;
+			dev->buffers[i].size = outsize;
 			dev->buffers[i].bpp = dev->bpp;
 		}
 
@@ -190,6 +234,17 @@ EXT_API int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 			}
 			dev->buffers = buffers;
 			dev->nbuffers = nmem;
+			if (!dev->outmem && dev->config->convert)
+			{
+				size_t outsize = size;
+				if (dev->config->convert->resize.denominator > 0)
+				{
+					outsize *= dev->config->convert->resize.numerator;
+					outsize /= dev->config->convert->resize.denominator;
+				}
+				if (_sfile_convert_init(dev, outsize) < 0)
+					ret = -1;
+			}
 		}
 		break;
 		case buf_type_memory_master:
@@ -203,7 +258,7 @@ EXT_API int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 				for (int i = 0; i < dev->nbuffers; i++)
 				{
 					(*targets)[i] = dev->buffers[i].mem;
-					dbg("sfile: memory[%d]: %p %u", i, dev->buffers[i].mem, dev->buffers[i].size);
+					dbg("sfile: memory[%d]: %p %zu", i, dev->buffers[i].mem, dev->buffers[i].size);
 				}
 			}
 			if (ntargets != NULL)
@@ -229,6 +284,17 @@ EXT_API int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 			}
 			dev->buffers = buffers;
 			dev->nbuffers = ntargets;
+			if (!dev->outmem && dev->config->convert)
+			{
+				size_t outsize = size;
+				if (dev->config->convert->resize.denominator > 0)
+				{
+					outsize *= dev->config->convert->resize.numerator;
+					outsize /= dev->config->convert->resize.denominator;
+				}
+				if (_sfile_convert_init(dev, outsize) < 0)
+					ret = -1;
+			}
 		}
 		break;
 		case buf_type_dmabuf_master:
@@ -247,7 +313,7 @@ EXT_API int sfile_requestbuffer(File_t *dev, enum buf_type_e t, ...)
 				for (int i = 0; i < dev->nbuffers; i++)
 				{
 					(*targets)[i] = dev->buffers[i].dma_buf;
-					dbg("sfile: memory[%d]: %d %u", i, dev->buffers[i].dma_buf, dev->buffers[i].size);
+					dbg("sfile: memory[%d]: %d %zu", i, dev->buffers[i].dma_buf, dev->buffers[i].size);
 				}
 			}
 			if (ntargets != NULL)
@@ -362,11 +428,18 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 		}
 		if (mem == NULL)
 			mem = buffer->mem;
+		void *sendmem = mem;
+		size_t sendlen = bytesused;
+		if (dev->convert)
+		{
+			sendlen = dev->convert->ops.convert(dev->convert_ctx, mem, dev->outmem, bytesused, bytesused);
+			sendmem = dev->outmem;
+		}
 		ssize_t ret = 0;
 		if (dev->headerlen)
 			ret = dev->ops->send(dev->ctx, dev->header, dev->headerlen, Proto_More);
 		if (ret >= 0)
-			ret = dev->ops->send(dev->ctx, mem, bytesused, 0);
+			ret = dev->ops->send(dev->ctx, sendmem, sendlen, 0);
 		if (buffer->dma_buf > 0)
 		{
 			struct dma_buf_sync sync = { 0 };
@@ -383,15 +456,19 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 	}
 	else if (dev->type == device_input)
 	{
+		void *readmem = dev->convert ? dev->outmem : buffer->mem;
+		size_t readsize = dev->convert ? dev->outsize : bytesused;
 		if (buffer->dma_buf > 0)
 		{
 			sdmabuf_sync(buffer->dma_buf, 1);
 		}
-		ssize_t ret = dev->ops->recv(dev->ctx, buffer->mem, bytesused, 0);
-		if (buffer->dma_buf > 0)
+		ssize_t ret = dev->ops->recv(dev->ctx, readmem, readsize, 0);
+		if (ret > 0 && dev->convert)
 		{
-			sdmabuf_sync(buffer->dma_buf, 0);
+			ret = dev->convert->ops.convert(dev->convert_ctx, dev->outmem, buffer->mem, ret, ret);
 		}
+		if (buffer->dma_buf > 0)
+			sdmabuf_sync(buffer->dma_buf, 0);
 		if (ret <= 0)
 		{
 			err("sfile: read from file \"%s\" error: %m", dev->path);
@@ -407,6 +484,10 @@ EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int
 EXT_API void sfile_destroy(File_t *dev)
 {
 	dev->ops->destroy(dev->ctx);
+	if (dev->convert && dev->convert_ctx)
+		dev->convert->ops.destroy(dev->convert_ctx);
+	if (dev->outmem)
+		free(dev->outmem);
 	if (dev->nbuffers > 0)
 		free(dev->buffers);
 	if (dev->config)
@@ -478,6 +559,21 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 		}
 		if (! strncasecmp(value, "pam", 3))
 			config->header = File_PAM_e;
+	}
+	json_t *convert = json_object_get(jconfig, "convert");
+	if (convert && json_is_object(convert))
+		convert = json_object_get(convert, "name");
+	if (convert && json_is_string(convert))
+	{
+		const char *value = json_string_value(convert);
+		for (Convert_t *conv = spassthrough_convert_next(NULL); conv != NULL; conv = spassthrough_convert_next(conv))
+		{
+			if (conv->name && !strcmp(value, conv->name))
+			{
+				config->convert = conv;
+				break;
+			}
+		}
 	}
 	return 0;
 }
