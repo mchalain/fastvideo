@@ -198,17 +198,14 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 	if (config && config->convert &&
 		(config->convert->fourcc_in == 0 || config->convert->fourcc_in == config->parent.fourcc))
 	{
-		if (config->parent.width && config->parent.height)
+		dev->convert_ctx = config->convert->ops.create(config);
+		if (dev->convert_ctx)
 		{
-			dev->convert_ctx = config->convert->ops.create(config);
-			if (dev->convert_ctx)
-			{
-				dev->copy = config->convert->ops.convert;
-				config->mode |= (config->convert->copy)?MODE_COPY:0;
-			}
+			dev->copy = config->convert->ops.convert;
+			config->mode |= (config->convert->copy)?MODE_COPY:0;
 		}
 		else
-			err("spassthrough: definition must be set to convert");
+			err("spassthrough: %s convert create failed", config->parent.name);
 	}
 
 	return dev;
@@ -650,8 +647,6 @@ EXT_API void spassthrough_destroy(Passthrough_t *dev)
 			dlclose(dev->config->libraryhdl);
 		free(dev->config);
 	}
-	if (dev->config->convert && dev->convert_ctx)
-		dev->config->convert->ops.destroy(dev->convert_ctx);
 #if 0
 	/**
 	 * currently this member may contain local buffers info or the pipe client
