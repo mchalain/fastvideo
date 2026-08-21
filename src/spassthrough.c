@@ -146,15 +146,6 @@ static size_t _default_copy(void *dev, const char *const src, char *dst, size_t 
 
 static size_t _passthrough_copy(Passthrough_t *dev, PassBuffer_t *src, PassBuffer_t *dst, size_t bytesused)
 {
-	/*
-	 * dst was allocated from a size already scaled by convert->resize
-	 * (see spassthrough_requestbuffer's buf_type_memory/buf_type_dmabuf
-	 * cases) - a converter that shrinks its output (e.g. resize={3,4} for
-	 * a 4 bytes/pixel -> 3 bytes/pixel conversion) legitimately has
-	 * dst->size < bytesused (bytesused is the SOURCE size here), so the
-	 * capacity check must compare against the same scaled expectation,
-	 * not against the raw input size.
-	 */
 	size_t expected = bytesused;
 	if (dev->config->convert && dev->config->convert->resize.denominator > 0)
 	{
@@ -163,12 +154,6 @@ static size_t _passthrough_copy(Passthrough_t *dev, PassBuffer_t *src, PassBuffe
 	}
 	if (dst->size < expected)
 		return -1;
-	/*
-	 * a stride-aware converter (.bpp != 0, e.g. BG10toR16) needs the REAL
-	 * per-row byte width to alternate its own row-based state correctly -
-	 * anything else (stride-oblivious converters, the raw NEON/default
-	 * copy) just gets stride == size, a harmless single "row".
-	 */
 	size_t stride = bytesused;
 	if (dev->config->convert && dev->config->convert->bpp > 0 && dev->config->parent.width > 0)
 		stride = (size_t)dev->config->parent.width * dev->config->convert->bpp;
@@ -318,14 +303,6 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 				(tdmabufs[i] = sdmabuf_create(spassthrough, size)) > 0)
 			{
 				dmabufs = tdmabufs;
-				/*
-				 * a freshly created dma_buf is not mapped into our own
-				 * address space yet - without this, dev->buffers[i].mem
-				 * stays NULL (mems is NULL for this dmabuf-only path) and
-				 * any Convert_t writing through the dup's mem pointer
-				 * (e.g. .ops.convert(..., dst, ...)) segfaults on a NULL
-				 * dst.
-				 */
 				if (!tmems)
 					tmems = calloc(nmems, sizeof(*tmems));
 				tmems[i] = sdmabuf_map(tdmabufs[i], size, 1);
@@ -361,20 +338,6 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 	return ret;
 }
 
-/*
- * spassthrough_requestbuffer()'s buf_type_memory/buf_type_dmabuf cases
- * only (re)create dev->buffers when it is still NULL, so a SECOND
- * negotiation attempt with a DIFFERENT buf_type (see the ladder in
- * fastvideo.c's main_loop() setup - dmabuf tried before memory) doesn't
- * redundantly reallocate buffers a PRIOR, successful attempt already set
- * up. But _passthrough_createbuffers() unconditionally populates
- * dev->buffers even when the attempt ultimately fails later on (e.g. the
- * dup's own dma_buf allocation fails) - without cleaning up here, the
- * next attempt's "if (dev->buffers == NULL)" guard sees non-NULL and
- * skips recreation, silently reusing buffers/mem mapped under the
- * FAILED, abandoned protocol instead of the one that actually gets
- * negotiated.
- */
 static void _passthrough_freebuffers(Passthrough_t *dev)
 {
 	if (!dev->buffers)
