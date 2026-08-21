@@ -25,24 +25,6 @@ static const char _spassthroughdir[] = "/tmp/fastvideo.spassthrough";
 static const char spassthrough[] = "spassthrough";
 static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry);
 
-typedef struct PassBuffer_s PassBuffer_t;
-struct PassBuffer_s
-{
-	int index;
-	void *mem;
-	int dmabuf;
-	size_t size;
-	size_t bytesused;
-	int flags;
-	PassBuffer_t *next;
-	PassBuffer_t *previous;
-	enum
-	{
-		PassBuffer_free_e,
-		PassBuffer_fill_e,
-	} state;
-};
-
 #define MODE_SHOOT 0x01
 #define MODE_SHOOTING 0x10
 #define MODE_TEE 0x02
@@ -60,8 +42,8 @@ struct Passthrough_s
 	void **mems;
 	int *dmabufs;
 	size_t size;
-	PassBuffer_t *buffers;
-	PassBuffer_t *fifo;
+	FrameBuffer_t *buffers;
+	FrameBuffer_t *fifo;
 	int state;
 	struct
 	{
@@ -144,7 +126,7 @@ static size_t _default_copy(void *dev, const char *const src, char *dst, size_t 
 	return size;
 }
 
-static size_t _passthrough_copy(Passthrough_t *dev, PassBuffer_t *src, PassBuffer_t *dst, size_t bytesused)
+static size_t _passthrough_copy(Passthrough_t *dev, FrameBuffer_t *src, FrameBuffer_t *dst, size_t bytesused)
 {
 	size_t expected = bytesused;
 	if (dev->config->convert && dev->config->convert->resize.denominator > 0)
@@ -160,15 +142,15 @@ static size_t _passthrough_copy(Passthrough_t *dev, PassBuffer_t *src, PassBuffe
 	void *srcmem = NULL;
 	if (src->mem)
 		srcmem = src->mem;
-	if (src->dmabuf)
-		sdmabuf_sync(src->dmabuf, 1);
-	if (dst->dmabuf)
-		sdmabuf_sync(dst->dmabuf, 1);
+	if (src->dma_buf)
+		sdmabuf_sync(src->dma_buf, 1);
+	if (dst->dma_buf)
+		sdmabuf_sync(dst->dma_buf, 1);
 	bytesused = dev->copy(dev->convert_ctx, srcmem, dst->mem, bytesused, stride);
-	if (dst->dmabuf)
-		sdmabuf_sync(dst->dmabuf, 0);
-	if (src->dmabuf)
-		sdmabuf_sync(src->dmabuf, 0);
+	if (dst->dma_buf)
+		sdmabuf_sync(dst->dma_buf, 0);
+	if (src->dma_buf)
+		sdmabuf_sync(src->dma_buf, 0);
 	return bytesused;
 }
 
@@ -324,10 +306,10 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 			}
 		}
 		if (dmabufs)
-			dev->buffers[i].dmabuf = dmabufs[i];
+			dev->buffers[i].dma_buf = dmabufs[i];
 		if (mems)
 			dev->buffers[i].mem = mems[i];
-		dev->buffers[i].index = i;
+		dev->buffers[i].id = i;
 		dev->buffers[i].size = size;
 	}
 	dev->mems = mems;
@@ -341,7 +323,7 @@ static void _passthrough_freebuffers(Passthrough_t *dev)
 		return;
 	for (int i = 0; i < dev->nbuffers; i++)
 	{
-		if (dev->buffers[i].dmabuf && dev->buffers[i].mem &&
+		if (dev->buffers[i].dma_buf && dev->buffers[i].mem &&
 			dev->buffers[i].mem != (void *)(long)-1)
 			sdmabuf_unmap(dev->buffers[i].mem, dev->buffers[i].size);
 	}
@@ -439,7 +421,7 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 				_passthrough_createbuffers(dev, ntargets, NULL, targets, size, 0);
 			for (int i = 0; i < ntargets; i++)
 			{
-				dev->buffers[i].mem = sdmabuf_map(dev->buffers[i].dmabuf, size, 0); /// the write argument should be 0
+				dev->buffers[i].mem = sdmabuf_map(dev->buffers[i].dma_buf, size, 0); /// the write argument should be 0
 				if (dev->buffers[i].mem == (void *)(long)-1)
 				{
 					err("spassthrough: impossible to map the inpur buffer");
@@ -534,17 +516,17 @@ EXT_API int spassthrough_stop(Passthrough_t *dev)
 
 EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused, int *flags)
 {
-	PassBuffer_t *last = dev->fifo;
-	if (last == NULL || last->state == PassBuffer_free_e)
+	FrameBuffer_t *last = dev->fifo;
+	if (last == NULL || last->state != ready)
 	{
 		errno = EAGAIN;
 		return -1;
 	}
 	if (dev->branch.dev && dev->state & MODE_TEE)
 	{
-		int index = dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused, NULL);
+		dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused, NULL);
 	}
-	last->state = PassBuffer_free_e;
+	last->state = dequeued;
 	/** the real fifo is useless as the entry is immediately pushed **/
 #if 0
 	while (last->next) last = last->next;
@@ -565,7 +547,7 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 		dev->state |= MODE_DRYRUN;
 		dev->state &= ~MODE_SHOOTING;
 	}
-	return last->index;
+	return last->id;
 }
 
 EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused, int flags)
@@ -595,12 +577,12 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 	{
 		dev = dev->dup;
 	}
-	PassBuffer_t *buffer = &dev->buffers[index];
+	FrameBuffer_t *buffer = &dev->buffers[index];
 	if (mem)
 		buffer->mem = mem;
 	buffer->bytesused = bytesused;
 	buffer->flags = flags;
-	buffer->state = PassBuffer_fill_e;
+	buffer->state = ready;
 #if 0
 	/** prepare fifo's items **/
 	buffer->next = dev->fifo;
@@ -618,7 +600,7 @@ static void _passthrough_freedmabuf(Passthrough_t *dev)
 	{
 		for (int i = 0; i < dev->dup->nbuffers; i++)
 		{
-			sdmabuf_destroy(dev->dup->buffers[i].dmabuf);
+			sdmabuf_destroy(dev->dup->buffers[i].dma_buf);
 		}
 	}
 }
