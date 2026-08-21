@@ -516,8 +516,8 @@ EXT_API int spassthrough_stop(Passthrough_t *dev)
 
 EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused, int *flags)
 {
-	FrameBuffer_t *last = dev->fifo;
-	if (last == NULL || last->state != ready)
+	FrameBuffer_t *buffer = dev->fifo;
+	if (buffer == NULL || buffer->state != ready)
 	{
 		errno = EAGAIN;
 		return -1;
@@ -526,28 +526,28 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 	{
 		dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused, NULL);
 	}
-	last->state = dequeued;
+	buffer->state = dequeued;
 	/** the real fifo is useless as the entry is immediately pushed **/
 #if 0
-	while (last->next) last = last->next;
-	if (last->previous)
-		last->previous->next = NULL;
-	last->previous = NULL;
+	while (buffer->next) buffer = buffer->next;
+	if (buffer->previous)
+		buffer->previous->next = NULL;
+	buffer->previous = NULL;
 #endif
 
 	if (bytesused)
-		*bytesused = last->bytesused;
+		*bytesused = buffer->bytesused;
 	if (mem)
-		*mem = last->mem;
+		*mem = buffer->mem;
 	if (flags)
-		*flags = last->flags;
+		*flags = buffer->flags;
 
 	if ((dev->state & MODE_SHOOTING) && dev->dup != NULL)
 	{
 		dev->state |= MODE_DRYRUN;
 		dev->state &= ~MODE_SHOOTING;
 	}
-	return last->id;
+	return buffer->id;
 }
 
 EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused, int flags)
