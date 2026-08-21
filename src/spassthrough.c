@@ -552,12 +552,6 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 
 EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
-	if (dev->copy)
-	{
-		if (mem && !dev->buffers[index].mem)
-			dev->buffers[index].mem = mem;
-		bytesused = _passthrough_copy(dev, &dev->buffers[index], &dev->dup->buffers[index], bytesused);
-	}
 	if (dev->controls && dev->controls->state)
 	{
 		dev->state |= dev->controls->state;
@@ -572,6 +566,12 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 	if (dev->branch.dev && dev->state & MODE_TEE)
 	{
 		dev->branch.ops->queue(dev->branch.dev, index, mem, bytesused, 0);
+	}
+	if (dev->copy)
+	{
+		if (mem && !dev->buffers[index].mem)
+			dev->buffers[index].mem = mem;
+		bytesused = _passthrough_copy(dev, &dev->buffers[index], &dev->dup->buffers[index], bytesused);
 	}
 	if (!(dev->state & MODE_DRYRUN) && dev->dup != NULL)
 	{
