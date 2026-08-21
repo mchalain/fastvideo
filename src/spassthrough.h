@@ -41,8 +41,8 @@ struct Convert_s
 	 */
 	uint32_t bpp;
 	struct{
-		uint numerator;
-		uint denominator;
+		unsigned int numerator;
+		unsigned int denominator;
 	} resize;
 	struct {
 		void *(*create)(Passthrough_config_t *);
