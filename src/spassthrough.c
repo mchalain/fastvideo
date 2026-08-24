@@ -13,6 +13,8 @@
 #include "sfile.h"
 #include "sdmabuf.h"
 
+#define spassthrough_dbg(...)
+
 #if defined(__ARM_NEON)
 #if !defined(__aarch64__)
 #define NEON_COPY 2
@@ -43,7 +45,7 @@ struct Passthrough_s
 	int *dmabufs;
 	size_t size;
 	FrameBuffer_t *buffers;
-	FrameBuffer_t *fifo;
+	FrameBuffer_t *curbuffer;
 	int state;
 	struct
 	{
@@ -259,6 +261,12 @@ EXT_API int spassthrough_loadsettings(Passthrough_t *dev, void *configentry)
 #endif
 }
 
+static void buffer_linkring(FrameBuffer_t *buffers, int n)
+{
+	for (int i = 0; i < n; i++)
+		buffers[i].next = &buffers[(i + 1) % n];
+}
+
 static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems, int *dmabufs, size_t size, int copy)
 {
 	int ret = 0;
@@ -314,6 +322,7 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 	}
 	dev->mems = mems;
 	dev->dmabufs = dmabufs;
+	buffer_linkring(dev->buffers, dev->nbuffers);
 	return ret;
 }
 
@@ -491,6 +500,14 @@ EXT_API int spassthrough_fd(Passthrough_t *dev, int writer)
 
 EXT_API int spassthrough_start(Passthrough_t *dev)
 {
+	if (dev->type == device_input)
+	{
+		for (int i = 0; i < dev->nbuffers; i++)
+		{
+			dev->buffers[i].state = dequeued;
+		}
+	}
+	dev->curbuffer = &dev->buffers[0];
 	if (dev->copy && dev->dup->buffers[0].size == 0)
 	{
 		/// disable copy mode on buffer allocation error
@@ -516,24 +533,23 @@ EXT_API int spassthrough_stop(Passthrough_t *dev)
 
 EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused, int *flags)
 {
-	FrameBuffer_t *buffer = dev->fifo;
-	if (buffer == NULL || buffer->state != ready)
-	{
-		errno = EAGAIN;
-		return -1;
-	}
 	if (dev->branch.dev && dev->state & MODE_TEE)
 	{
 		dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused, NULL);
 	}
-	buffer->state = dequeued;
-	/** the real fifo is useless as the entry is immediately pushed **/
-#if 0
-	while (buffer->next) buffer = buffer->next;
-	if (buffer->previous)
-		buffer->previous->next = NULL;
-	buffer->previous = NULL;
-#endif
+	if ((dev->state & MODE_SHOOTING) && dev->dup != NULL)
+	{
+		warn("spassthrough: shoot off %p", dev->dup);
+		dev->state |= MODE_DRYRUN;
+		dev->state &= ~MODE_SHOOTING;
+	}
+	FrameBuffer_t *buffer = dev->curbuffer;
+	spassthrough_dbg("spassthrough: dequeue input buffer %d", buffer->id);
+	if (buffer->state != ready)
+	{
+		errno = EAGAIN;
+		return -1;
+	}
 
 	if (bytesused)
 		*bytesused = buffer->bytesused;
@@ -541,17 +557,18 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 		*mem = buffer->mem;
 	if (flags)
 		*flags = buffer->flags;
+	buffer->state = dequeued;
 
-	if ((dev->state & MODE_SHOOTING) && dev->dup != NULL)
-	{
-		dev->state |= MODE_DRYRUN;
-		dev->state &= ~MODE_SHOOTING;
-	}
 	return buffer->id;
 }
 
 EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
+	if (index < 0 || index >= dev->nbuffers)
+	{
+		err("spassthrough: unkown %d buffer index to queue", index);
+		return -1;
+	}
 	if (dev->controls && dev->controls->state)
 	{
 		dev->state |= dev->controls->state;
@@ -559,6 +576,7 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 	}
 	if ((dev->state & MODE_SHOOT) && dev->dup != NULL)
 	{
+		warn("spassthrough: shoot on %p", dev->dup);
 		dev->state &= ~MODE_DRYRUN;
 		dev->state &= ~MODE_SHOOT;
 		dev->state |= MODE_SHOOTING;
@@ -567,30 +585,25 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 	{
 		dev->branch.ops->queue(dev->branch.dev, index, mem, bytesused, 0);
 	}
+	FrameBuffer_t *buffer = &dev->buffers[index];
+	if (mem)
+		buffer->mem = mem;
+	if (bytesused == 0)
+		bytesused = buffer->size;
 	if (dev->copy)
 	{
-		if (mem && !dev->buffers[index].mem)
-			dev->buffers[index].mem = mem;
 		bytesused = _passthrough_copy(dev, &dev->buffers[index], &dev->dup->buffers[index], bytesused);
 	}
 	if (!(dev->state & MODE_DRYRUN) && dev->dup != NULL)
 	{
 		dev = dev->dup;
+		buffer = &dev->buffers[index];
 	}
-	FrameBuffer_t *buffer = &dev->buffers[index];
-	if (mem)
-		buffer->mem = mem;
 	buffer->bytesused = bytesused;
 	buffer->flags = flags;
 	buffer->state = ready;
-#if 0
-	/** prepare fifo's items **/
-	buffer->next = dev->fifo;
-	if (dev->fifo)
-		dev->fifo->previous = buffer;
-#endif
 	/** insert into fifo **/
-	dev->fifo = buffer;
+	dev->curbuffer = buffer;
 	return 0;
 }
 
