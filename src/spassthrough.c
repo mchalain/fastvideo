@@ -131,6 +131,12 @@ static size_t _default_copy(void *dev, const char *const src, char *dst, size_t 
 static size_t _passthrough_copy(Passthrough_t *dev, FrameBuffer_t *src, FrameBuffer_t *dst, size_t bytesused)
 {
 	size_t expected = bytesused;
+	if (!dev->copy)
+	{
+		dst->mem = src->mem;
+		dst->dma_buf = src->dma_buf;
+		return src->bytesused;
+	}
 	if (dev->config->convert && dev->config->convert->resize.denominator > 0)
 	{
 		expected *= dev->config->convert->resize.numerator;
@@ -206,7 +212,7 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 	Passthrough_t *dup = calloc(1, sizeof(*dup));
 	dev->type = device_output;
 	dup->type = device_input;
-	dup->dup = dev;
+	dup->dup = NULL;
 	dev->dup = dup;
 	*pconfig = dup->config = malloc(sizeof(*dev->config));
 	memmove(dup->config, config, sizeof(*dev->config));
@@ -500,12 +506,12 @@ EXT_API int spassthrough_fd(Passthrough_t *dev, int writer)
 
 EXT_API int spassthrough_start(Passthrough_t *dev)
 {
-	if (dev->type == device_input)
+	for (int i = 0; i < dev->nbuffers; i++)
 	{
-		for (int i = 0; i < dev->nbuffers; i++)
-		{
+		if (dev->type == device_input)
+			dev->buffers[i].state = queued;
+		else
 			dev->buffers[i].state = dequeued;
-		}
 	}
 	dev->curbuffer = &dev->buffers[0];
 	if (dev->copy && dev->dup->buffers[0].size == 0)
@@ -533,24 +539,41 @@ EXT_API int spassthrough_stop(Passthrough_t *dev)
 
 EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused, int *flags)
 {
+	int state = dev->state;
 	if (dev->branch.dev && dev->state & MODE_TEE)
 	{
 		dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused, NULL);
 	}
-	if ((dev->state & MODE_SHOOTING) && dev->dup != NULL)
+	if (dev->type != device_input && dev->dup && (dev->state & MODE_SHOOTING))
 	{
 		warn("spassthrough: shoot off %p", dev->dup);
 		dev->state |= MODE_DRYRUN;
 		dev->state &= ~MODE_SHOOTING;
 	}
 	FrameBuffer_t *buffer = dev->curbuffer;
-	spassthrough_dbg("spassthrough: dequeue input buffer %d", buffer->id);
 	if (buffer->state != ready)
 	{
+		spassthrough_dbg("spassthrough: dequeue %s buffer %d not ready", (dev->type != device_input)?"output":"input", buffer->id);
 		errno = EAGAIN;
 		return -1;
 	}
-
+	if (dev->type != device_input && dev->dup && !(state & MODE_DRYRUN))
+	{
+		spassthrough_dbg("spassthrough: dequeue output buffer %d", buffer->id);
+		if (dev->dup->curbuffer->state == dequeued)
+		{
+			dbg("spassthrough: dequeue %s buffer %d not ready", dev->dup?"output":"input", buffer->id);
+			errno = EAGAIN;
+			return -1;
+		}
+		dev->dup->curbuffer->flags = buffer->flags;
+		dev->dup->curbuffer->state = ready;
+	}
+	else if (dev->type == device_input)
+	{
+		spassthrough_dbg("spassthrough: dequeue input buffer %d", buffer->id);
+		dev->curbuffer = buffer->next;
+	}
 	if (bytesused)
 		*bytesused = buffer->bytesused;
 	if (mem)
@@ -574,7 +597,7 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 		dev->state |= dev->controls->state;
 		dev->controls->state = 0;
 	}
-	if ((dev->state & MODE_SHOOT) && dev->dup != NULL)
+	if (dev->type != device_input && dev->dup && (dev->state & MODE_SHOOT))
 	{
 		warn("spassthrough: shoot on %p", dev->dup);
 		dev->state &= ~MODE_DRYRUN;
@@ -586,18 +609,27 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 		dev->branch.ops->queue(dev->branch.dev, index, mem, bytesused, 0);
 	}
 	FrameBuffer_t *buffer = &dev->buffers[index];
+	if (buffer->state != dequeued)
+	{
+		spassthrough_dbg("spassthrough: queue %s buffer %d not dequeued", (dev->type != device_input)?"output":"input", buffer->id);
+		errno = EAGAIN;
+		return -1;
+	}
+	buffer->state = queued;
+	if (dev->type == device_input)
+	{
+		spassthrough_dbg("spassthrough:   queue input buffer %d", buffer->id);
+		return 0;
+	}
+	spassthrough_dbg("spassthrough:   queue output buffer %d", buffer->id);
 	if (mem)
 		buffer->mem = mem;
 	if (bytesused == 0)
 		bytesused = buffer->size;
-	if (dev->copy)
+	if (dev->type != device_input && dev->dup && !(dev->state & MODE_SHOOT))
 	{
-		bytesused = _passthrough_copy(dev, &dev->buffers[index], &dev->dup->buffers[index], bytesused);
-	}
-	if (!(dev->state & MODE_DRYRUN) && dev->dup != NULL)
-	{
-		dev = dev->dup;
-		buffer = &dev->buffers[index];
+		bytesused = _passthrough_copy(dev, buffer, dev->dup->curbuffer, bytesused);
+		dev->dup->curbuffer->bytesused = bytesused;
 	}
 	buffer->bytesused = bytesused;
 	buffer->flags = flags;
