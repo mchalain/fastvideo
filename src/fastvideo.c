@@ -28,6 +28,7 @@ unsigned int _mode = 0;
 #define MAX_DRAIN_PER_ITERATION 16
 
 #define verbose_warn(f,...) do{if ((_mode & MODE_VERBOSE) != 0) warn(f,  ##__VA_ARGS__);} while(0)
+#define fastvideo_dbg(...)
 
 int scommon_loadlibrary(const char *path)
 {
@@ -162,7 +163,7 @@ static int main_transferbuffer(FastVideoDevice_t *input, FastVideoDevice_t *outp
 			err("%s buffer dequeuing error %m", input->config->name);
 		return -1;
 	}
-	//dbg("transfer (%d) %s => %s %lu bytes", index, input->config->name, output->config->name, bytesused);
+	fastvideo_dbg("transfer (%d) %s => %s %lu bytes", index, input->config->name, output->config->name, bytesused);
 
 	if (output->ops->queue(output->dev, index, mem, bytesused, flags) < 0)
 	{
