@@ -55,10 +55,7 @@ struct Passthrough_s
 	} branch;
 	size_t (*copy)(void *, const char *const , char *, size_t, size_t);
 	void *convert_ctx;
-	struct
-	{
-		int state;
-	} *controls;
+	Passthrough_Control_t *controls;
 };
 
 static FastVideoList_t *g_Converts = NULL;

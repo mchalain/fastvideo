@@ -35,3 +35,13 @@ bin-$(HAVE_DRM)+=hdmi_connected
 hdmi_connected_SOURCES+=hdmi_connected.c
 hdmi_connected_CFLAGS+=-I$(SYSROOT)/usr/include/libdrm
 hdmi_connected_LIBRARY+=libdrm
+
+ifneq ($(wildcard $(SYSROOT)/usr/include/gpiod.h),)
+  HAVE_GPIOD=y
+endif
+bin-$(HAVE_GPIOD)+=shoot
+shoot_SOURCES+=shoot.c
+shoot_SOURCES+=$(srcdir)src/daemonize.c
+shoot_LIBRARY+=libgpiod
+shoot_CFLAGS+=-I$(srcdir)src
+shoot_LDFLAGS+=-L$(builddir)src

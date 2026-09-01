@@ -16,6 +16,15 @@ struct Passthrough_config_s
 	void *libraryhdl;
 };
 
+#define STATE_SHOOT 0x01
+#define STATE_TEE 0x02
+#define STATE_DRYRUN 0x04
+struct Passthrough_Control_s
+{
+	int state;
+};
+typedef struct Passthrough_Control_s Passthrough_Control_t;
+
 typedef struct Passthrough_s Passthrough_t;
 
 struct Convert_s
