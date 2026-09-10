@@ -749,12 +749,6 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 #endif
 	}
 
-	/*
-	 * only report the negotiated screen mode back through "transfer" when
-	 * the config didn't already explicitly request a specific transfer
-	 * definition (e.g. a crop/resize/format for a chained -t stage that
-	 * isn't meant to go to this screen at all, such as a dma_buf export).
-	 */
 	if (!config->transfer.width)
 		config->transfer.width = drm.width;
 	if (!config->transfer.height)
@@ -906,6 +900,11 @@ static int native_sync(EGLNativeWindowType native_win)
 	{
 		errno = EAGAIN;
 		return -1;
+	}
+	if (drm.writeback && drm.writeback->out_fd > 0)
+	{
+		close(drm.writeback->out_fd);
+		drm.writeback->out_fd = 0;
 	}
 	return 0;
 }
