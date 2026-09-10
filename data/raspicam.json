@@ -76,7 +76,7 @@
     "type": "v4l2",
     "device": "/dev/video11",
     "definition": {
-      "fps":30,
+      "fps":120,
       "end": true
     },
     "transformation": [
@@ -93,6 +93,7 @@
       },{
         "name": "Video Bitrate Mode",
         "id": 10029518,
+	"comment": "The CBR is discouraged on RPi 4",
         "value": 0,
         "value_show": "Variable Bitrate"
       },{
@@ -233,9 +234,9 @@
     "type": "v4l2",
     "device": "/dev/video14",
     "definition": {
-      "fourcc": "XB24",
-      "width": 1920,
-      "height": 1080,
+      "fourcc": "XR24",
+      "width": 1280,
+      "height":  720,
       "end": true
     },
     "end": true
@@ -310,7 +311,7 @@
           "fmtbus": "0x200a",
           "width": 1280,
           "height":  720,
-          "fps": 120,
+          "fps": 140,
           "end": true
         },
         "end": true
@@ -341,9 +342,10 @@
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "pBAA",
+          "fourcc": "BG10",
           "width":1456,
           "height":1088,
+          "fps": 61,
           "end": true
         },
         "end": true
@@ -365,7 +367,7 @@
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "BG10",
+          "fourcc": "BA10",
           "width": 1920,
           "height": 1080,
           "fps": 30,
@@ -411,48 +413,23 @@
         "end": true
       }],
       "end":true
+    },{
+      "name": "shadertoy-funny",
+      "disable": true,
+      "vertex": "ShaderToy/vertex.glsl",
+      "fragment": ["ShaderToy/fragment.glsl","ShaderToy/Funny.glsl"],
+      "controls": [{
+        "name": "iTime",
+        "type": "func",
+        "value": "time"
+      },{
+        "name": "fFrame",
+        "type": "func",
+        "value": "frames"
+      }],
+      "end":true
     }],
     "end":true
-  },
-  {
-	"name":"shadertoy",
-	"type":"gpu",
-	"native":["x11","wayland","drm","offscreen"],
-	"transfer": {
-		"fourcc": "XB24",
-		"export": "imagemesa",
-		"end":true
-	},
-	"programs": [{
-		"name": "Empty",
-		"disable": true,
-		"vertex": "ShaderToy/flipvertex.glsl",
-		"fragment": ["ShaderToy/fragment.glsl","ShaderToy/Image.glsl"],
-		"controls": [{
-			"name": "iTime",
-			"type": "func",
-			"value": "time"
-		},{
-			"name": "fFrame",
-			"type": "func",
-			"value": "frames"
-		}]
-	},{
-		"name": "Funny",
-		"disable": false,
-		"vertex": "ShaderToy/vertex.glsl",
-		"fragment": ["ShaderToy/fragment.glsl","ShaderToy/Funny.glsl"],
-		"controls": [{
-			"name": "iTime",
-			"type": "func",
-			"value": "time"
-		},{
-			"name": "fFrame",
-			"type": "func",
-			"value": "frames"
-		}]
-	}],
-	"end":true
   },
   {
     "name": "dvb-e",
@@ -486,12 +463,10 @@
   {
     "name": ["trigger","dryrun"],
     "type": "passthrough",
-    "controls": [
-      {
-        "dryrun": true,
-        "end": true
-      }
-    ],
+    "controls": {
+      "dryrun": true,
+      "end": true
+    },
     "end": true
   }
 ]
