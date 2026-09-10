@@ -874,7 +874,7 @@ int sv4l2_requestbuffer_dmabuf(V4L2_t *dev, int count)
 
 int sv4l2_requestbuffer_userptr(V4L2_t *dev, int nmems, void *mems[], size_t size)
 {
-	int count = MAX_BUFFERS;
+	int count = dev->config->nbuffers;
 	if (dev->buffers && dev->buffers[0].v4l2.memory == V4L2_MEMORY_USERPTR)
 		return 0;
 	if (dev->buffers)
@@ -971,12 +971,12 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 	switch (t)
 	{
 		case buf_type_sv4l2_master:
-			ret = sv4l2_requestbuffer_dmabuf(dev, MAX_BUFFERS);
+			ret = sv4l2_requestbuffer_dmabuf(dev, dev->config->nbuffers);
 		break;
 		case buf_type_sv4l2:
 		{
 			V4L2_t *master = va_arg(ap, V4L2_t *);
-			if ((ret = sv4l2_requestbuffer_dmabuf(dev, MAX_BUFFERS)) == 0)
+			if ((ret = sv4l2_requestbuffer_dmabuf(dev, dev->config->nbuffers)) == 0)
 				ret = sv4l2_linkv4l2(dev, master);
 		}
 		break;
@@ -990,7 +990,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 		break;
 		case (buf_type_memory_master):
 		{
-			ret = sv4l2_requestbuffer_mmap(dev, MAX_BUFFERS);
+			ret = sv4l2_requestbuffer_mmap(dev, dev->config->nbuffers);
 			if (ret)
 				break;
 			int *ntargets = va_arg(ap, int *);
@@ -1032,7 +1032,7 @@ int sv4l2_requestbuffer(V4L2_t *dev, enum buf_type_e t, ...)
 		break;
 		case buf_type_dmabuf_master:
 		{
-			ret = sv4l2_requestbuffer_dmabuf(dev, MAX_BUFFERS);
+			ret = sv4l2_requestbuffer_dmabuf(dev, dev->config->nbuffers);
 			if (ret)
 				break;
 			int *ntargets = va_arg(ap, int *);
@@ -1743,17 +1743,11 @@ DeviceConf_t * sv4l2_createconfig(const char *name)
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sv4l2_loadjsonconfiguration;
 #endif
-	/*
-	 * -1 is the real "not configured" sentinel (query-only, leave the
-	 * sensor's own vertical blanking alone) - fps==0 has its own
-	 * distinct meaning ("take one picture") and must reach
-	 * _v4l2_setfps_vblank()/_v4l2_setfps_param() unchanged. config.c's
-	 * own generic ":key=value" name-suffix parsing (config_create(),
-	 * called right after this by config_createdevice()) already applies
-	 * an explicit "name:fps=N" CLI complement on top of this default -
-	 * no need to duplicate that parsing here.
-	 */
 	devconfig->parent.fps = -1;
+	devconfig->nbuffers = MAX_BUFFERS;
+	const char *nbuffers = strstr(name, "nbuffers=");
+	if (nbuffers)
+		devconfig->nbuffers = strtol(nbuffers + 9, NULL, 10);
 	return (DeviceConf_t *)devconfig;
 }
 
@@ -2354,6 +2348,10 @@ int sv4l2_loadjsonconfiguration(void *arg, void *entry)
 	json_t *subdevice = json_object_get(jconfig, "subdevices");
 	_v4l2_addsubdevices(config, subdevice, config->parent.name);
 #endif
+
+	json_t *nbuffers = json_object_get(jconfig, "nbuffers");
+	if (nbuffers && config->nbuffers == MAX_BUFFERS && json_is_integer(nbuffers))
+		config->nbuffers = json_integer_value(nbuffers);
 
 	json_t *action = json_object_get(jconfig, "action");
 	_v4l2_addaction(config, action);
