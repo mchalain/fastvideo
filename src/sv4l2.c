@@ -1401,6 +1401,7 @@ static uint32_t _sv4l2_getfourcc(int fd, enum v4l2_buf_type type, uint32_t fourc
 		if (fmtdesc.pixelformat == fourcc)
 		{
 			ret = 0;
+			dbg("sv4l2: format %.4s found", (char*)&fourcc);
 			break;
 		}
 		fmtdesc.index++;
@@ -1413,10 +1414,17 @@ static uint32_t _sv4l2_getfourcc(int fd, enum v4l2_buf_type type, uint32_t fourc
 		case FOURCC_XB24:
 			fourcc = _sv4l2_getfourcc(fd, type, FOURCC_AB24);
 		break;
+		case FOURCC_AB24:
+			fourcc = _sv4l2_getfourcc(fd, type, FOURCC_RGB4);
+		break;
 		case FOURCC_XR24:
+			fourcc = _sv4l2_getfourcc(fd, type, FOURCC_AB24);
+		break;
 		case FOURCC_AR24:
 			fourcc = _sv4l2_getfourcc(fd, type, FOURCC_BGR4);
 		break;
+		default:
+			err("sv4l2: format %.4s not supported", (char*)&fourcc);
 	}
 	return fourcc;
 }
