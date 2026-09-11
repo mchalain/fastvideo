@@ -31,12 +31,16 @@ struct Proto_FILE_s
 	int maxfiles;
 	int currentfd;
 	char filename[64];
+	const char *ext;
 	int fileid;
 	size_t mtu;
 	int mode;
 	int hlsfd;
 	struct timespec hlstp;
 };
+
+static const char ext_ts[] = "ts";
+static const char ext_jpeg[] = "jpg";
 
 struct timespec *timespec_subs( struct timespec *a, struct timespec *b)
 {
@@ -87,6 +91,7 @@ static void *proto_create(Proto_Config_t *config)
 		return NULL;
 	}
 	Proto_FILE_t *proto = calloc(1, sizeof(*proto));
+	proto->ext = ext_ts;
 	proto->config = config;
 	proto->mtu = mtu;
 	proto->rootfd = rootfd;
@@ -94,6 +99,8 @@ static void *proto_create(Proto_Config_t *config)
 		proto->mode |= Proto_FILE_Static;
 	if (config->mode && strstr(config->mode, "loop"))
 		proto->mode |= Proto_FILE_Loop;
+	if (config->mode && strstr(config->mode, "jpeg"))
+		proto->ext = ext_jpeg;
 	if (config->mode && strstr(config->mode, "hls"))
 		proto->mode |= Proto_FILE_Hls;
 	if (proto->mode & Proto_FILE_Hls)
@@ -104,7 +111,7 @@ static void *proto_create(Proto_Config_t *config)
 			path = filename;
 		if (!faccessat(proto->rootfd, path, F_OK, AT_EACCESS))
 			unlinkat(proto->rootfd, filename, 0);
-		fd = openat(proto->rootfd, path, O_CREAT | O_RDWR, 0644);
+		fd = openat(proto->rootfd, path, O_CREAT | O_RDWR, 0664);
 		if (fd > 0)
 		{
 			proto->maxfiles = config->maxclients;
@@ -117,20 +124,17 @@ static void *proto_create(Proto_Config_t *config)
 	}
 	else if (filename)
 	{
-		snprintf(proto->filename, sizeof(proto->filename) - 1, filename);
+		snprintf(proto->filename, sizeof(proto->filename) - 1, "%s", filename);
 		proto->maxfiles = 1;
 	}
 	else
 	{
 		proto->maxfiles = config->maxclients;
-		if (proto->maxfiles < 2)
+		for (proto->fileid = 0; proto->fileid < proto->maxfiles; proto->fileid++)
 		{
-			for (int i = 0; i < 1024; i++)
-			{
-				snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.ts", i);
-				if (faccessat(rootfd, proto->filename, F_OK, 0) < 0)
-					break;
-			}
+			snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.%s", proto->fileid, proto->ext);
+			if (faccessat(rootfd, proto->filename, F_OK, 0) < 0)
+				break;
 		}
 	}
 	free(host);
@@ -141,7 +145,7 @@ static int proto_connect_fifo(void *arg)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
 	if (faccessat(proto->rootfd, proto->filename, F_OK, 0) < 0 &&
-			mkfifoat(proto->rootfd, proto->filename, 0644))
+			mkfifoat(proto->rootfd, proto->filename, 0664))
 	{
 		err("file: fifo %s creation error %m", proto->filename);
 	}
@@ -168,7 +172,7 @@ static int proto_connect_reg(void *arg)
 	int newfd = proto->currentfd + 1;
 	newfd %= (sizeof(proto->fd) / sizeof(*proto->fd));
 	if (proto->maxfiles > 1)
-		snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.ts", proto->fileid);
+		snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.%s", proto->fileid, proto->ext);
 #if 0
 	if (faccessat(proto->rootfd, proto->filename, F_OK, 0) == 0)
 	{
@@ -185,21 +189,24 @@ static int proto_connect_reg(void *arg)
 		clock_gettime(CLOCK_TAI, &proto->hlstp);
 	}
 #ifdef O_TMPFILE
-	proto->fd[newfd] = open(config->host, O_TMPFILE | O_RDWR, 0644);
+	proto->fd[newfd] = open(config->host, O_TMPFILE | O_RDWR, 0664);
 #else
-	proto->fd[newfd] = openat(proto->rootfd, proto->filename, O_CREAT | O_RDWR, 0644);
+	proto->fd[newfd] = openat(proto->rootfd, proto->filename, O_CREAT | O_RDWR, 0664);
 #endif
 	if (proto->fd[newfd] < 0)
 	{
-		err("sproto: file opening error %m");
+		err("sproto: file %s opening error %m", proto->filename);
 		return -1;
 	}
 	if (proto->fd[proto->currentfd] > 0)
 	{
 		close(proto->fd[proto->currentfd]);
 	}
+	warn("sproto: new %s file(%d)", proto->filename, proto->fd[newfd]);
 	proto->currentfd = newfd;
 	proto->fileid++;
+	if (proto->fileid > proto->maxfiles)
+		proto->fileid = 0;
 
 	return 0;
 }
@@ -255,6 +262,8 @@ static void proto_close(void *arg)
 
 	if (proto->fd[proto->currentfd])
 	{
+		warn("sproto: close file (%d)", proto->fd[proto->currentfd]);
+
 #ifdef O_TMPFILE
 		linkat(proto->fd[proto->currentfd], "", proto->fd[proto->currentfd], proto->filename, AT_EMPTY_PATH);
 #endif
