@@ -69,6 +69,7 @@ struct EGLConfig_s
 {
 	DeviceConf_t parent;
 	DeviceConf_t transfer;
+	int nbuffers;
 	const EGLNative_t *native;
 	const char *device;
 	const EGLProg_ops_t *prog_ops;

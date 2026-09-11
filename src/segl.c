@@ -74,7 +74,7 @@ struct EGL_s
 	EGLNativeWindowType native_window;
 	const EGLProg_ops_t *program_ops;
 	GLProgram_t *programs;
-	GLBuffer_t buffers[MAX_BUFFERS];
+	GLBuffer_t *buffers;
 	void *arraybuffers;
 	int curbufferid;
 	int nbuffers;
@@ -519,6 +519,7 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
+			dev->buffers = calloc(ntargets, sizeof(*dev->buffers));
 			for (int i = 0; i < ntargets; i++)
 			{
 				ret = texture_fromdma(dev, &dev->buffers[i], targets[i], size);
@@ -533,6 +534,7 @@ static int segl_requestbuffer_output(EGL_t *dev, enum buf_type_e t, va_list ap)
 			int ntargets = va_arg(ap, int);
 			void **targets = va_arg(ap, void **);
 			size_t size = va_arg(ap, size_t);
+			dev->buffers = calloc(ntargets, sizeof(*dev->buffers));
 			for (int i = 0; i < ntargets; i++)
 			{
 				ret = texture_frommem(dev, &dev->buffers[i], targets[i], size);
@@ -689,7 +691,8 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	size_t size = width;
 	size *= height;
 	size *= fformat->stride_factor[0];
-	for (int i = 0; i < MAX_BUFFERS; i++, dup->nbuffers++)
+	dup->buffers = calloc(dup->nbuffers, sizeof(*dup->buffers));
+	for (int i = 0; i < dup->nbuffers; i++, dup->nbuffers++)
 	{
 		dup->buffers[i].id = i;
 		dup->buffers[i].size = size;
@@ -759,6 +762,7 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 		buffer->modifiers = dev->config->parent.modifiers;
 
 	dev->program_ops->run(dev->programs, buffer->private);
+	errno = 0;
 	if (eglSwapBuffers(dev->egldisplay, dev->eglsurface) == EGL_FALSE)
 		err("EGL swapbuffers error %m");
 	// errno is set to EAGAIN after eglSwapBuffers
@@ -880,6 +884,7 @@ DeviceConf_t * segl_createconfig(const char *name)
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = segl_loadjsonconfiguration;
 #endif
+	devconfig->nbuffers = MAX_BUFFERS;
 	devconfig->export = NULL;
 	devconfig->native = _natives[0];
 	const char *program = strstr(name, "program=");
@@ -899,6 +904,9 @@ DeviceConf_t * segl_createconfig(const char *name)
 	}
 	if (strstr(name, "noprogram") != NULL)
 		devconfig->mode |= SEGL_NOPROGRAM;
+	const char *nbuffers = strstr(name, "nbuffers=");
+	if (nbuffers)
+		devconfig->nbuffers = strtol(nbuffers + 9, NULL, 10);
 	return (DeviceConf_t *)devconfig;
 }
 
@@ -1015,6 +1023,9 @@ int segl_loadjsonconfiguration(void *arg, void *entry)
 			}
 		}
 	}
+	json_t *nbuffers = json_object_get(jconfig, "nbuffers");
+	if (nbuffers && config->nbuffers != MAX_BUFFERS && json_is_integer(nbuffers))
+		config->nbuffers = json_integer_value(nbuffers);
 
 	return 0;
 }
