@@ -110,7 +110,7 @@ int sconfig_loaddefinition(DeviceConf_t *config, json_t *definition)
 		config->stride = json_integer_value(stride);
 	if (fps && json_is_object(fps))
 		fps = json_object_get(fourcc, "fps");
-	if (fps && !config->fps && json_is_integer(fps))
+	if (fps && config->fps == -1 && json_is_integer(fps))
 		config->fps = json_integer_value(fps);
 	if (fourcc && json_is_object(fourcc))
 		fourcc = json_object_get(fourcc, "value");
