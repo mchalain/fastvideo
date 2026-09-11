@@ -169,8 +169,15 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 	warn("spassthrough: create %s", config->parent.name);
 	if (type == device_control)
 		return dev;
+	if (dev->controls == NULL)
+	{
+		fastclean(_spassthroughdir, config->parent.name);
+		dev->controls = fastcontrols_create(_spassthroughdir, config->parent.name, sizeof(*dev->controls));
+	}
 	if (dev->controls)
 		dev->controls->state = 0;
+	else
+		err("spassthrough: controls disabled");
 	if (config && config->mode & MODE_COPY)
 	{
 		dev->copy = _default_copy;

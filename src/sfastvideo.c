@@ -256,9 +256,8 @@ void fastvideo_proto_append(const Proto_t *proto)
 #include <sys/stat.h>
 #include <sys/shm.h>
 
-void *fastcontrols_create(const char *dir, const char *keyname, unsigned int size)
+static int _fastcontrols_prepare(const char *dir, const char *keyname, int clean)
 {
-	int curdir = open(".", O_DIRECTORY);
 	if (mkdir(dir, 0755) && errno != EEXIST)
 		err("sfastvideo: programs directory creation error %m");
 	int rootfd = open(dir, O_DIRECTORY);
@@ -267,14 +266,29 @@ void *fastcontrols_create(const char *dir, const char *keyname, unsigned int siz
 		rootfd = AT_FDCWD;
 		err("sfastvideo: run inside current directory %m");
 	}
-#if 0
 	int ret = faccessat(rootfd, keyname, F_OK, AT_EACCESS);
-	if (!ret)
+	if (!ret && clean)
 	{
-		if (unlinkat(rootfd, keyname, 0))
+		ret = unlinkat(rootfd, keyname, 0);
+		if (ret)
+		{
 			err("sfastvideo: shm file access error %m");
+		}
+		else
+			ret = rootfd;
 	}
-#endif
+	else
+		ret = rootfd;
+	return ret;
+}
+
+void *fastcontrols_create(const char *dir, const char *keyname, unsigned int size)
+{
+	int ret = _fastcontrols_prepare(dir, keyname, 0);
+	if (ret < 0)
+		return NULL;
+	int rootfd = ret;
+	int curdir = open(".", O_DIRECTORY);
 	int fd = openat(rootfd, keyname, O_CREAT|O_RDWR, 0644);
 	if (fd < 0)
 		err("sfastvideo: shm file error %m");
@@ -299,7 +313,7 @@ void *fastcontrols_create(const char *dir, const char *keyname, unsigned int siz
 	warn("key=0x%x shmid=%d", key, shmid);
 	if (controls == (void *)-1)
 	{
-		err("sfastvideo: memory allocation error %m");
+		err("sfastvideo: share memory allocation error %m");
 		size = 0;
 		controls = NULL;
 	}
@@ -309,4 +323,9 @@ void *fastcontrols_create(const char *dir, const char *keyname, unsigned int siz
 void fastcontrols_destroy(void *controls)
 {
 	shmdt(controls);
+}
+
+void fastclean(const char *dir, const char *keyname)
+{
+	_fastcontrols_prepare(dir, keyname, 1);
 }

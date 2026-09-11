@@ -154,4 +154,5 @@ extern const Proto_t *_protos[10];
 
 void *fastcontrols_create(const char *dir, const char *keyname, unsigned int size);
 void fastcontrols_destroy(void *controls);
+void fastclean(const char *dir, const char *keyname);
 #endif
