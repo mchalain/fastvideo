@@ -16,7 +16,6 @@
 #include "sconfig.h"
 #include "log.h"
 
-#define MAX_BUFFERS 4
 #define MAX_CLIENTS 1
 
 #define BUFFER_SIZE 16
@@ -278,7 +277,7 @@ struct Dev_s
 	const Proto_t *proto;
 	void *protoctx;
 	uint32_t frames;
-	FrameBuffer_t buffers[MAX_BUFFERS];
+	FrameBuffer_t *buffers;
 	int nbuffers;
 	int currentid;
 	MPEGHeader_t header;
@@ -930,8 +929,8 @@ EXT_API int mpegts_requestbuffer(Dev_t *dev, enum buf_type_e t, ...)
 			int ntargets = va_arg(ap, int);
 			void **targets = va_arg(ap, void **);
 			size_t size = va_arg(ap, size_t);
-			dev->nbuffers = ntargets > MAX_BUFFERS? MAX_BUFFERS:ntargets;
-
+			dev->nbuffers = ntargets;
+			dev->buffers = calloc(dev->nbuffers, sizeof(*dev->buffers));
 			for (int i = 0; i < dev->nbuffers; i++)
 			{
 				FrameBuffer_t *buffer = &dev->buffers[i];
@@ -948,7 +947,8 @@ EXT_API int mpegts_requestbuffer(Dev_t *dev, enum buf_type_e t, ...)
 			int ntargets = va_arg(ap, int);
 			int *targets = va_arg(ap, int *);
 			size_t size = va_arg(ap, size_t);
-			dev->nbuffers = ntargets > MAX_BUFFERS? MAX_BUFFERS:ntargets;
+			dev->nbuffers = ntargets;
+			dev->buffers = calloc(dev->nbuffers, sizeof(*dev->buffers));
 			for (int i = 0; i < ntargets; i++)
 			{
 				FrameBuffer_t *buffer = &dev->buffers[i];
