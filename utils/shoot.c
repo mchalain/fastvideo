@@ -28,6 +28,7 @@ static void help(const char *name)
 	fprintf(stderr, "  -g <gpio>     gpiochip%d line number to watch (pull-up, idle high)\n", DEFAULT_CHIP);
 	fprintf(stderr, "  -W <path>     spassthrough working directory (default %s)\n", DEFAULT_WORKDIR);
 	fprintf(stderr, "  -c <name>     shared memory file name (the spassthrough device's own JSON name)\n");
+	fprintf(stderr, "  -p <periodic> set the frames number to repeat the shot (default 0)\n");
 	fprintf(stderr, "  -D            daemonize (fork to background)\n");
 	fprintf(stderr, "  -L <logfile>  redirect stdout/stderr to this file\n");
 	fprintf(stderr, "  -P <pidfile>  write the daemon pid to this file\n");
@@ -93,9 +94,10 @@ int main(int argc, char *const argv[])
 	const char *logfile = NULL;
 	const char *pidfile = NULL;
 	int do_daemonize = 0;
+	uint32_t periodic = 0;
 
 	int opt;
-	while ((opt = getopt(argc, argv, "hg:W:c:DL:P:")) != -1)
+	while ((opt = getopt(argc, argv, "hg:W:c:DL:P:p:")) != -1)
 	{
 		switch (opt)
 		{
@@ -116,6 +118,9 @@ int main(int argc, char *const argv[])
 			break;
 			case 'P':
 				pidfile = optarg;
+			break;
+			case 'p':
+				periodic = strtoull(optarg, NULL, 10);
 			break;
 			case 'h':
 			default:
@@ -203,6 +208,7 @@ int main(int argc, char *const argv[])
 			armed = 0;
 			dbg("shoot: gpio %d high->low->high, shooting", gpio);
 			controls->state |= STATE_SHOOT;
+			controls->periodic = periodic;
 		}
 	}
 
@@ -211,5 +217,6 @@ int main(int argc, char *const argv[])
 	shmdt(controls);
 
 	killdaemon(pidfile);
+	warn("shoot: end");
 	return 0;
 }
