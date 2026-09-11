@@ -48,6 +48,7 @@ struct File_s
 	void *convert_ctx;
 	void *outmem;
 	size_t outsize;
+	uint32_t frames;
 };
 
 EXT_API int sfile_queue(File_t *dev, int index, void *mem, size_t bytesused, int flags);
@@ -391,6 +392,15 @@ EXT_API int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused, int *flags
 			usec = 1000000 / dev->config->parent.fps;
 		usleep(usec);
 	}
+		dev->frames++;
+	if (dev->frames == dev->config->maxframes)
+	{
+		dev->frames = 0;
+		dev->ops->close(dev->ctx);
+		dev->ops->connect(dev->ctx);
+	}
+	if (dev->frames == UINT32_MAX)
+		dev->frames = 0;
 	if (bytesused)
 		*bytesused = buffer->bytesused;
 	if (mem && buffer->mem)
@@ -574,6 +584,18 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 				break;
 			}
 		}
+	}
+	json_t *maxframes = json_object_get(jconfig, "maxframes");
+	if (maxframes && json_is_integer(maxframes))
+	{
+		uint32_t value = json_integer_value(maxframes);
+		config->maxframes = value;
+	}
+	json_t *maxclients = json_object_get(jconfig, "maxclients");
+	if (maxclients && json_is_integer(maxclients))
+	{
+		uint32_t value = json_integer_value(maxclients);
+		config->maxclients = value;
 	}
 	return 0;
 }

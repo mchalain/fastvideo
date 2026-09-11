@@ -35,6 +35,7 @@ struct FileConfig_s
 		File_Output_e = 0x02,
 	} direction;
 	Convert_t *convert;
+	int maxframes;
 };
 
 typedef struct File_s File_t;
