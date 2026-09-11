@@ -56,6 +56,7 @@ struct Passthrough_s
 	size_t (*copy)(void *, const char *const , char *, size_t, size_t);
 	void *convert_ctx;
 	Passthrough_Control_t *controls;
+	uint32_t periodic;
 };
 
 static FastVideoList_t *g_Converts = NULL;
@@ -601,6 +602,15 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 		dev->state |= dev->controls->state;
 		dev->controls->state = 0;
 	}
+	if (dev->controls && dev->controls->periodic > 0 )
+	{
+		dev->periodic++;
+		if (dev->periodic == dev->controls->periodic)
+		{
+			dev->periodic = 0;
+			dev->state |= MODE_SHOOT;
+		}
+	}
 	if (dev->type != device_input && dev->dup && (dev->state & MODE_SHOOT))
 	{
 		warn("spassthrough: shoot on %p", dev->dup);
@@ -713,6 +723,9 @@ static int _passthrough_loadstate(Passthrough_t *dev, json_t *jconfig)
 			dev->controls->state |= MODE_TEE;
 		else if (jtee)
 			dev->controls->state &= ~MODE_TEE;
+		json_t *jperiodic = json_object_get(jconfig, "periodic");
+		if (jperiodic && json_is_integer(jperiodic))
+			dev->controls->periodic = json_integer_value(jperiodic);
 	}
 	if (json_is_string(jconfig))
 	{

@@ -22,6 +22,7 @@ struct Passthrough_config_s
 struct Passthrough_Control_s
 {
 	int state;
+	uint32_t periodic;
 };
 typedef struct Passthrough_Control_s Passthrough_Control_t;
 
