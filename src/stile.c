@@ -87,6 +87,20 @@ EXT_API DeviceConf_t *stile_createconfig(const char *name)
 	STileConf_t *config = calloc(1, sizeof(*config));
 	config->parent.name = stile_name;
 	config->parent.ops.loadconfiguration = stile_loadjsonconfiguration;
+	Passthrough_config_t *passconfig = &config->passconfig;
+	passconfig->convert = &sconvert_passthrough;
+	const char *convert = strstr(name, "convert=");
+	if (convert)
+	{
+		for (Convert_t *conv = spassthrough_convert_next(NULL); conv != NULL; conv = spassthrough_convert_next(conv))
+		{
+			if (conv->name && !strcmp(convert + 8, conv->name))
+			{
+				passconfig->convert = conv;
+				break;
+			}
+		}
+	}
 	return &config->parent;
 }
 
@@ -606,7 +620,7 @@ EXT_API int stile_loadjsonconfiguration(void *arg, void *entry)
 	json_t *convert = json_object_get(jconfig, "convert");
 	if (convert && json_is_object(convert))
 		convert = json_object_get(convert, "name");
-	if (convert && json_is_string(convert))
+	if (passconfig->convert == &sconvert_passthrough && convert && json_is_string(convert))
 	{
 		const char *value = json_string_value(convert);
 		for (Convert_t *conv = spassthrough_convert_next(NULL); conv != NULL; conv = spassthrough_convert_next(conv))
