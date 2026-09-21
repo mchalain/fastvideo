@@ -433,7 +433,7 @@ int main(int argc, char * const argv[])
 	int opt;
 	do
 	{
-		opt = getopt(argc, argv, "+L:W:DP:Ivj:l:");
+		opt = getopt(argc, argv, "+L:W:DP:Ivj:l:U:");
 		switch (opt)
 		{
 			case 'D':
@@ -460,11 +460,14 @@ int main(int argc, char * const argv[])
 			case 'l':
 				scommon_loadlibrary(optarg);
 			break;
+			case 'U':
+				owner = optarg;
+			break;
 		}
 	} while(opt != -1);
 
-	if (logfile)
-		daemon_setlogfile(logfile);
+	/// The fork of the daemon must be before setting
+	daemonize((_mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, logfile, pidfile, owner, NULL);
 
 	if (cwd  && chdir(cwd) != 0)
 		err("main: working directory %m");
@@ -559,11 +562,10 @@ int main(int argc, char * const argv[])
 		verbose_warn("pipe %s => %s ready", input->config->name, output->config->name);
 	}
 
-	daemonize((_mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, NULL, pidfile, owner, NULL);
+	daemon_setowner(owner, 1);
 
 	if ((_mode & MODE_INITIALIZE) == 0)
 		main_loop(pipes);
-
 	killdaemon(pidfile);
 	fastvideolist_destroy(pipes, main_pipedestroy);
 	return 0;
