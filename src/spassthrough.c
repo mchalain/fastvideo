@@ -55,6 +55,10 @@ struct Passthrough_s
 	} branch;
 	size_t (*copy)(void *, const char *const , char *, size_t, size_t);
 	void *convert_ctx;
+	struct{
+		unsigned int numerator;
+		unsigned int denominator;
+	} resize;
 	Passthrough_Control_t *controls;
 	uint32_t periodic;
 };
@@ -135,16 +139,10 @@ static size_t _passthrough_copy(Passthrough_t *dev, FrameBuffer_t *src, FrameBuf
 		dst->dma_buf = src->dma_buf;
 		return src->bytesused;
 	}
-	if (dev->config->convert && dev->config->convert->resize.denominator > 0)
-	{
-		expected *= dev->config->convert->resize.numerator;
-		expected /= dev->config->convert->resize.denominator;
-	}
+	expected *= dev->resize.numerator;
+	expected /= dev->resize.denominator;
 	if (dst->size < expected)
 		return -1;
-	size_t stride = bytesused;
-	if (dev->config->convert && dev->config->convert->bpp > 0 && dev->config->parent.width > 0)
-		stride = (size_t)dev->config->parent.width * dev->config->convert->bpp;
 	void *srcmem = NULL;
 	if (src->mem)
 		srcmem = src->mem;
@@ -152,7 +150,7 @@ static size_t _passthrough_copy(Passthrough_t *dev, FrameBuffer_t *src, FrameBuf
 		sdmabuf_sync(src->dma_buf, 1);
 	if (dst->dma_buf)
 		sdmabuf_sync(dst->dma_buf, 1);
-	bytesused = dev->copy(dev->convert_ctx, srcmem, dst->mem, bytesused, stride);
+	bytesused = dev->copy(dev->convert_ctx, srcmem, dst->mem, bytesused, src->strides[0]);
 	if (dst->dma_buf)
 		sdmabuf_sync(dst->dma_buf, 0);
 	if (src->dma_buf)
@@ -163,6 +161,8 @@ static size_t _passthrough_copy(Passthrough_t *dev, FrameBuffer_t *src, FrameBuf
 EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Passthrough_config_t *config)
 {
 	Passthrough_t *dev = calloc(1, sizeof(*dev));
+	dev->resize.numerator = 1;
+	dev->resize.denominator = 1;
 	dev->config = config;
 	dev->name = devicename;
 	dev->type = type;
@@ -217,22 +217,25 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 	Passthrough_t *dup = calloc(1, sizeof(*dup));
 	dev->type = device_output;
 	dup->type = device_input;
+	dup->resize.numerator = 1;
+	dup->resize.denominator = 1;
 	dup->dup = NULL;
 	dev->dup = dup;
 	*pconfig = dup->config = malloc(sizeof(*dev->config));
 	memmove(dup->config, config, sizeof(*dev->config));
-#if 0
+	memset(&dup->config->parent, 0, sizeof(dup->config->parent));
 	sconfig_mergedefinition(&dup->config->parent, &config->transfer);
-#else
-	if (config->transfer.fourcc)
-		dup->config->parent.fourcc = config->transfer.fourcc;
-	if (config->transfer.width)
-		dup->config->parent.width = config->transfer.width;
-	if (config->transfer.height)
-		dup->config->parent.height = config->transfer.height;
-	if (config->transfer.stride)
-		dup->config->parent.stride = config->transfer.stride;
-#endif
+	sconfig_mergedefinition(&dup->config->parent, &config->parent);
+	if (dev->convert_ctx)
+	{
+		if (config->convert->fourcc_out != 0)
+			dup->config->parent.fourcc = config->convert->fourcc_out;
+		dev->resize.numerator = config->convert->resize.numerator;
+		if (config->convert->resize.denominator)
+			dev->resize.denominator = config->convert->resize.denominator;
+		dup->config->parent.stride *= dev->resize.numerator;
+		dup->config->parent.stride /= dev->resize.denominator;
+	}
 	/// only the main dev must manage the copy buffers, but dup dev contains the buffers
 	dup->config->mode &= ~MODE_COPY;
 	if (dev->config->branch.type != 0)
@@ -330,6 +333,13 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 			dev->buffers[i].mem = mems[i];
 		dev->buffers[i].id = i;
 		dev->buffers[i].size = size;
+		/// spassthrough doesn't manage multiplanar buffer
+		if (dev->config->parent.stride)
+			dev->buffers[i].strides[0] = dev->config->parent.stride;
+		else if (dev->config->parent.height)
+			dev->buffers[i].strides[0] = size / dev->config->parent.height;
+		else
+			dev->buffers[i].strides[0] = size;
 	}
 	dev->mems = mems;
 	dev->dmabufs = dmabufs;
@@ -386,11 +396,8 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 			/**
 			 * create buffers for the output dev
 			 */
-			if (config->convert && config->convert->resize.denominator > 0)
-			{
-				size *= config->convert->resize.numerator;
-				size /= config->convert->resize.denominator;
-			}
+			size *= dev->resize.numerator;
+			size /= dev->resize.denominator;
 			if (dev->dup &&
 				_passthrough_createbuffers(dev->dup, ntargets, targets, NULL, size,
 					(dev->config->mode & MODE_COPY)) < 0)
@@ -455,11 +462,8 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 				break;
 			}
 			/// prepare buffers for output stream.
-			if (config->convert && config->convert->resize.denominator > 0)
-			{
-				size *= config->convert->resize.numerator;
-				size /= config->convert->resize.denominator;
-			}
+			size *= dev->resize.numerator;
+			size /= dev->resize.denominator;
 			if (dev->dup &&
 				_passthrough_createbuffers(dev->dup, ntargets, NULL, targets, size,
 					(dev->config->mode & MODE_COPY)) < 0)
@@ -580,7 +584,7 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 		dev->curbuffer = buffer->next;
 	}
 	if (bytesused)
-		*bytesused = buffer->bytesused;
+		*bytesused = (buffer->bytesused * dev->resize.numerator) / dev->resize.denominator;
 	if (mem)
 		*mem = buffer->mem;
 	if (flags)
