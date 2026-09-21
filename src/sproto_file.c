@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -19,6 +20,9 @@
 #define HLS_ENTRY "#EXTINF:%ld.%ld\n"
 #define HLS_FOOTER "#EXT-X-ENDLIST\n"
 
+#define SPROTO_FILE_TMPFILE 1
+#define SPROTO_FILA_NAME_LENGTH 128
+
 #define Proto_FILE_Hls 0x010000
 #define Proto_FILE_Static 0x020000
 #define Proto_FILE_Loop 0x030000
@@ -26,11 +30,12 @@ typedef struct Proto_FILE_s Proto_FILE_t;
 struct Proto_FILE_s
 {
 	Proto_Config_t *config;
+	char *root;
 	int rootfd;
 	int fd[2];
 	int maxfiles;
 	int currentfd;
-	char filename[64];
+	char filename[SPROTO_FILA_NAME_LENGTH];
 	const char *ext;
 	int fileid;
 	size_t mtu;
@@ -41,6 +46,10 @@ struct Proto_FILE_s
 
 static const char ext_ts[] = "ts";
 static const char ext_jpeg[] = "jpg";
+static const char ext_h264[] = "h264";
+static const char ext_pam[] = "pam";
+static const char ext_raw[] = "raw";
+static const char str_hiddenfile[] = ".tmp.part";
 
 struct timespec *timespec_subs( struct timespec *a, struct timespec *b)
 {
@@ -91,18 +100,35 @@ static void *proto_create(Proto_Config_t *config)
 		return NULL;
 	}
 	Proto_FILE_t *proto = calloc(1, sizeof(*proto));
-	proto->ext = ext_ts;
 	proto->config = config;
 	proto->mtu = mtu;
 	proto->rootfd = rootfd;
+	proto->root = host;
 	if (config->mode && strstr(config->mode, "static"))
 		proto->mode |= Proto_FILE_Static;
 	if (config->mode && strstr(config->mode, "loop"))
 		proto->mode |= Proto_FILE_Loop;
-	if (config->mode && strstr(config->mode, "jpeg"))
+	switch (config->parent.fourcc)
+	{
+	case FOURCC_JPEG:
 		proto->ext = ext_jpeg;
-	if (config->mode && strstr(config->mode, "hls"))
-		proto->mode |= Proto_FILE_Hls;
+	break;
+	case FOURCC_MPTS:
+		if (config->mode && strstr(config->mode, "hls"))
+		{
+			proto->mode |= Proto_FILE_Hls;
+		}
+		proto->ext = ext_ts;
+	break;
+	case FOURCC_H264:
+		proto->ext = ext_h264;
+	break;
+	default:
+		if (config->mode && strstr(config->mode, "pam"))
+			proto->ext = ext_pam;
+		else
+			proto->ext = ext_raw;
+	}
 	if (proto->mode & Proto_FILE_Hls)
 	{
 		int fd = 0;
@@ -130,14 +156,7 @@ static void *proto_create(Proto_Config_t *config)
 	else
 	{
 		proto->maxfiles = config->maxclients;
-		for (proto->fileid = 0; proto->fileid < proto->maxfiles; proto->fileid++)
-		{
-			snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.%s", proto->fileid, proto->ext);
-			if (faccessat(rootfd, proto->filename, F_OK, 0) < 0)
-				break;
-		}
 	}
-	free(host);
 	return proto;
 }
 
@@ -165,14 +184,25 @@ static int proto_connect_fifo(void *arg)
 	return 0;
 }
 
+static int proto_generatename(Proto_FILE_t *proto, char name[SPROTO_FILA_NAME_LENGTH])
+{
+	time_t now = time(NULL);
+	struct tm *tm_info = localtime(&now);
+	int ret;
+	char filename[SPROTO_FILA_NAME_LENGTH];
+	ret = strftime(filename, SPROTO_FILA_NAME_LENGTH, "stream_%Y-%m-%d_%H-%M-%S.%%s", tm_info);
+	ret = snprintf(name, SPROTO_FILA_NAME_LENGTH, filename, proto->ext);
+	if (ret > 0)
+		return 0;
+	return -1;
+}
+
 static int proto_connect_reg(void *arg)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
 
 	int newfd = proto->currentfd + 1;
 	newfd %= (sizeof(proto->fd) / sizeof(*proto->fd));
-	if (proto->maxfiles > 1)
-		snprintf(proto->filename, sizeof(proto->filename) - 1, "stream_%.04d.%s", proto->fileid, proto->ext);
 #if 0
 	if (faccessat(proto->rootfd, proto->filename, F_OK, 0) == 0)
 	{
@@ -188,14 +218,19 @@ static int proto_connect_reg(void *arg)
 		dprintf(proto->hlsfd, "%s\n", proto->filename);
 		clock_gettime(CLOCK_TAI, &proto->hlstp);
 	}
+#if SPROTO_FILE_TMPFILE
+	unlinkat(proto->rootfd, str_hiddenfile, 0);
+	proto->fd[newfd] = openat(proto->rootfd, str_hiddenfile, O_CREAT | O_RDWR, 0664);
+#else
 #ifdef O_TMPFILE
-	proto->fd[newfd] = open(config->host, O_TMPFILE | O_RDWR, 0664);
+	proto->fd[newfd] = open(proto->root, O_TMPFILE | O_RDWR, 0644);
 #else
 	proto->fd[newfd] = openat(proto->rootfd, proto->filename, O_CREAT | O_RDWR, 0664);
 #endif
+#endif
 	if (proto->fd[newfd] < 0)
 	{
-		err("sproto: file %s opening error %m", proto->filename);
+		err("sproto: file %s/%s opening error %m", proto->root, proto->filename);
 		return -1;
 	}
 	if (proto->fd[proto->currentfd] > 0)
@@ -263,12 +298,27 @@ static void proto_close(void *arg)
 	if (proto->fd[proto->currentfd])
 	{
 		warn("sproto: close file (%d)", proto->fd[proto->currentfd]);
-
+		off_t length = lseek(proto->fd[proto->currentfd], 0, SEEK_CUR);
+		if (proto->filename[0] == '\0')
+		{
+			proto_generatename(proto, proto->filename);
+		}
+#if SPROTO_FILE_TMPFILE
+		close(proto->fd[proto->currentfd]);
+		if (length)
+			renameat2(proto->rootfd, str_hiddenfile, proto->rootfd, proto->filename, RENAME_NOREPLACE);
+#else
 #ifdef O_TMPFILE
-		linkat(proto->fd[proto->currentfd], "", proto->fd[proto->currentfd], proto->filename, AT_EMPTY_PATH);
+		int ret = 0
+		if (length)
+			ret = linkat(proto->fd[proto->currentfd], "", , proto->filename, AT_EMPTY_PATH);
+		if (ret < 0)
+			err("sproto: file %s link error %m", proto->filename);
 #endif
 		close(proto->fd[proto->currentfd]);
+#endif
 		proto->fd[proto->currentfd] = -1;
+		proto->filename[0] = '\0';
 	}
 }
 
@@ -279,6 +329,13 @@ static void proto_destroy(void *arg)
 	{
 		close(proto->hlsfd);
 	}
+	if (proto->fd[proto->currentfd])
+	{
+		close(proto->fd[proto->currentfd]);
+	}
+	unlinkat(proto->rootfd, str_hiddenfile, 0);
+	close(proto->rootfd);
+	free(proto->root);
 	free(proto);
 }
 
