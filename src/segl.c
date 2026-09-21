@@ -691,8 +691,8 @@ EXT_API EGL_t *segl_duplicate(EGL_t *dev, EGLConfig_t **pconfig)
 	size_t size = width;
 	size *= height;
 	size *= fformat->stride_factor[0];
-	dup->buffers = calloc(dup->nbuffers, sizeof(*dup->buffers));
-	for (int i = 0; i < dup->nbuffers; i++, dup->nbuffers++)
+	dup->buffers = calloc(dup->config->nbuffers, sizeof(*dup->buffers));
+	for (int i = 0; i < dup->config->nbuffers; i++, dup->nbuffers++)
 	{
 		dup->buffers[i].id = i;
 		dup->buffers[i].size = size;
