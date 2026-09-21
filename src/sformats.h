@@ -62,6 +62,7 @@
 #define FOURCC_JPEG  FOURCC('J','P','E','G')
 #define FOURCC_MJPG  FOURCC('M','J','P','G')
 #define FOURCC_H264  FOURCC('H','2','6','4')
+#define FOURCC_MPTS  FOURCC('M','P','T','S')
 
 #define FOURCC_RG565  FOURCC_RG16
 

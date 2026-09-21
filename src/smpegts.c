@@ -909,6 +909,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	}
 #endif
 	dev->packetlen = MPEG_TS_LENGTH;
+	config->parent.fourcc = FOURCC_MPTS;
 
 #if DUMPDATA
 	dumpfd = open("/tmp/dump.h264", O_RDWR | O_CREAT);
