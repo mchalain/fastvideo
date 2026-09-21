@@ -24,9 +24,11 @@
 
 extern const Proto_t proto_file;
 
+static const char str_p7[] = "P7";
 static const char str_rgba[] = "RGB_ALPHA";
 static const char str_rgb[] = "RGB";
 static const char str_cmyk[] = "CMYK";
+static const char str_grayscale[] = "GRAYSCALE";
 
 struct File_s
 {
@@ -113,6 +115,7 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 		{
 			case File_PAM_e:
 			{
+				const char *P = str_p7;
 				const char *format;
 				if (dev->fourcc == FOURCC_XB24)
 					format = str_rgba;
@@ -120,10 +123,12 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 					format = str_rgb;
 				if (dev->fourcc == FOURCC_YUYV)
 					format = str_cmyk;
+				if (dev->fourcc == FOURCC_R8)
+					format = str_grayscale;
 				/// add TIFF header for other fourcc
 				dev->headerlen = snprintf(dev->header, sizeof(dev->header),
-					"P7 WIDTH %.4d HEIGHT %.4d DEPTH %.1d MAXVAL 255 TUPLTYPE %s ENDHDR",
-					dev->width, dev->height, dev->bpp, format);
+					"%s\nWIDTH %.4d\nHEIGHT %.4d\nDEPTH %.1d\nMAXVAL 255\nTUPLTYPE %s\nENDHDR\n",
+					P, dev->width, dev->height, dev->bpp, format);
 			}
 			break;
 			default:
