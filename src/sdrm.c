@@ -1568,6 +1568,7 @@ static uint32_t sdrm_setrotation(Display_t *disp, json_t *jrotation)
 	if (jrotation && json_is_integer(jrotation))
 	{
 		int rotation = json_integer_value(jrotation);
+		disp->rotation &= ~DRM_MODE_ROTATE_MASK;
 		if (rotation < 45)
 			disp->rotation |= DRM_MODE_ROTATE_0;
 		else if (rotation < 135)
@@ -1583,14 +1584,20 @@ static uint32_t sdrm_setrotation(Display_t *disp, json_t *jrotation)
 	if (jrotation && json_is_string(jrotation))
 	{
 		const char *value = json_string_value(jrotation);
-		if (!strcasecmp(value, "90"))
-			disp->rotation |= DRM_MODE_ROTATE_90;
-		else if (!strcasecmp(value, "180"))
-			disp->rotation |= DRM_MODE_ROTATE_180;
-		else if (!strcasecmp(value, "270"))
-			disp->rotation |= DRM_MODE_ROTATE_270;
-		else if (!strcasecmp(value, "reflect"))
+		if (!strcasecmp(value, "reflect"))
 			disp->rotation |= DRM_MODE_REFLECT_X;
+		else
+		{
+			disp->rotation &= ~DRM_MODE_ROTATE_MASK;
+			if (!strcasecmp(value, "0"))
+				disp->rotation |= DRM_MODE_ROTATE_90;
+			else if (!strcasecmp(value, "90"))
+				disp->rotation |= DRM_MODE_ROTATE_90;
+			else if (!strcasecmp(value, "180"))
+				disp->rotation |= DRM_MODE_ROTATE_180;
+			else if (!strcasecmp(value, "270"))
+				disp->rotation |= DRM_MODE_ROTATE_270;
+		}
 	}
 	return ret;
 }
