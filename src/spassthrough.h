@@ -74,5 +74,7 @@ typedef void (*spassthrough_convert_append_t)(Convert_t *convert);
 void spassthrough_convert_append(Convert_t *convert);
 Convert_t *spassthrough_convert_next(Convert_t *convert);
 
+extern Convert_t sconvert_passthrough;
+
 extern FastVideoDevice_ops_t spassthrough_ops;
 #endif

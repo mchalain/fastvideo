@@ -15,14 +15,6 @@
 
 #define spassthrough_dbg(...)
 
-#if defined(__ARM_NEON)
-#if !defined(__aarch64__)
-#define NEON_COPY 2
-#else
-#define NEON_COPY 1
-#endif
-#endif
-
 static const char _spassthroughdir[] = "/tmp/fastvideo.spassthrough";
 static const char spassthrough[] = "spassthrough";
 static int spassthrough_loadjsonsettings(Passthrough_t *dev, void *entry);
@@ -90,46 +82,6 @@ DeviceConf_t * spassthrough_createconfig(const char *name)
 	return &config->parent;
 }
 
-#if NEON_COPY == 1
-static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t size, size_t stride)
-{
-	asm volatile (
-		"1:                                               \n"
-		"subs     %[size], %[size], #32                   \n"
-		"ld1      {v0.16b, v1.16b}, [%[src]], #32         \n"
-		"st1      {v0.16b, v1.16b}, [%[dst]], #32         \n"
-		"b.gt     1b                                      \n"
-		: [dst]"+r"(dst), [size]"+r"(size)
-		: [src]"r"(src)
-		: "v0", "v1", "cc", "memory"
-	);
-
-	return size;
-}
-#elif NEON_COPY == 2
-static size_t _neon_copy(void *dev, const char *const src, char *dst, size_t size, size_t stride)
-{
-	/// [%[src]:256] for alignment on 256bits
-	asm volatile (
-		"1:                                               \n"
-		"subs     %[size], %[size], #32                   \n"
-		"vld1.u8  {d0, d1, d2, d3}, [%[src]:256]!         \n"
-		"vst1.u8  {d0, d1, d2, d3}, [%[dst]:256]!         \n"
-		"bgt      1b                                      \n"
-		: [dst]"+r"(dst)
-		: [src]"r"(src), [size]"r"(size)
-		: "d0", "d1", "d2", "d3", "cc", "memory"
-	);
-	return size;
-}
-#endif
-
-static size_t _default_copy(void *dev, const char *const src, char *dst, size_t size, size_t stride)
-{
-	memcpy(dst, src, size);
-	return size;
-}
-
 static size_t _passthrough_copy(Passthrough_t *dev, FrameBuffer_t *src, FrameBuffer_t *dst, size_t bytesused)
 {
 	size_t expected = bytesused;
@@ -179,17 +131,6 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 		dev->controls->state = 0;
 	else
 		err("spassthrough: controls disabled");
-	if (config && config->mode & MODE_COPY)
-	{
-		dev->copy = _default_copy;
-		dev->convert_ctx = dev;
-#if NEON_COPY
-		if (scpu_check(SCPU_NEON))
-		{
-			dev->copy = _neon_copy;
-		}
-#endif
-	}
 	if (config && config->convert &&
 		(config->convert->fourcc_in == 0 || config->convert->fourcc_in == config->parent.fourcc))
 	{
@@ -803,34 +744,37 @@ EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry)
 		config->branch.type = json_string_value(type);
 	}
 
+	const char *convert = NULL;
 	json_t *jcopy = json_object_get(jconfig, "copy");
 	if (jcopy && json_is_true(jcopy))
-		config->mode |= MODE_COPY;
+		convert = sconvert_passthrough.name;
 
-	json_t *convert = json_object_get(jconfig, "convert");
-	if (convert && json_is_object(convert))
+	json_t *jconvert = json_object_get(jconfig, "convert");
+	if (jconvert && json_is_object(jconvert))
 	{
-		json_t *library = json_object_get(convert, "library");
+		json_t *library = json_object_get(jconvert, "library");
 		if (library && json_is_string(library))
 		{
 			config->libraryhdl = dlopen(json_string_value(library), RTLD_NOW);
 			json_decref(library);
 		}
-		convert = json_object_get(convert, "name");
+		jconvert = json_object_get(jconvert, "name");
 	}
-	if (convert && json_is_string(convert))
+	if (jconvert && json_is_string(jconvert))
 	{
-		const char *value = json_string_value(convert);
-
-		for (Convert_t *convert = spassthrough_convert_next(NULL);
-			convert != NULL; convert = spassthrough_convert_next(convert))
+		convert = json_string_value(jconvert);
+	}
+	if (convert)
+	{
+		for (Convert_t *plugin = spassthrough_convert_next(NULL);
+			plugin != NULL; plugin = spassthrough_convert_next(plugin))
 		{
-			if (! strcmp(value, convert->name))
+			if (! strcmp(convert, plugin->name))
 			{
-				config->convert = convert;
+				config->convert = plugin;
 				if (!config->transfer.fourcc)
-					config->transfer.fourcc = convert->fourcc_out;
-				if (convert->copy)
+					config->transfer.fourcc = plugin->fourcc_out;
+				if (plugin->copy)
 					config->mode |= MODE_COPY;
 				break;
 			}
