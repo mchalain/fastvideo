@@ -24,6 +24,9 @@
 #define DATA_STARTED 0x0001
 
 #define MPEG_TS_LENGTH 188
+/// sizeof(dev->pes_header) returns 20 instead of 19 (alignment error), so
+/// this is sent (and reserved) as a literal length instead
+#define PES_HEADER_LENGTH 19
 
 #define DUMPDATA 0
 #define PES_PTSDTS_ENABLE 1
@@ -671,10 +674,13 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 		size_t buflength; /// the length of buffer to send with this ts packet
 		/// the packet must contain 188 bytes even when the payload is smaller
 		buflength = dev->packetlen;
-		if (buflength - sizeof(dev->header) > length)
+		size_t reserved = sizeof(dev->header);
+		if (dev->header.pusi)
+			reserved += PES_HEADER_LENGTH;
+		if (buflength - reserved > length)
 		{
 			/// need padding to complete the ts packet
-			paddinglength = buflength - sizeof(dev->header) - length;
+			paddinglength = buflength - reserved - length;
 			/// request the adaptation field to add this padding
 			dev->header.afi |= 0x2;
 		}
@@ -763,7 +769,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 #endif
 			/// sizeof(dev->pes_header) returns 20 instead 19 (alignment error)
 			//ret = dev->proto->send(dev->protoctx, &dev->pes_header, sizeof(dev->pes_header), flags);
-			ret = dev->proto->send(dev->protoctx, &dev->pes_header, 19, flags);
+			ret = dev->proto->send(dev->protoctx, &dev->pes_header, PES_HEADER_LENGTH, flags);
 		}
 		/// the part of the buffer
 		if (ret > 0)
