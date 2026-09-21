@@ -467,7 +467,11 @@ static uint32_t _v4l2_setpixformat(int fd, enum v4l2_buf_type type, uint32_t fou
 	else
 #endif
 	if (pixelformat)
+	{
+#define KEEPFIELDS (sizeof(fmt.fmt.pix.width) + sizeof(fmt.fmt.pix.height) + sizeof(fmt.fmt.pix.pixelformat) + sizeof(fmt.fmt.pix.field))
+		memset(((char*)&fmt.fmt) + KEEPFIELDS, 0, sizeof(fmt.fmt) - KEEPFIELDS);
 		fmt.fmt.pix.pixelformat = pixelformat;
+	}
 	if (ioctl(fd, VIDIOC_S_FMT, &fmt) != 0)
 	{
 		err("sv4l2: FMT setting error %m on device type %d", type);
@@ -583,7 +587,6 @@ static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, uint32_t *wi
 		return -1;
 	}
 
-	uint8_t pdepth = fmt.fmt.pix.bytesperline / fmt.fmt.pix.width;
 	if (*height > 0 && *width == 0)
 	{
 		*width = *height * 16 / 9;
@@ -593,7 +596,9 @@ static uint32_t _v4l2_setframesize(int fd, enum v4l2_buf_type type, uint32_t *wi
 	{
 		fmt.fmt.pix.width = *width;
 		fmt.fmt.pix.height = *height;
-		fmt.fmt.pix.bytesperline = *width * pdepth;
+		/// zeroing some fields to let the chip to choose by itself
+		fmt.fmt.pix.bytesperline = 0;
+		fmt.fmt.pix.sizeimage = 0;
 	}
 	if (ioctl(fd, VIDIOC_S_FMT, &fmt) != 0)
 	{
@@ -1517,8 +1522,8 @@ V4L2_t *sv4l2_create2(int fd, const char *name, device_type_e dtype, V4l2Config_
 		dev->ops.createbuffers = createbuffers_mplane;
 	}
 	sv4l2_getpixformat(dev, NULL, NULL);
-	warn("sv4l2: create %s(%s), %s %ux%u %.4s", name, devicename, config?config->device:"",
-				dev->width, dev->height, (char*)&dev->fourcc);
+	warn("sv4l2: create %s(%s), %s %ux%u(%u) %.4s", name, devicename, config?config->device:"",
+				dev->width, dev->height, dev->stride, (char*)&dev->fourcc);
 
 	return dev;
 }
@@ -1572,7 +1577,9 @@ V4L2_t *sv4l2_duplicate(V4L2_t *dev, V4l2Config_t **pconfig)
 	dup->type = -1;
 	*pconfig = dup->config = malloc(sizeof(*dev->config));
 	memmove(dup->config, dev->config, sizeof(*dev->config));
+	memset(&dup->config->parent, 0, sizeof(dup->config->parent));
 	sconfig_mergedefinition(&dup->config->parent, &dev->config->transfer);
+	sconfig_mergedefinition(&dup->config->parent, &dev->config->parent);
 	if ((dup->mode & MODE_CAPTURE) && dup->config->periodic)
 	{
 		dup->periodicfunc = _v4l2_periodiccontrol;
