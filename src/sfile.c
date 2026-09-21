@@ -537,7 +537,7 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 		modes = json_object_get(jconfig, "proto");
 	if (modes == NULL)
 		modes = json_object_get(jconfig, "mode");
-	if (modes && json_is_array(modes))
+	if (config->protoconf.mode == NULL && modes && json_is_array(modes))
 	{
 		json_t *mode;
 		int index;
@@ -555,8 +555,6 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 						break;
 					}
 				}
-				if (! strncasecmp(value, "pam", 3))
-					config->header = File_PAM_e;
 			}
 		}
 	}
@@ -572,9 +570,9 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 				break;
 			}
 		}
-		if (! strncasecmp(value, "pam", 3))
-			config->header = File_PAM_e;
 	}
+	if (config->protoconf.mode && ! strncasecmp(config->protoconf.mode, "pam", 3))
+		config->header = File_PAM_e;
 	json_t *convert = json_object_get(jconfig, "convert");
 	if (convert && json_is_object(convert))
 		convert = json_object_get(convert, "name");
@@ -626,6 +624,7 @@ DeviceConf_t * sfile_createconfig(const char *name)
 
 	/// this is possible if name variable exits when "create" is called
 	devconfig = calloc(1, sizeof(FileConfig_t));
+	devconfig->port = DEFAULT_PORT;
 	const char *filepath = strchr(name, ':');
 	if (filepath)
 	{
@@ -633,8 +632,18 @@ DeviceConf_t * sfile_createconfig(const char *name)
 		/// the filepath may be an URL
 		if (filepath[0] == '/' && filepath[1] == '/') filepath += 2;
 		devconfig->filename = filepath;
+		const char *port = strchr(filepath, ':');
+		if (port)
+		{
+			port++;
+			devconfig->port = strtol(port, NULL, 10);
+		}
 	}
-	devconfig->port = DEFAULT_PORT;
+	const char *mode = strstr(name, "mode=");
+	if (mode)
+	{
+		devconfig->mode = mode + 5;
+	}
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sfile_loadjsonconfiguration;
 #endif
