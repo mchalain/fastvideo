@@ -5,7 +5,7 @@
       {
         "name":"White Balance, Automatic",
         "id": 9963788,
-        "value":true
+        "value": false
       },{
         "name":"Gain, Automatic",
         "id": 9963794,
@@ -23,15 +23,17 @@
         "id": 9963793,
         "value":1000
       },{
+        "disable": true,
         "name":"Vertical Flip",
         "id": 9963797,
-        "comment": "true value fail the startup",
-        "value": false
+        "comment": "The value depends on the Fourcc",
+        "value": true
       },{
+        "disable": true,
         "name":"Horizontal Flip",
         "id": 9963796,
-        "comment": "true value fail the startup",
-        "value": false
+        "comment": "The value depends on the Fourcc",
+        "value": true
       },{
         "name":"Vertical Blanking",
         "id": 10356993,
@@ -45,11 +47,11 @@
       {
         "name": "Red Balance",
         "id": 9963790,
-        "value": 2576
+        "value": 1428
       },{
         "name": "Blue Balance",
         "id": 9963791,
-        "value": 2107
+        "value": 2059
       },{
         "name": "colour_correction_matrix",
         "id": 9968097,
