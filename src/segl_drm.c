@@ -710,7 +710,7 @@ static void *native_create(EGLConfig_t *config)
 	return ctx;
 }
 
-static EGLNativeDisplayType native_display(void *native_ctx)
+static EGLDisplay native_display(void *native_ctx)
 {
 	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t *)native_ctx;
 	EGLConfig_t *config = ctx->config;
@@ -775,7 +775,7 @@ static EGLNativeDisplayType native_display(void *native_ctx)
 	if (!config->transfer.fourcc)
 		config->transfer.fourcc = drm.fourcc;
 	ctx->gbm = gbm;
-	return (EGLNativeDisplayType)gbm;
+	return eglGetPlatformDisplay(EGL_PLATFORM_GBM_MESA, (EGLNativeDisplayType)gbm, NULL);
 }
 
 static const GLint *native_attributes(void *native_ctx)

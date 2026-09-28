@@ -63,10 +63,11 @@ static void *native_create(EGLConfig_t *config)
 	return ctx;
 }
 
-static EGLNativeDisplayType native_display(void *native_ctx)
+static EGLDisplay native_display(void *native_ctx)
 {
 	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t*)native_ctx;
-	return (EGLNativeDisplayType)ctx->display;
+	EGLDisplay display = eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, ctx->display, NULL);
+	return display;
 }
 
 static const EGLint g_attributes[] = {

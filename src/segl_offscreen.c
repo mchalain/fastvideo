@@ -36,13 +36,12 @@ static void *native_create(EGLConfig_t *config)
 	return ctx;
 }
 
-static EGLNativeDisplayType native_display(void *native_ctx)
+static EGLDisplay native_display(void *native_ctx)
 {
-	PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT = (void *) eglGetProcAddress("eglGetPlatformDisplayEXT");
-	EGLNativeDisplayType display = (EGLNativeDisplayType)0;
-	display = eglGetPlatformDisplayEXT(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
+	//PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplay = (void *) eglGetProcAddress("eglGetPlatformDisplayEXT");
+	EGLDisplay display = eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
 	dbg("%s %d, %p", __FILE__, __LINE__, display);
-	return EGL_DEFAULT_DISPLAY;
+	return display;
 }
 
 static const EGLint g_attributes[] = {

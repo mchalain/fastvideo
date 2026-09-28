@@ -219,7 +219,6 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		return NULL;
 	}
 	config->type = type;
-	EGLNativeDisplayType ndisplay = EGL_DEFAULT_DISPLAY;
 
 	uint32_t width = config->parent.width;
 	uint32_t height = config->parent.height;
@@ -237,11 +236,9 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		return NULL;
 	}
 	void *nativectx = native->create(config);
-	ndisplay = native->display(nativectx);
-	if (EGL_CAST(EGLint,ndisplay) == EGL_UNKNOWN)
+	if (nativectx == NULL)
 		return NULL;
-
-	EGLDisplay eglDisplay = eglGetDisplay(ndisplay);
+	EGLDisplay eglDisplay = native->display(nativectx);
 
 	EGLint major, minor;
 	if (!eglInitialize(eglDisplay, &major, &minor))
