@@ -46,11 +46,13 @@ static int _egl_export_setbuffer(void *arg, GLBuffer_t *buffer)
 			buffer->dma_fd = dmabufs_tmp;
 		ret = 0;
 	}
-#else
-	buffer->memory = calloc(1, buffer->size);
-	if (buffer->memory)
-		ret = 0;
+	else
 #endif
+	{
+		buffer->memory = calloc(1, buffer->size);
+		if (buffer->memory)
+			ret = 0;
+	}
 	return ret;
 }
 
@@ -73,13 +75,16 @@ static int _egl_export_flush(void *arg, GLBuffer_t *buffer)
 static int _egl_export_releasebuffer(void *arg, GLBuffer_t *buffer)
 {
 #if EXPORT_USERDMABUF
-	if (buffer->memory != NULL)
-		sdmabuf_unmap(buffer->memory, buffer->size);
-	sdmabuf_destroy(buffer->dma_fd);
-#else
+	if (buffer->dma_fd)
+	{
+		if (buffer->memory != NULL)
+			sdmabuf_unmap(buffer->memory, buffer->size);
+		sdmabuf_destroy(buffer->dma_fd);
+	}
+	else
+#endif
 	if (buffer->memory != NULL)
 		free(buffer->memory);
-#endif
 	return 0;
 }
 
