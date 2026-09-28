@@ -77,10 +77,27 @@ static int native_sync(void *native_ctx)
 	return 0;
 }
 
-static EGLNativeWindowType native_createwindow(void *native_ctx,
-							uint32_t width, uint32_t height, const char *name)
+static EGLSurface native_surface(void *native_ctx, EGLConfig eglConfig)
 {
-	return (EGLNativeWindowType) NULL;
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t *)native_ctx;
+	EGLConfig_t *config = ctx->config;
+	EGLint texture_format = EGL_TEXTURE_RGBA;
+	EGLint texturergb = 0;
+	eglGetConfigAttrib(native_display(ctx), eglConfig, EGL_BIND_TO_TEXTURE_RGB, &texturergb);
+	if (texturergb)
+		texture_format = EGL_TEXTURE_RGB;
+	warn("segl: surface on pbuffer");
+	EGLint attribs[] = {
+		EGL_WIDTH, config->transfer.width,
+		EGL_HEIGHT, config->transfer.height,
+		EGL_TEXTURE_FORMAT, texture_format,
+		EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
+		//EGL_LARGEST_PBUFFER, EGL_TRUE, // no visible change
+		EGL_NONE,
+	};
+
+	EGLSurface eglSurface = eglCreatePbufferSurface(native_display(ctx), eglConfig, attribs);
+	return eglSurface;
 }
 
 static void native_destroy(void *native_ctx)
@@ -94,7 +111,7 @@ EGLNative_t eglnative_offscreen =
 	.create = native_create,
 	.display = native_display,
 	.attributes = native_attributes,
-	.createwindow = native_createwindow,
+	.surface = native_surface,
 	.fd = native_fd,
 	.flush = native_flush,
 	.sync = native_sync,

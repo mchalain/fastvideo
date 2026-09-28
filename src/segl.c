@@ -219,9 +219,10 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		return NULL;
 	}
 	config->type = type;
-
-	uint32_t width = config->parent.width;
-	uint32_t height = config->parent.height;
+	if (!config->transfer.width)
+		config->transfer.width = config->parent.width;
+	if (!config->transfer.height)
+		config->transfer.height = config->parent.height;
 
 	const EGLNative_t * native = config->native;
 	if (type == device_transfer && config->export && config->export->native)
@@ -320,36 +321,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		return NULL;
 	}
 
-	EGLNativeWindowType nwindow = native->createwindow(nativectx, width, height, "segl");
-
-	EGLSurface eglSurface = NULL;
-	if (nwindow != (EGLNativeWindowType)NULL)
-	{
-		EGLint attribs[] = {
-			//EGL_GL_COLORSPACE,  EGL_GL_COLORSPACE_LINEAR,
-			EGL_NONE,
-		};
-		eglSurface = eglCreateWindowSurface(eglDisplay, eglConfigs[configid], nwindow, attribs);
-	}
-	else
-	{
-		EGLint texture_format = EGL_TEXTURE_RGBA;
-		EGLint texturergb = 0;
-		eglGetConfigAttrib(eglDisplay, eglConfigs[configid], EGL_BIND_TO_TEXTURE_RGB, &texturergb);
-		if (texturergb)
-			texture_format = EGL_TEXTURE_RGB;
-		warn("segl: surface on pbuffer");
-		EGLint attribs[] = {
-			EGL_WIDTH, width,
-			EGL_HEIGHT, height,
-			EGL_TEXTURE_FORMAT, texture_format,
-			EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
-			//EGL_LARGEST_PBUFFER, EGL_TRUE, // no visible change
-			EGL_NONE,
-		};
-
-		eglSurface = eglCreatePbufferSurface(eglDisplay, eglConfigs[configid], attribs);
-	}
+	EGLSurface eglSurface = native->surface(nativectx, eglConfigs[configid]);
 	if (eglSurface == EGL_NO_SURFACE)
 	{
 		err("segl: failed to create egl surface (%#x)", eglGetError());

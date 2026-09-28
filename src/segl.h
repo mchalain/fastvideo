@@ -88,8 +88,7 @@ struct EGLNative_s
 	void *(*create)(EGLConfig_t *config);
 	EGLDisplay (*display)(void *native);
 	const EGLint *(*attributes)(void *native);
-	EGLNativeWindowType (*createwindow)(void *native,
-							uint32_t width, uint32_t height, const char *name);
+	EGLSurface (*surface)(void *native, EGLConfig eglConfig);
 	int (*fd)(void *native);
 	int (*flush)(void *native);
 	int (*sync)(void *native);

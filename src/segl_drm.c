@@ -707,14 +707,7 @@ static void *native_create(EGLConfig_t *config)
 	SEGLNative_ctx_t *ctx = calloc(1, sizeof(*ctx));
 	ctx->fd = fd;
 	ctx->config = config;
-	return ctx;
-}
 
-static EGLDisplay native_display(void *native_ctx)
-{
-	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t *)native_ctx;
-	EGLConfig_t *config = ctx->config;
-	int fd = ctx->fd;
 #ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
 	if (drmSetMaster(fd))
 		err("segl: drm setmaster failed %m");
@@ -761,7 +754,10 @@ static EGLDisplay native_display(void *native_ctx)
 		fourcc = defaultfourcc;
 	dbg("segl: screen format %.4s", (char *)&fourcc);
 
-	if (init_drm(fd, fourcc, config->parent.width, config->parent.height, (config->type == device_transfer)))
+	uint32_t width = config->transfer.width;
+	uint32_t height = config->transfer.height;
+
+	if (init_drm(fd, fourcc, width, height, (config->type == device_transfer)))
 	{
 #if 0
 		return EGL_CAST(EGLNativeDisplayType, EGL_UNKNOWN);
@@ -775,7 +771,13 @@ static EGLDisplay native_display(void *native_ctx)
 	if (!config->transfer.fourcc)
 		config->transfer.fourcc = drm.fourcc;
 	ctx->gbm = gbm;
-	return eglGetPlatformDisplay(EGL_PLATFORM_GBM_MESA, (EGLNativeDisplayType)gbm, NULL);
+	return ctx;
+}
+
+static EGLDisplay native_display(void *native_ctx)
+{
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t *)native_ctx;
+	return eglGetPlatformDisplay(EGL_PLATFORM_GBM_MESA, (EGLNativeDisplayType)ctx->gbm, NULL);
 }
 
 static const GLint *native_attributes(void *native_ctx)
@@ -792,15 +794,15 @@ static const GLint *native_attributes(void *native_ctx)
 	return attributes;
 }
 
-static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, GLuint height, const GLchar *name)
+static EGLSurface native_surface(void *native_ctx, EGLConfig eglConfig)
 {
 	SEGLNative_ctx_t *ctx = native_ctx;
 	struct gbm_device *gbm = ctx->gbm;
 	if (drm.mode_id == 0)
-		return (EGLNativeWindowType)NULL;
+		return EGL_NO_SURFACE;
 
-	width = drm.width;
-	height = drm.height;
+	GLuint width = drm.width;
+	GLuint height = drm.height;
 
 	uint64_t modifiers[1] = {DRM_FORMAT_MOD_LINEAR};
 	int modifiers_length = 1;
@@ -816,10 +818,16 @@ static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, G
 
 	if (!surface) {
 		err("segl: failed to create gbm surface %.4s", (char *)&drm.fourcc);
-		return (EGLNativeWindowType)NULL;
+		return EGL_NO_SURFACE;
 	}
 	ctx->surface = surface;
-	return (EGLNativeWindowType) surface;
+
+	EGLint attribs[] = {
+		//EGL_GL_COLORSPACE,  EGL_GL_COLORSPACE_LINEAR,
+		EGL_NONE,
+	};
+	EGLSurface eglSurface = eglCreateWindowSurface(native_display(ctx), eglConfig, (EGLNativeWindowType)ctx->surface, attribs);
+	return eglSurface;
 }
 
 static int native_fd(void *native_ctx)
@@ -947,7 +955,7 @@ EGLNative_t eglnative_drm =
 	.create = native_create,
 	.display = native_display,
 	.attributes = native_attributes,
-	.createwindow = native_createwindow,
+	.surface = native_surface,
 	.fd = native_fd,
 	.flush = native_flush,
 	.sync = native_sync,

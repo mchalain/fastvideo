@@ -25,6 +25,7 @@
 typedef struct SEGLNative_ctx_s SEGLNative_ctx_t;
 struct SEGLNative_ctx_s
 {
+	EGLConfig_t *config;
 	Display *display;
 	Window window;
 };
@@ -40,6 +41,7 @@ static void *native_create(EGLConfig_t *config)
 	}
 	SEGLNative_ctx_t *ctx = calloc(1, sizeof(*ctx));
 	ctx->display = display;
+	ctx->config = config;
 	return ctx;
 }
 
@@ -104,11 +106,13 @@ static int native_sync(void *native_ctx)
 	return 0;
 }
 
-static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, GLuint height, const GLchar *name)
+static EGLSurface native_surface(void *native_ctx, EGLConfig eglConfig)
 {
 	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t*)native_ctx;
 	Display *display = ctx->display;
 	Window root = DefaultRootWindow(display);
+	int width = ctx->config->transfer.width;
+	int height = ctx->config->transfer.height;
 
 	XSetWindowAttributes swa;
 	swa.event_mask  =  ExposureMask | PointerMotionMask | KeyPressMask | KeyReleaseMask;
@@ -135,7 +139,7 @@ static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, G
 	XSetWMHints(display, win, &hints);
 
 	XMapWindow(display, win);
-	XStoreName(display, win, name);
+	XStoreName(display, win, "fastvideo");
 
 	Atom wm_state;
 	wm_state = XInternAtom(display, "_NET_WM_STATE", FALSE);
@@ -151,7 +155,12 @@ static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, G
 	XSendEvent(display, DefaultRootWindow(display ),
 		FALSE, SubstructureNotifyMask, &xev );
 	ctx->window = win;
-	return (EGLNativeWindowType) win;
+	EGLint attribs[] = {
+		//EGL_GL_COLORSPACE,  EGL_GL_COLORSPACE_LINEAR,
+		EGL_NONE,
+	};
+	EGLSurface eglSurface = eglCreateWindowSurface(native_display(ctx), eglConfig, (EGLNativeWindowType)ctx->window, attribs);
+	return eglSurface;
 }
 
 static void native_destroy(void *native_ctx)
@@ -166,7 +175,7 @@ EGLNative_t eglnative_x11 =
 	.create = native_create,
 	.display = native_display,
 	.attributes = native_attributes,
-	.createwindow = native_createwindow,
+	.surface = native_surface,
 	.fd = native_fd,
 	.flush = native_flush,
 	.sync = native_sync,

@@ -60,6 +60,9 @@ static void *native_create(EGLConfig_t *config)
 	}
 	SEGLNative_ctx_t *ctx = calloc(1, sizeof(*ctx));
 	ctx->display = display;
+	ctx->width = config->transfer.width;
+	ctx->height = config->transfer.height;
+
 	return ctx;
 }
 
@@ -220,19 +223,17 @@ static struct wl_registry_listener registry_listener = {
 	&registry_remove_object
 };
 
-static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, GLuint height, const GLchar *name)
+static EGLSurface native_surface(void *native_ctx, EGLConfig eglConfig)
 {
 	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t*)native_ctx;
 	ctx->registry = wl_display_get_registry(ctx->display);
 	wl_registry_add_listener(ctx->registry, &registry_listener, ctx);
 	wl_display_dispatch(ctx->display);
 	wl_display_roundtrip(ctx->display);
-	ctx->width = width;
-	ctx->height = height;
 
 	/// compositor and shell created during wl_display_roundtrip with registry_add_object
 	if (ctx->compositor == NULL)
-		return (EGLNativeWindowType) NULL;
+		return EGL_NO_SURFACE;
 #if !defined(XDG_WM_BASE)
 	if (ctx->shell == NULL)
 #elif !defined(WL_SHELL)
@@ -240,7 +241,7 @@ static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, G
 #else
 	if (ctx->shell == NULL && ctx->xdg_wm_base == NULL)
 #endif
-		return (EGLNativeWindowType) NULL;
+		return EGL_NO_SURFACE;
 
 	ctx->surface = wl_compositor_create_surface(ctx->compositor);
 
@@ -262,7 +263,7 @@ static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, G
 								ctx->surface);
 		xdg_surface_add_listener(ctx->xdg_surface, &xdg_surface_listener, ctx);
 		ctx->xdg_toplevel = xdg_surface_get_toplevel(ctx->xdg_surface);
-		xdg_toplevel_set_title(ctx->xdg_toplevel, name);
+		xdg_toplevel_set_title(ctx->xdg_toplevel, "fastvideo");
 		xdg_toplevel_add_listener(ctx->xdg_toplevel, &xdg_toplevel_listener, ctx);
 	}
 	else
@@ -272,10 +273,15 @@ static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, G
 	}
 	wl_surface_commit(ctx->surface);
 
-	ctx->egl_window = wl_egl_window_create(ctx->surface, width, height);
+	ctx->egl_window = wl_egl_window_create(ctx->surface, ctx->width, ctx->height);
 	ctx->run = 1;
 
-	return (EGLNativeWindowType) ctx->egl_window;
+	EGLint attribs[] = {
+		//EGL_GL_COLORSPACE,  EGL_GL_COLORSPACE_LINEAR,
+		EGL_NONE,
+	};
+	EGLSurface eglSurface = eglCreateWindowSurface(native_display(ctx), eglConfig, (EGLNativeWindowType)ctx->egl_window, attribs);
+	return eglSurface;
 }
 
 static void native_destroy(void *native_ctx)
@@ -291,7 +297,7 @@ EGLNative_t eglnative_wayland =
 	.create = native_create,
 	.display = native_display,
 	.attributes = native_attributes,
-	.createwindow = native_createwindow,
+	.surface = native_surface,
 	.fd = native_fd,
 	.flush = native_flush,
 	.sync = native_sync,
