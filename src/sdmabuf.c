@@ -107,7 +107,10 @@ int sdmabuf_create(const char *name, size_t size)
 	alloc.fd_flags = O_CLOEXEC | O_RDWR;
 
 	if(ioctl(_dma_heap, DMA_HEAP_IOCTL_ALLOC, &alloc) < 0)
+	{
+		err("dmabuf: allocation error %m");
 		return -1;
+	}
 
 	if(name)
 		ioctl(alloc.fd, DMA_BUF_SET_NAME, name);

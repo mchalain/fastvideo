@@ -540,7 +540,7 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 			int *ntargets = va_arg(ap, int *);
 			int **targets = va_arg(ap, int **);
 			size_t *size = va_arg(ap, size_t *);
-			if (targets != NULL)
+			if (targets != NULL && dev->buffers[0].dma_fd)
 			{
 				*targets = calloc(dev->nbuffers, sizeof(int));
 				for (int i = 0; i < dev->nbuffers; i++)
@@ -551,6 +551,8 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 				}
 				dev->arraybuffers = *targets;
 			}
+			else
+				return -1;
 			if (ntargets != NULL)
 				*ntargets = dev->nbuffers;
 			if (size != NULL)
@@ -582,9 +584,9 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 			int *ntargets = va_arg(ap, int *);
 			void ***targets = va_arg(ap, void ***);
 			size_t *size = va_arg(ap, size_t *);
-			if (targets != NULL)
+			if (targets != NULL && dev->buffers[0].memory)
 			{
-				*targets = calloc(dev->nbuffers, sizeof(int));
+				*targets = calloc(dev->nbuffers, sizeof(**targets));
 				for (int i = 0; i < dev->nbuffers; i++)
 				{
 					(*targets)[i] = dev->buffers[i].memory;
@@ -592,6 +594,8 @@ static int segl_requestbuffer_input(EGL_t *dev, enum buf_type_e t, va_list ap)
 				}
 				dev->arraybuffers = *targets;
 			}
+			else
+				return -1;
 			if (ntargets != NULL)
 				*ntargets = dev->nbuffers;
 			if (size != NULL)
