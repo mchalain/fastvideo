@@ -85,14 +85,15 @@ typedef struct EGL_s EGL_t;
 struct EGLNative_s
 {
 	const char *name;
-	EGLNativeDisplayType (*display)(EGLConfig_t *config);
-	const EGLint *(*attributes)(EGLNativeDisplayType native_display);
-	EGLNativeWindowType (*createwindow)(EGLNativeDisplayType native_display,
+	void *(*create)(EGLConfig_t *config);
+	EGLNativeDisplayType (*display)(void *native);
+	const EGLint *(*attributes)(void *native);
+	EGLNativeWindowType (*createwindow)(void *native,
 							uint32_t width, uint32_t height, const char *name);
-	int (*fd)(EGLNativeWindowType native_win);
-	int (*flush)(EGLNativeWindowType native_win);
-	int (*sync)(EGLNativeWindowType native_win);
-	void (*destroy)(EGLNativeDisplayType native_display, EGLNativeWindowType native_win);
+	int (*fd)(void *native);
+	int (*flush)(void *native);
+	int (*sync)(void *native);
+	void (*destroy)(void *native);
 };
 typedef void (*segl_native_append_t)(EGLNative_t *native);
 

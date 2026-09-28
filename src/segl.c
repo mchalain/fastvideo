@@ -70,8 +70,7 @@ struct EGL_s
 	EGL_t *dup;
 	const EGLExport_t *export;
 	void *export_ctx;
-	EGLNativeDisplayType native_display;
-	EGLNativeWindowType native_window;
+	void* native_ctx;
 	const EGLProg_ops_t *program_ops;
 	GLProgram_t *programs;
 	GLBuffer_t *buffers;
@@ -237,7 +236,8 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		err("segl: native is not available");
 		return NULL;
 	}
-	ndisplay = native->display(config);
+	void *nativectx = native->create(config);
+	ndisplay = native->display(nativectx);
 	if (EGL_CAST(EGLint,ndisplay) == EGL_UNKNOWN)
 		return NULL;
 
@@ -247,14 +247,14 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	if (!eglInitialize(eglDisplay, &major, &minor))
 	{
 		err("segl: failed to initialize");
-		native->destroy(ndisplay, 0);
+		native->destroy(nativectx);
 		return NULL;
 	}
 
 	if (!eglBindAPI(EGL_OPENGL_ES_API))
 	{
 		err("segl: failed to bind api EGL_OPENGL_ES_API");
-		native->destroy(ndisplay, 0);
+		native->destroy(nativectx);
 		return NULL;
 	}
 
@@ -295,10 +295,10 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		_egl_configinfo(eglDisplay, eglConfigs[i]);
 	}
 #endif
-	if (eglChooseConfig(eglDisplay, native->attributes(ndisplay), eglConfigs, num_configs, &num_configs) == EGL_FALSE || num_configs == 0)
+	if (eglChooseConfig(eglDisplay, native->attributes(nativectx), eglConfigs, num_configs, &num_configs) == EGL_FALSE || num_configs == 0)
 	{
 		err("segl: failed to choose config: %d (%#x)", num_configs, eglGetError());
-		native->destroy(ndisplay, 0);
+		native->destroy(nativectx);
 		return NULL;
 	}
 	dbg("segl: found %d configs", num_configs);
@@ -319,11 +319,11 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	if (eglContext == NULL)
 	{
 		err("segl: failed to create context (%#x)", eglGetError());
-		native->destroy(ndisplay, 0);
+		native->destroy(nativectx);
 		return NULL;
 	}
 
-	EGLNativeWindowType nwindow = native->createwindow(ndisplay, width, height, "segl");
+	EGLNativeWindowType nwindow = native->createwindow(nativectx, width, height, "segl");
 
 	EGLSurface eglSurface = NULL;
 	if (nwindow != (EGLNativeWindowType)NULL)
@@ -356,7 +356,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 	if (eglSurface == EGL_NO_SURFACE)
 	{
 		err("segl: failed to create egl surface (%#x)", eglGetError());
-		native->destroy(ndisplay, nwindow);
+		native->destroy(nativectx);
 		return NULL;
 	}
 	eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext);
@@ -375,8 +375,7 @@ EXT_API EGL_t *segl_create(const char *devicename, device_type_e type, EGLConfig
 		dev->eglsurface = eglSurface;
 
 		dev->native = native;
-		dev->native_window = nwindow;
-		dev->native_display = ndisplay;
+		dev->native_ctx = nativectx;
 		dev->curbufferid = -1;
 	}
 	return dev;
@@ -767,7 +766,7 @@ EXT_API int segl_queue(EGL_t *dev, int id, void *mem, size_t bytesused, int flag
 		err("EGL swapbuffers error %m");
 	// errno is set to EAGAIN after eglSwapBuffers
 	errno = 0;
-	int ret = dev->native->flush(dev->native_window);
+	int ret = dev->native->flush(dev->native_ctx);
 	if (!ret)
 	{
 		dev->curbufferid = id;
@@ -823,7 +822,7 @@ EXT_API int segl_dequeue(EGL_t *dev, void **mem, size_t *bytesused, int *flags)
 	dev->curbufferid = -1;
 	GLBuffer_t *buffer = &dev->buffers[id];
 	dev->program_ops->stop(dev->programs, buffer->private);
-	if (dev->native->sync(dev->native_window) < 0)
+	if (dev->native->sync(dev->native_ctx) < 0)
 		return -1;
 
 	return id;
@@ -837,7 +836,7 @@ EXT_API int segl_fd(EGL_t *dev, int writer)
 		return -1;
 	if (dev->type == device_input)
 		return dev->export->fd(dev->export_ctx);
-	return dev->native->fd(dev->native_window);
+	return dev->native->fd(dev->native_ctx);
 }
 
 const EGLConfig_t *segl_config(EGL_t *dev)
@@ -862,7 +861,7 @@ EXT_API void segl_destroy(EGL_t *dev)
 		dev->program_ops->destroy(dev->programs);
 		eglDestroySurface(dev->egldisplay, dev->eglsurface);
 		eglDestroyContext(dev->egldisplay, dev->eglcontext);
-		dev->native->destroy(dev->native_display, dev->native_window);
+		dev->native->destroy(dev->native_ctx);
 	}
 	for (int i = 0; i < dev->nbuffers; i++)
 	{

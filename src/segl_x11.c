@@ -22,16 +22,31 @@
 #endif
 
 // X11 related local variables
-static Display *display = NULL;
-
-static EGLNativeDisplayType native_display(EGLConfig_t *config)
+typedef struct SEGLNative_ctx_s SEGLNative_ctx_t;
+struct SEGLNative_ctx_s
 {
+	Display *display;
+	Window window;
+};
+
+static void *native_create(EGLConfig_t *config)
+{
+	Display *display;
+	display = XOpenDisplay(NULL);
 	if (display == NULL)
-		/** environment management */
-		display = XOpenDisplay(NULL);
-	if (display == NULL)
+	{
 		err("segl: no connection to X11");
-	return (EGLNativeDisplayType)display;
+		return NULL;
+	}
+	SEGLNative_ctx_t *ctx = calloc(1, sizeof(*ctx));
+	ctx->display = display;
+	return ctx;
+}
+
+static EGLNativeDisplayType native_display(void *native_ctx)
+{
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t *)native_ctx;
+	return (EGLNativeDisplayType)ctx->display;
 }
 
 static const EGLint g_attributes[] = {
@@ -44,25 +59,26 @@ static const EGLint g_attributes[] = {
 	EGL_NONE
 };
 
-static const GLint *native_attributes(EGLNativeDisplayType display)
+static const GLint *native_attributes(void *natvie_ctx)
 {
 	return g_attributes;
 }
 
-static int native_fd(EGLNativeWindowType native_win)
+static int native_fd(void *natvie_ctx)
 {
 	return -1;
 }
 
-static int native_flush(EGLNativeWindowType native_win)
+static int native_flush(void *native_ctx)
 {
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t *)native_ctx;
 	XEvent xev;
 	KeySym key;
 
-	while (XPending(display))
+	while (XPending(ctx->display))
 	{
 		char text = 0;
-		XNextEvent(display, &xev);
+		XNextEvent(ctx->display, &xev);
 		if (xev.type == KeyPress)
 		{
 			if (XLookupString(&xev.xkey,&text,1,&key,0)==1)
@@ -82,13 +98,15 @@ static int native_flush(EGLNativeWindowType native_win)
 	return 0;
 }
 
-static int native_sync(EGLNativeWindowType native_win)
+static int native_sync(void *native_ctx)
 {
 	return 0;
 }
 
-static EGLNativeWindowType native_createwindow(EGLNativeDisplayType native_display, GLuint width, GLuint height, const GLchar *name)
+static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, GLuint height, const GLchar *name)
 {
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t*)native_ctx;
+	Display *display = ctx->display;
 	Window root = DefaultRootWindow(display);
 
 	XSetWindowAttributes swa;
@@ -131,16 +149,20 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType native_displ
 	xev.xclient.data.l[1]    = FALSE;
 	XSendEvent(display, DefaultRootWindow(display ),
 		FALSE, SubstructureNotifyMask, &xev );
+	ctx->window = win;
 	return (EGLNativeWindowType) win;
 }
 
-static void native_destroy(EGLNativeDisplayType native_display, EGLNativeWindowType native_win)
+static void native_destroy(void *native_ctx)
 {
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t*)native_ctx;
+	free(ctx);
 }
 
 EGLNative_t eglnative_x11 =
 {
 	.name = "x11",
+	.create = native_create,
 	.display = native_display,
 	.attributes = native_attributes,
 	.createwindow = native_createwindow,

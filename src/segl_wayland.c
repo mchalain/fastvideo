@@ -29,7 +29,8 @@
 #endif
 
 // wayland related local variables
-static struct native_context_s {
+typedef struct SEGLNative_ctx_s SEGLNative_ctx_t;
+struct SEGLNative_ctx_s {
 	struct wl_display *display;
 	struct wl_registry* registry;
 	struct wl_compositor* compositor;
@@ -47,16 +48,25 @@ static struct native_context_s {
 	int32_t width;
 	int32_t height;
 	int run;
-} g_context = {0};
+};
 
-static EGLNativeDisplayType native_display(EGLConfig_t *config)
+static void *native_create(EGLConfig_t *config)
 {
-	if (g_context.display == NULL)
-		/** environment management */
-		g_context.display = wl_display_connect(NULL);
-	if (g_context.display == NULL)
+	struct wl_display *display = wl_display_connect(NULL);
+	if (display == NULL)
+	{
 		err("segl: no connection to Wayland");
-	return (EGLNativeDisplayType)g_context.display;
+		return NULL;
+	}
+	SEGLNative_ctx_t *ctx = calloc(1, sizeof(*ctx));
+	ctx->display = display;
+	return ctx;
+}
+
+static EGLNativeDisplayType native_display(void *native_ctx)
+{
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t*)native_ctx;
+	return (EGLNativeDisplayType)ctx->display;
 }
 
 static const EGLint g_attributes[] = {
@@ -69,30 +79,32 @@ static const EGLint g_attributes[] = {
 	EGL_NONE
 };
 
-static const GLint *native_attributes(EGLNativeDisplayType display)
+static const GLint *native_attributes(void *native_ctx)
 {
 	return g_attributes;
 }
 
-static int native_fd(EGLNativeWindowType native_win)
+static int native_fd(void *native_ctx)
 {
 	return -1;
 }
 
-static int native_flush(EGLNativeWindowType native_win)
+static int native_flush(void *native_ctx)
 {
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t*)native_ctx;
 	int run = 1;
 	while (run)
 	{
-		if (wl_display_dispatch(g_context.display) != -1)
+		if (wl_display_dispatch(ctx->display) != -1)
 			run = 0;
 	}
 	return 0;
 }
 
-static int native_sync(EGLNativeWindowType native_win)
+static int native_sync(void *native_ctx)
 {
-	if (g_context.run == 0)
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t*)native_ctx;
+	if (ctx->run == 0)
 		return -1;
 	return 0;
 }
@@ -100,13 +112,13 @@ static int native_sync(EGLNativeWindowType native_win)
 #ifdef WL_SHELL
 static void shell_surface_ping(void* data, struct wl_shell_surface* shell_surface, uint32_t serial)
 {
-	struct native_context_s *context = data;
+	SEGLNative_ctx_t *context = data;
 	wl_shell_surface_pong(context->shell_surface, serial);
 }
 
 static void shell_surface_configure(void* data, struct wl_shell_surface* shell_surface, uint32_t edges, int32_t width, int32_t height)
 {
-	struct native_context_s *context = data;
+	SEGLNative_ctx_t *context = data;
 	wl_egl_window_resize(context->egl_window, width, height, 0, 0);
 }
 
@@ -143,7 +155,7 @@ static const struct xdg_surface_listener xdg_surface_listener = {
 static void toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
 				int32_t width, int32_t height, struct wl_array *states)
 {
-	struct native_context_s *context = data;
+	SEGLNative_ctx_t *context = data;
 
 	if(!width && !height)
 		return;
@@ -160,7 +172,7 @@ static void toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
 
 static void toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel)
 {
-	struct native_context_s *context = data;
+	SEGLNative_ctx_t *context = data;
 	context->run = 0;
 }
 
@@ -172,7 +184,7 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
 
 static void registry_add_object(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
-	struct native_context_s *context = data;
+	SEGLNative_ctx_t *context = data;
 	if (!strcmp(interface, wl_compositor_interface.name))
 	{
 		context->compositor = wl_registry_bind(context->registry, name, &wl_compositor_interface, 1);
@@ -207,71 +219,75 @@ static struct wl_registry_listener registry_listener = {
 	&registry_remove_object
 };
 
-static EGLNativeWindowType native_createwindow(EGLNativeDisplayType native_display, GLuint width, GLuint height, const GLchar *name)
+static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, GLuint height, const GLchar *name)
 {
-	g_context.registry = wl_display_get_registry(native_display);
-	wl_registry_add_listener(g_context.registry, &registry_listener, &g_context);
-	wl_display_dispatch(g_context.display);
-	wl_display_roundtrip(g_context.display);
-	g_context.width = width;
-	g_context.height = height;
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t*)native_ctx;
+	ctx->registry = wl_display_get_registry(ctx->display);
+	wl_registry_add_listener(ctx->registry, &registry_listener, ctx);
+	wl_display_dispatch(ctx->display);
+	wl_display_roundtrip(ctx->display);
+	ctx->width = width;
+	ctx->height = height;
 
 	/// compositor and shell created during wl_display_roundtrip with registry_add_object
-	if (g_context.compositor == NULL)
+	if (ctx->compositor == NULL)
 		return (EGLNativeWindowType) NULL;
 #if !defined(XDG_WM_BASE)
-	if (g_context.shell == NULL)
+	if (ctx->shell == NULL)
 #elif !defined(WL_SHELL)
-	if (g_context.xdg_wm_base == NULL)
+	if (ctx->xdg_wm_base == NULL)
 #else
-	if (g_context.shell == NULL && g_context.xdg_wm_base == NULL)
+	if (ctx->shell == NULL && ctx->xdg_wm_base == NULL)
 #endif
 		return (EGLNativeWindowType) NULL;
 
-	g_context.surface = wl_compositor_create_surface(g_context.compositor);
+	ctx->surface = wl_compositor_create_surface(ctx->compositor);
 
 #ifdef WL_SHELL
-	if (g_context.shell)
+	if (ctx->shell)
 	{
-		g_context.shell_surface = wl_shell_get_shell_surface(g_context.shell, g_context.surface);
-		wl_shell_surface_add_listener(g_context.shell_surface, &shell_surface_listener, &g_context);
-		wl_shell_surface_set_toplevel(g_context.shell_surface);
+		ctx->shell_surface = wl_shell_get_shell_surface(ctx->shell, ctx->surface);
+		wl_shell_surface_add_listener(ctx->shell_surface, &shell_surface_listener, ctx);
+		wl_shell_surface_set_toplevel(ctx->shell_surface);
 	}
 	else
 #endif
 #ifdef XDG_WM_BASE
-	if (g_context.xdg_wm_base)
+	if (ctx->xdg_wm_base)
 	{
-		xdg_wm_base_add_listener(g_context.xdg_wm_base, &wm_base_listener, &g_context);
+		xdg_wm_base_add_listener(ctx->xdg_wm_base, &wm_base_listener, ctx);
 
-		g_context.xdg_surface = xdg_wm_base_get_xdg_surface(g_context.xdg_wm_base,
-								g_context.surface);
-		xdg_surface_add_listener(g_context.xdg_surface, &xdg_surface_listener, &g_context);
-		g_context.xdg_toplevel = xdg_surface_get_toplevel(g_context.xdg_surface);
-		xdg_toplevel_set_title(g_context.xdg_toplevel, name);
-		xdg_toplevel_add_listener(g_context.xdg_toplevel, &xdg_toplevel_listener, &g_context);
+		ctx->xdg_surface = xdg_wm_base_get_xdg_surface(ctx->xdg_wm_base,
+								ctx->surface);
+		xdg_surface_add_listener(ctx->xdg_surface, &xdg_surface_listener, ctx);
+		ctx->xdg_toplevel = xdg_surface_get_toplevel(ctx->xdg_surface);
+		xdg_toplevel_set_title(ctx->xdg_toplevel, name);
+		xdg_toplevel_add_listener(ctx->xdg_toplevel, &xdg_toplevel_listener, ctx);
 	}
 	else
 #endif
 	{
 		err("segl: surface not found");
 	}
-	wl_surface_commit(g_context.surface);
+	wl_surface_commit(ctx->surface);
 
-	g_context.egl_window = wl_egl_window_create(g_context.surface, width, height);
-	g_context.run = 1;
+	ctx->egl_window = wl_egl_window_create(ctx->surface, width, height);
+	ctx->run = 1;
 
-	return (EGLNativeWindowType) g_context.egl_window;
+	return (EGLNativeWindowType) ctx->egl_window;
 }
 
-static void native_destroy(EGLNativeDisplayType native_display, EGLNativeWindowType native_win)
+static void native_destroy(void *native_ctx)
 {
-	wl_display_disconnect(native_display);
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t*)native_ctx;
+	wl_display_disconnect(ctx->display);
+	free(ctx);
 }
 
 EGLNative_t eglnative_wayland =
 {
 	.name = "wayland",
+	.create = native_create,
 	.display = native_display,
 	.attributes = native_attributes,
 	.createwindow = native_createwindow,

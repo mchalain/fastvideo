@@ -19,22 +19,30 @@
 
 #define EXPORT_RENDER 1
 
-static struct
+typedef struct SEGLNative_ctx_s SEGLNative_ctx_t;
+struct SEGLNative_ctx_s
 {
 	EGLConfig_t *config;
-} native_data = {0};
+};
 
-static EGLNativeDisplayType native_display(EGLConfig_t *config)
+static void *native_create(EGLConfig_t *config)
 {
 	if (!_egl_hasextension(EGL_NO_DISPLAY, "EGL_EXT_platform_base"))
-		return (EGLNativeDisplayType)EGL_DEFAULT_DISPLAY;
+		return NULL;
 	if (!_egl_hasextension(EGL_NO_DISPLAY, "EGL_MESA_platform_surfaceless"))
-		return (EGLNativeDisplayType)EGL_DEFAULT_DISPLAY;
+		return NULL;
+	SEGLNative_ctx_t *ctx = calloc(1, sizeof(*ctx));
+	ctx->config = config;
+	return ctx;
+}
+
+static EGLNativeDisplayType native_display(void *native_ctx)
+{
 	PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT = (void *) eglGetProcAddress("eglGetPlatformDisplayEXT");
-
-	native_data.config = config;
-
-	return eglGetPlatformDisplayEXT(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
+	EGLNativeDisplayType display = (EGLNativeDisplayType)0;
+	display = eglGetPlatformDisplayEXT(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
+	dbg("%s %d, %p", __FILE__, __LINE__, display);
+	return EGL_DEFAULT_DISPLAY;
 }
 
 static const EGLint g_attributes[] = {
@@ -50,38 +58,41 @@ static const EGLint g_attributes[] = {
 	EGL_NONE
 };
 
-static const GLint *native_attributes(EGLNativeDisplayType display)
+static const GLint *native_attributes(void *native_ctx)
 {
 	return g_attributes;
 }
 
-static int native_fd(EGLNativeWindowType native_win)
+static int native_fd(void *native_ctx)
 {
 	return -1;
 }
 
-static int native_flush(EGLNativeWindowType native_win)
+static int native_flush(void *native_ctx)
 {
 	return 0;
 }
 
-static int native_sync(EGLNativeWindowType native_win)
+static int native_sync(void *native_ctx)
 {
 	return 0;
 }
 
-static EGLNativeWindowType native_createwindow(EGLNativeDisplayType native_display, GLuint width, GLuint height, const GLchar *name)
+static EGLNativeWindowType native_createwindow(void *native_ctx,
+							uint32_t width, uint32_t height, const char *name)
 {
 	return (EGLNativeWindowType) NULL;
 }
 
-static void native_destroy(EGLNativeDisplayType native_display, EGLNativeWindowType native_win)
+static void native_destroy(void *native_ctx)
 {
+	free(native_ctx);
 }
 
 EGLNative_t eglnative_offscreen =
 {
 	.name = "offscreen",
+	.create = native_create,
 	.display = native_display,
 	.attributes = native_attributes,
 	.createwindow = native_createwindow,

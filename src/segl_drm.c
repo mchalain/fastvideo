@@ -27,6 +27,14 @@
 #ifndef GBM_FORMAT_ABGR16161616F
 # define GBM_FORMAT_ABGR16161616F DRM_FORMAT_ABGR16161616F
 #endif
+typedef struct SEGLNative_ctx_s SEGLNative_ctx_t;
+struct SEGLNative_ctx_s
+{
+	EGLConfig_t *config;
+	int fd;
+	struct gbm_surface *surface;
+	struct gbm_device *gbm;
+};
 
 typedef enum {
 	SDRM_PROPID_CRTC_ID,
@@ -679,7 +687,7 @@ struct
 #endif
 };
 
-static EGLNativeDisplayType native_display(EGLConfig_t *config)
+static void *native_create(EGLConfig_t *config)
 {
 	const char *device = config->device;
 	if (device == NULL)
@@ -695,7 +703,18 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 		err("segl: could not open drm device %s", device);
 		return EGL_CAST(EGLNativeDisplayType, EGL_UNKNOWN);
 	}
+	dbg("segl: open %s", device);
+	SEGLNative_ctx_t *ctx = calloc(1, sizeof(*ctx));
+	ctx->fd = fd;
+	ctx->config = config;
+	return ctx;
+}
 
+static EGLNativeDisplayType native_display(void *native_ctx)
+{
+	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t *)native_ctx;
+	EGLConfig_t *config = ctx->config;
+	int fd = ctx->fd;
 #ifndef SEGL_DRM_DISABLE_ATOMIC_COMMIT
 	if (drmSetMaster(fd))
 		err("segl: drm setmaster failed %m");
@@ -707,7 +726,7 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 #endif
 
 	struct gbm_device *gbm = gbm_create_device(fd);
-	dbg("segl: open (%s) %s", device, gbm_device_get_backend_name(gbm));
+	dbg("segl: backend %s", gbm_device_get_backend_name(gbm));
 
 	uint32_t defaultfourcc = 0;
 #if 0
@@ -755,10 +774,11 @@ static EGLNativeDisplayType native_display(EGLConfig_t *config)
 		config->transfer.height = drm.height;
 	if (!config->transfer.fourcc)
 		config->transfer.fourcc = drm.fourcc;
+	ctx->gbm = gbm;
 	return (EGLNativeDisplayType)gbm;
 }
 
-static const GLint *native_attributes(EGLNativeDisplayType display)
+static const GLint *native_attributes(void *native_ctx)
 {
 	const EGLint *attributes = NULL;
 	for (int i = 0; i < sizeof(g_formats)/sizeof(*g_formats); i++)
@@ -772,9 +792,10 @@ static const GLint *native_attributes(EGLNativeDisplayType display)
 	return attributes;
 }
 
-static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLuint width, GLuint height, const GLchar *name)
+static EGLNativeWindowType native_createwindow(void *native_ctx, GLuint width, GLuint height, const GLchar *name)
 {
-	struct gbm_device *gbm = (struct gbm_device *)display;
+	SEGLNative_ctx_t *ctx = native_ctx;
+	struct gbm_device *gbm = ctx->gbm;
 	if (drm.mode_id == 0)
 		return (EGLNativeWindowType)NULL;
 
@@ -797,19 +818,20 @@ static EGLNativeWindowType native_createwindow(EGLNativeDisplayType display, GLu
 		err("segl: failed to create gbm surface %.4s", (char *)&drm.fourcc);
 		return (EGLNativeWindowType)NULL;
 	}
-
+	ctx->surface = surface;
 	return (EGLNativeWindowType) surface;
 }
 
-static int native_fd(EGLNativeWindowType native_win)
+static int native_fd(void *native_ctx)
 {
 	return drm.fd;
 }
 
 static struct gbm_bo *old_bo = NULL;
-static int native_flush(EGLNativeWindowType native_win)
+static int native_flush(void *native_ctx)
 {
-	struct gbm_surface *surface = (struct gbm_surface *)native_win;
+	SEGLNative_ctx_t *ctx = native_ctx;
+	struct gbm_surface *surface = ctx->surface;
 	struct gbm_bo *bo;
 	bo = gbm_surface_lock_front_buffer(surface);
 	struct drm_fb *fb;
@@ -889,7 +911,7 @@ commit_error:
 	return -1;
 }
 
-static int native_sync(EGLNativeWindowType native_win)
+static int native_sync(void *native_ctx)
 {
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
@@ -909,18 +931,20 @@ static int native_sync(EGLNativeWindowType native_win)
 	return 0;
 }
 
-static void native_destroy(EGLNativeDisplayType native_display, EGLNativeWindowType native_win)
+static void native_destroy(void *native_ctx)
 {
-	struct gbm_surface *surface = (struct gbm_surface *)native_win;
-	if (surface)
-		gbm_surface_destroy(surface);
-	struct gbm_device *gbm = (struct gbm_device *)native_display;
-	gbm_device_destroy(gbm);
+	SEGLNative_ctx_t *ctx = native_ctx;
+	if (ctx->surface)
+		gbm_surface_destroy(ctx->surface);
+	gbm_device_destroy(ctx->gbm);
+	close(ctx->fd);
+	free(ctx);
 }
 
 EGLNative_t eglnative_drm =
 {
 	.name = "drm",
+	.create = native_create,
 	.display = native_display,
 	.attributes = native_attributes,
 	.createwindow = native_createwindow,
