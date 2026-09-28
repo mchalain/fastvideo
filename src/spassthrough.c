@@ -392,7 +392,8 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 				dev->buffers[i].mem = sdmabuf_map(dev->buffers[i].dma_buf, size, 0); /// the write argument should be 0
 				if (dev->buffers[i].mem == (void *)(long)-1)
 				{
-					err("spassthrough: impossible to map the inpur buffer");
+					err("spassthrough: impossible to map the input buffer");
+					_passthrough_freebuffers(dev);
 					ret = -1;
 					break;
 				}
