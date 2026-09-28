@@ -77,7 +77,7 @@ int daemon_setlogfile(const char *logfile)
 {
 	int logfd = -1;
 
-	if (strcmp(logfile,"-"))
+	if (logfile && strcmp(logfile,"-"))
 	{
 #if LOG_MAXFILESIZE != -1
 		unsigned long logmax = 0;
@@ -108,7 +108,7 @@ int daemon_setlogfile(const char *logfile)
 	return (logfd == -1);
 }
 
-static char _run = 0;
+static volatile sig_atomic_t _run = 0;
 #ifdef HAVE_SIGACTION
 static void _handler(int sig, siginfo_t *UNUSED(si), void *UNUSED(arg))
 #else
@@ -210,7 +210,7 @@ static int _capset(uint64_t keep_mask)
 	return syscall(SYS_capset, &hdr, data);
 }
 
-static void _dropcapabilities(void)
+static void _dropcapabilities(int fortify)
 {
 	uint64_t keep_mask = (1ULL << CAP_SETUID) | (1ULL << CAP_SETGID);
 	int last_cap = 40;
@@ -223,6 +223,10 @@ static void _dropcapabilities(void)
 
 	for (int cap = 0; cap <= last_cap; cap++)
 	{
+		/// To keep SETUID and SETGID permit to change the owner of a process
+		/// But it is dangerous for a code injection
+		if (!fortify && keep_mask & (1ULL << cap))
+			continue;
 		if (prctl(PR_CAPBSET_DROP, cap, 0, 0, 0) == -1 && errno != EINVAL)
 			warn("capability %d not dropped: %m", cap);
 	}
@@ -236,6 +240,8 @@ int daemon_setowner(const char *user, int fortify)
 	if (user == NULL)
 		return 0;
 	int ret = -1;
+	if (getuid() == 0)
+		_dropcapabilities(fortify);
 	struct passwd *pw;
 	pw = getpwnam(user);
 	if (pw != NULL)
@@ -271,6 +277,7 @@ int daemon_setroot(const char *rootfs)
 		err("%s directory not accessible", rootfs);
 		return -1;
 	}
+	dbg("current directory %s", get_current_dir_name());
 	return 0;
 }
 
@@ -314,8 +321,6 @@ int daemonize(unsigned char onoff, const char *logfile, const char *pidfile, con
 	if (rootfs != NULL && daemon_setroot(rootfs))
 		return -1;
 
-//	if (getuid() == 0)
-//		_dropcapabilities();
 	if (owner != NULL && daemon_setowner(owner, 1))
 		return -1;
 
@@ -343,11 +348,11 @@ int daemonize(unsigned char onoff, const char *logfile, const char *pidfile, con
 
 void killdaemon(const char *pidfile)
 {
+	_run = 's';
 	if (_pidfd > 0)
 	{
 		close(_pidfd);
 		_pidfd = -1;
-		_run = 's';
 	}
 	else if (pidfile != NULL)
 	{
@@ -370,8 +375,6 @@ void killdaemon(const char *pidfile)
 			close(_pidfd);
 		}
 	}
-	else
-		_run = 's';
 	if (pidfile && !access(pidfile, W_OK))
 		unlink(pidfile);
 }
