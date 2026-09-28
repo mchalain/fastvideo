@@ -94,6 +94,11 @@ static size_t bg10tor16_convert(void *arg, const char *const src, char *dst, siz
 	return size;
 }
 
+static uint32_t bg10tor16_bpp(void *arg, int out)
+{
+	return sizeof(uint16_t);
+}
+
 static void bg10tor16_destroy(void *arg)
 {
 	free(arg);
@@ -132,11 +137,11 @@ static Convert_t bg10tor16_default =
 	.copy = 1,
 	.fourcc_in = 0,
 	.fourcc_out = FOURCC_R16,
-	.bpp = sizeof(uint16_t),
 	.ops =
 	{
 		.create = bg10tor16_create,
 		.convert = bg10tor16_convert,
+		.bpp = bg10tor16_bpp,
 		.destroy = bg10tor16_destroy,
 	},
 };

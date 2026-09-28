@@ -40,16 +40,6 @@ struct Convert_s
 	};
 	uint32_t fourcc_in;
 	uint32_t fourcc_out;
-	/*
-	 * bytes per input pixel - nonzero marks this converter as
-	 * stride-aware, i.e. safe for a caller like stile.c to invoke once
-	 * per tile row (stride == size, a single-row degenerate case) instead
-	 * of once for a whole frame. A converter that still derives its own
-	 * row geometry from ctx (e.g. GRAYtoYUV pulling width/height back out
-	 * of its own config) must leave this 0 - that's the only signal
-	 * stile.c has to tell candidates apart, there is no separate bit.
-	 */
-	uint32_t bpp;
 	struct{
 		unsigned int numerator;
 		unsigned int denominator;
@@ -67,6 +57,7 @@ struct Convert_s
 		 * as "exactly one row, do it and return" with no other state.
 		 */
 		size_t (*convert)(void *, const char *const , char *, size_t size, size_t stride);
+		uint32_t (*bpp)(void*, int out);
 		void (*destroy)(void *);
 	} ops;
 };

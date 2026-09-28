@@ -48,6 +48,8 @@ struct STile_s
 
 	uint32_t src_width;
 	uint32_t src_height;
+	size_t src_stride;
+	size_t src2dst_stride;
 	uint32_t dst_width;
 	uint32_t dst_height;
 	uint32_t ntiles_x;
@@ -69,7 +71,6 @@ struct STile_s
 	size_t (*copy)(STile_t *dev, const char *src, char *dst, size_t stride);
 	const Convert_t *copy_conv;
 	void *copy_ctx;
-	size_t tile_out_bytes;
 
 	int completion_fd;
 
@@ -201,7 +202,6 @@ EXT_API void *stile_duplicate(STile_t *dev, STileConf_t **pconfig)
 	dup->type = device_input;
 	dup->completion_fd = -1;
 	dup->ntiles = dev->ntiles;
-	dup->tile_out_bytes = dev->tile_out_bytes;
 	dev->dup = dup;
 
 	STileConf_t *config = calloc(1, sizeof(*config));
@@ -209,10 +209,16 @@ EXT_API void *stile_duplicate(STile_t *dev, STileConf_t **pconfig)
 	config->parent.fourcc = config->transfer.fourcc ? config->transfer.fourcc : dev->copy_conv->fourcc_out;
 	config->parent.width = dev->dst_width;
 	config->parent.height = dev->dst_height;
-	config->parent.stride = 0;
+	if (dev->copy_ctx)
+		config->parent.stride = dev->copy_conv->ops.bpp(dev->copy_ctx, 1) * config->parent.width;
+	else
+		config->parent.stride = 0;
 	dup->config = config;
 	*pconfig = config;
 
+	dbg("stile: %s output %ux%u %.4s %u",
+		config->parent.name, dup->config->parent.width, dup->config->parent.height,
+		(char*)&dup->config->parent.fourcc, config->parent.stride);
 	return dup;
 }
 
@@ -254,7 +260,7 @@ static void _stile_destroytilebuffers(STile_t *dev)
 static void _stile_createtilebuffers(STile_t *dup, int nframes, uint32_t ntiles)
 {
 	int nslots = nframes * (int)ntiles;
-	size_t tile_bytes = dup->tile_out_bytes;
+	size_t tile_bytes = dup->config->parent.stride * dup->config->parent.height;
 	dup->nbuffers = nslots;
 	dup->buffers = calloc(nslots, sizeof(*dup->buffers));
 	dup->mems = calloc(nslots, sizeof(*dup->mems));
@@ -287,13 +293,14 @@ static void _stile_createtilebuffers(STile_t *dup, int nframes, uint32_t ntiles)
 			else
 			{
 				dup->buffers[i].dma_buf = fd;
-				dup->buffers[i].mem = sdmabuf_map(fd, tile_bytes, 1);
+				dup->buffers[i].mem = sdmabuf_map(fd, dup->buffers[i].size, 1);
+				//sdmabuf_unmap(dup->buffers[i].mem, dup->buffers[i].size);
 				dup->dmabufs[i] = fd;
 			}
 		}
 		else
 		{
-			dup->buffers[i].mem = malloc(tile_bytes);
+			dup->buffers[i].mem = malloc(dup->buffers[i].size);
 		}
 		dup->mems[i] = dup->buffers[i].mem;
 	}
@@ -376,7 +383,7 @@ EXT_API int stile_requestbuffer(STile_t *dev, enum buf_type_e t, ...)
 			if (targets != NULL)
 				*targets = dev->mems;
 			if (size != NULL)
-				*size = dev->tile_out_bytes;
+				*size = dev->buffers[0].size;
 			ret = 0;
 		}
 		break;
@@ -392,7 +399,7 @@ EXT_API int stile_requestbuffer(STile_t *dev, enum buf_type_e t, ...)
 			if (targets != NULL)
 				*targets = dev->dmabufs;
 			if (size != NULL)
-				*size = dev->tile_out_bytes;
+				*size = dev->buffers[0].size;
 			ret = 0;
 		}
 		break;
@@ -414,6 +421,11 @@ EXT_API int stile_start(STile_t *dev)
 {
 	if (dev->type == device_output)
 		dev->curbuffer = &dev->buffers[0];
+	else
+	{
+		dev->src2dst_stride = dev->dst_width * dev->copy_conv->ops.bpp(dev->copy_ctx, 0);
+		dev->src_stride = dev->src_width * dev->copy_conv->ops.bpp(dev->copy_ctx, 0);
+	}
 	return 0;
 }
 
@@ -446,7 +458,6 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 	if (dup && dup->nbuffers > 0)
 	{
 		const uint8_t *src = (const uint8_t *)mem;
-		uint32_t srcw = dev->src_width;
 		if (src_dmabuf)
 			sdmabuf_sync(src_dmabuf, 1);
 		for (uint32_t ty = 0; ty < dev->ntiles_y; ty++)
@@ -460,29 +471,20 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 					errno = EAGAIN;
 					return -1;
 				}
-				uint32_t x0 = tx * dev->dst_width;
+				uint32_t xoffset0 = tx * dev->src2dst_stride;
 				uint32_t y0 = dev->tile_yoff + ty * dev->dst_height;
-#if STILE_CHECK_BUFFER
-				if (!dup->buffers[slot].mem || dup->buffers[slot].size < dev->tile_out_bytes)
-				{
-					err("stile: %s output tile buffer %d not usable (size %zu, need %zu)",
-						dev->config->parent.name, slot, dup->buffers[slot].size, dev->tile_out_bytes);
-					return -1;
-				}
-#endif
 				uint8_t *d = (uint8_t *)dup->buffers[slot].mem;
 				if (dup->buffers[slot].dma_buf)
 					sdmabuf_sync(dup->buffers[slot].dma_buf, 1);
-				size_t stride = dev->dst_width * dev->copy_conv->bpp;
 				for (uint32_t row = 0; row < dev->dst_height; row++)
 				{
-					const uint8_t *s = src + ((size_t)(y0 + row) * srcw + x0) * dev->copy_conv->bpp;
-					size_t written = dev->copy(dev, (const char *)s, (char *)d, stride);
+					const uint8_t *s = src + ((size_t)(y0 + row) * dev->src_stride) + xoffset0;
+					size_t written = dev->copy(dev, (const char *)s, (char *)d, dev->src2dst_stride);
 					d += written;
 				}
 				if (dup->buffers[slot].dma_buf)
 					sdmabuf_sync(dup->buffers[slot].dma_buf, 0);
-				dup->buffers[slot].bytesused = dev->tile_out_bytes;
+				dup->buffers[slot].bytesused = d - (uint8_t *)dup->buffers[slot].mem;
 				dup->buffers[slot].state = ready;
 				dup->writeid++;
 				dup->writeid %= dup->nbuffers;

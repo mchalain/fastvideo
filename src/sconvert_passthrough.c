@@ -46,7 +46,10 @@ static size_t passthrough_default_copy(void *dev, const char *const src, char *d
 		);
 	}
 	if (size != bulk)
+	{
+		err("sconvert: extra data copying");
 		memcpy(dst + bulk, src + bulk, size - bulk);
+	}
 
 	return size;
 }
@@ -79,7 +82,10 @@ static size_t passthrough_default_copy(void *dev, const char *const src, char *d
 		);
 	}
 	if (size != bulk)
+	{
+		err("sconvert: extra data copying");
 		memcpy(dst + bulk, src + bulk, size - bulk);
+	}
 
 	return size;
 }
@@ -137,11 +143,11 @@ Convert_t sconvert_passthrough =
 {
 	.name = "passthrough",
 	.copy = 1,
-	.bpp = 1,
 	.ops =
 	{
 		.create = passthrough_create,
 		.convert = passthrough_default_copy,
+		.bpp = passthrough_bpp,
 		.destroy = passthrough_destroy,
 	},
 };
