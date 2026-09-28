@@ -93,7 +93,7 @@
       },{
         "name": "Video Bitrate Mode",
         "id": 10029518,
-	"comment": "The CBR is discouraged on RPi 4",
+	"comment": "The CBR is discourageous on RPi 4",
         "value": 0,
         "value_show": "Variable Bitrate"
       },{
@@ -132,7 +132,7 @@
       },{
         "name": "H264 Profile",
         "id": 10029675,
-        "value": 4
+        "value": 1
       }
     ],
     "action": {
@@ -184,10 +184,13 @@
     "name": ["enc-jpeg","bcm2835-codec-encode_image-sour"],
     "type": "v4l2",
     "device": "/dev/video31",
-    "definition": [
-    ],
-    "transformation": [
-    ],
+    "definition": {
+    },
+    "transfer": {
+      "fourcc": "JPEG"
+    },
+    "transformation": {
+    },
     "controls": [
       {
         "name": "Compression Quality",
@@ -234,7 +237,7 @@
     "type": "v4l2",
     "device": "/dev/video14",
     "definition": {
-      "fourcc": "XR24",
+      "fourcc": "XB24",
       "width": 1280,
       "height":  720,
       "end": true
@@ -367,7 +370,7 @@
         "type": "subv4l",
         "device": "/dev/v4l-subdev0",
         "definition": {
-          "fourcc": "BA10",
+          "fourcc": "BG10",
           "width": 1920,
           "height": 1080,
           "fps": 30,
@@ -429,7 +432,7 @@
       }],
       "end":true
     }],
-    "end":true
+    "end": true
   },
   {
     "name": "dvb-e",
@@ -458,6 +461,15 @@
   {
     "name": "file",
     "type": "file",
+    "path": "/media/Photos/",
+    "end": true
+  },
+  {
+    "name": "photo",
+    "type": "file",
+    "path": "/media/Photos",
+    "maxframes": 1,
+    "maxclients": 999,
     "end": true
   },
   {
