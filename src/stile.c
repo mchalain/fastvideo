@@ -88,7 +88,6 @@ EXT_API DeviceConf_t *stile_createconfig(const char *name)
 	config->parent.name = stile_name;
 	config->parent.ops.loadconfiguration = stile_loadjsonconfiguration;
 	Passthrough_config_t *passconfig = &config->passconfig;
-	passconfig->convert = &sconvert_passthrough;
 	const char *convert = strstr(name, "convert=");
 	if (convert)
 	{
@@ -109,16 +108,6 @@ static size_t copy_convert(STile_t *dev, const char *src, char *dst, size_t stri
 	return dev->copy_conv->ops.convert(dev->copy_ctx, src, dst, stride, stride);
 }
 
-/* plain pixel copy, no format conversion - used instead of copy_convert
- * when the selected Convert_t is a pure passthrough (fourcc_in ==
- * fourcc_out): calling into ops.convert() would do nothing but a memcpy
- * anyway, so skip that indirection */
-static size_t copy_pixel(STile_t *dev, const char *src, char *dst, size_t stride)
-{
-	memcpy(dst, src, stride);
-	return stride;
-}
-
 EXT_API void *stile_create(const char *devicename, device_type_e type, STileConf_t *config)
 {
 	if (!config)
@@ -135,10 +124,7 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, STileConf
 		return NULL;
 	}
 	if (!passconfig->convert)
-	{
-		err("stile: %s no tile-copy converter configured (\"convert\" JSON field)", config->parent.name);
-		return NULL;
-	}
+		passconfig->convert = &sconvert_passthrough;
 
 	STile_t *dev = calloc(1, sizeof(*dev));
 	dev->type = type;
@@ -179,6 +165,10 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, STileConf
 	}
 
 	dev->copy_conv = passconfig->convert;
+	if (!passconfig->transfer.fourcc)
+		passconfig->transfer.fourcc = dev->copy_conv->fourcc_out;
+	if (!passconfig->transfer.fourcc)
+		passconfig->transfer.fourcc = passconfig->parent.fourcc;
 	dev->copy_ctx = dev->copy_conv->ops.create(passconfig);
 	if (!dev->copy_ctx)
 	{
@@ -188,23 +178,11 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, STileConf
 		return NULL;
 	}
 	dev->copy = copy_convert;
-	if (dev->copy_conv->fourcc_in != 0 && dev->copy_conv->fourcc_in == dev->copy_conv->fourcc_out)
-		dev->copy = copy_pixel;
-
-	size_t tile_in_bytes = (size_t)dev->dst_width * dev->dst_height * dev->copy_conv->bpp;
-	dev->tile_out_bytes = tile_in_bytes;
-	if (dev->copy_conv->resize.denominator > 0)
-	{
-		dev->tile_out_bytes = tile_in_bytes * dev->copy_conv->resize.numerator
-			/ dev->copy_conv->resize.denominator;
-	}
 
 #ifdef DEBUG
 	clock_gettime(CLOCK_MONOTONIC, &dev->last_report);
 #endif
 
-	warn("stile: device %s using '%s' tile copy (%zu bytes/tile)",
-		config->parent.name, dev->copy_conv->name, dev->tile_out_bytes);
 	warn("stile: device %s ready, %ux%u source -> %u tile(s) of %ux%u",
 		config->parent.name, dev->src_width, dev->src_height, dev->ntiles, dev->dst_width, dev->dst_height);
 	warn("stile: tilling %dx%d tiles", dev->ntiles_x, dev->ntiles_y);
@@ -620,7 +598,7 @@ EXT_API int stile_loadjsonconfiguration(void *arg, void *entry)
 	json_t *convert = json_object_get(jconfig, "convert");
 	if (convert && json_is_object(convert))
 		convert = json_object_get(convert, "name");
-	if (passconfig->convert == &sconvert_passthrough && convert && json_is_string(convert))
+	if (!passconfig->convert && convert && json_is_string(convert))
 	{
 		const char *value = json_string_value(convert);
 		for (Convert_t *conv = spassthrough_convert_next(NULL); conv != NULL; conv = spassthrough_convert_next(conv))
