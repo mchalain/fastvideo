@@ -19,6 +19,15 @@ typedef enum{
 
 #define	Uniform_SHARED_e	0x1000
 #define	Uniform_FUNC_e		0x2000
+typedef GLfloat (*GLProgram_Uniform_func_t)(GLProgram_Uniform_t *uniform);
+
+typedef struct GLProgram_Function_s GLProgram_Function_t;
+struct GLProgram_Function_s
+{
+	const char *name;
+	GLProgram_Uniform_func_t entry_point;
+	Uniform_Type_e out_type;
+};
 
 typedef struct GLProgram_Uniform_s GLProgram_Uniform_t;
 struct GLProgram_Uniform_s

@@ -1001,21 +1001,28 @@ static GLfloat _frame(GLProgram_Uniform_t *uniform)
 	return (GLfloat)f;
 }
 
-static GLfloat *_movestatic(GLProgram_Uniform_t *uniform)
-{
-	GLfloat *ctx = uniform->data;
-	if (ctx == NULL)
-	{
-		ctx = calloc(16, sizeof(GLfloat));
-		ctx[0] = ctx[5] = ctx[10] = ctx[15] = 1.0;
-	}
-	uniform->data = ctx;
-	return ctx;
-}
-static GLfloat *(*_move)(GLProgram_Uniform_t *uniform) = _movestatic;
-
 #ifdef HAVE_JANSSON
 #include <jansson.h>
+
+static FastVideoList_t *g_glprog_functions = NULL;
+
+typedef void (*glprog_function_append_t)(GLProgram_Function_t *new);
+void glprog_function_append(GLProgram_Function_t *new)
+{
+	g_glprog_functions = fastvideolist_append(g_glprog_functions, (void *)new);
+}
+
+GLProgram_Function_t *glprog_function_get(const char *name)
+{
+	GLProgram_Function_t *func = NULL;
+	fastvideolist_reset(g_glprog_functions);
+	for (func = fastvideolist_next(g_glprog_functions); func != NULL; func = fastvideolist_next(g_glprog_functions))
+	{
+		if (!strcmp(func->name, name))
+			break;
+	}
+	return func;
+}
 
 static void _glprog_uniform_setarray(GLProgram_Uniform_t *uniform, json_t *jvalue, unsigned char nbentries, Uniform_Type_e type)
 {
@@ -1242,21 +1249,17 @@ static GLProgram_Uniform_t * _glprog_uniform_create(void *setting)
 			json_t *jvalue = json_object_get(jsetting, "value");
 			if (jvalue && json_is_string(jvalue))
 			{
-				uniform->type = Uniform_FLOAT_e;
 				const char *value = NULL;
 				value = json_string_value(jvalue);
-				if (!strncasecmp(value, "time", 4))
-					uniform->value = _time;
-				else if (!strncasecmp(value, "frames", 6))
-					uniform->value = _frame;
-				else if (!strncasecmp(value, "move", 4))
+				GLProgram_Function_t *func = glprog_function_get(value);
+				if (func)
 				{
-					uniform->type = Uniform_MAT4_e;
-					uniform->value = _move;
+					uniform->value = func->entry_point;
+					uniform->type = func->out_type;
+					uniform->type |= Uniform_FUNC_e;
 				}
 				else
 					uniform->type = Uniform_UNKNOWN_e;
-				uniform->type |= Uniform_FUNC_e;
 			}
 		}
 		uniform->config = setting;
@@ -1486,6 +1489,19 @@ int glprog_loadjsonconfiguration(void *arg, void *entry)
 	}
 	return 0;
 }
+
+static GLProgram_Function_t _time_func =
+{
+	.name = "time",
+	.entry_point = _time,
+	.out_type = Uniform_FLOAT_e,
+};
+static GLProgram_Function_t _frame_func =
+{
+	.name = "frame",
+	.entry_point = _frame,
+	.out_type = Uniform_FLOAT_e,
+};
 #endif
 
 static void _glprog_uniform_destroy(GLProgram_Uniform_t *uniform)
@@ -1519,6 +1535,20 @@ static EGLProg_ops_t _gles2_ops = {
 };
 
 #include <dlfcn.h>
+
+#ifdef HAVE_JANSSON
+static void __attribute__ ((constructor)) glprog_init()
+{
+	glprog_function_append_t _glprog_function_append;
+	void *hdl = dlopen(NULL, RTLD_NOW);
+	_glprog_function_append = dlsym(hdl, "glprog_function_append");
+	if (_glprog_function_append)
+	{
+		_glprog_function_append(&_time_func);
+		_glprog_function_append(&_frame_func);
+	}
+}
+#endif
 
 static void __attribute__ ((constructor)) segl_init()
 {
