@@ -105,13 +105,14 @@ FastVideoList_t *fastvideolist_last(FastVideoList_t *list)
 {
 	if (!list)
 		return NULL;
+	list->iterator = list->last;
 	return list->last;
 }
 
 FastVideoList_t *fastvideolist_first(FastVideoList_t *list)
 {
 	if (list)
-		list->iterator = NULL;
+		list->iterator = list;
 	return list;
 }
 
