@@ -5,6 +5,8 @@
 #include <string.h>
 #include <errno.h>
 #include <dlfcn.h>
+#include <unistd.h>
+#include <sys/eventfd.h>
 
 #include "log.h"
 #include "sconfig.h"
@@ -53,6 +55,7 @@ struct Passthrough_s
 	} resize;
 	Passthrough_Control_t *controls;
 	uint32_t periodic;
+	int completion_fd;
 };
 
 static FastVideoList_t *g_Converts = NULL;
@@ -113,6 +116,7 @@ static size_t _passthrough_copy(Passthrough_t *dev, FrameBuffer_t *src, FrameBuf
 EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Passthrough_config_t *config)
 {
 	Passthrough_t *dev = calloc(1, sizeof(*dev));
+	dev->completion_fd = -1;
 	dev->resize.numerator = 1;
 	dev->resize.denominator = 1;
 	dev->config = config;
@@ -156,6 +160,7 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 		return NULL;
 	}
 	Passthrough_t *dup = calloc(1, sizeof(*dup));
+	dup->completion_fd = -1;
 	dev->type = device_output;
 	dup->type = device_input;
 	dup->resize.numerator = 1;
@@ -456,11 +461,20 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 
 EXT_API int spassthrough_fd(Passthrough_t *dev, int writer)
 {
+	if (writer != 1)
+		return dev->completion_fd;
 	return -1;
 }
 
 EXT_API int spassthrough_start(Passthrough_t *dev)
 {
+	if (dev->completion_fd < 0)
+	{
+		dev->completion_fd = eventfd(0, EFD_NONBLOCK);
+		if (dev->completion_fd < 0)
+			warn("spassthrough: %s eventfd creation failed %m, falling back to unconditional polling",
+				dev->config->parent.name);
+	}
 	for (int i = 0; i < dev->nbuffers; i++)
 	{
 		if (dev->type == device_input)
@@ -515,6 +529,11 @@ EXT_API int spassthrough_dequeue_input(Passthrough_t *dev, void **mem, size_t *b
 	if (flags)
 		*flags = buffer->flags;
 	buffer->state = dequeued;
+	if (dev->completion_fd >= 0)
+	{
+		uint64_t val;
+		(void)read(dev->completion_fd, &val, sizeof(val));
+	}
 	return buffer->id;
 }
 
@@ -564,6 +583,11 @@ EXT_API int spassthrough_dequeue_output(Passthrough_t *dev, void **mem, size_t *
 		}
 		dupbuffer->flags = buffer->flags;
 		dupbuffer->state = ready;
+		if (dev->dup->completion_fd >= 0)
+		{
+			uint64_t one = 1;
+			(void)write(dev->dup->completion_fd, &one, sizeof(one));
+		}
 	}
 	if (bytesused)
 		*bytesused = (buffer->bytesused * dev->resize.numerator) / dev->resize.denominator;
@@ -573,6 +597,11 @@ EXT_API int spassthrough_dequeue_output(Passthrough_t *dev, void **mem, size_t *
 		*flags = buffer->flags;
 	dev->curbuffer = dev->curbuffer->next;
 	buffer->state = dequeued;
+	if (dev->completion_fd >= 0)
+	{
+		uint64_t val;
+		(void)read(dev->completion_fd, &val, sizeof(val));
+	}
 	return buffer->id;
 }
 
@@ -640,6 +669,11 @@ EXT_API int spassthrough_queue_output(Passthrough_t *dev, int index, void *mem, 
 		while (curbuffer->next) curbuffer = curbuffer->next;
 		curbuffer->next = buffer;
 	}
+	if (dev->completion_fd >= 0)
+	{
+		uint64_t one = 1;
+		(void)write(dev->completion_fd, &one, sizeof(one));
+	}
 	return 0;
 }
 
@@ -675,6 +709,8 @@ static void _passthrough_freedmabuf(Passthrough_t *dev)
 
 EXT_API void spassthrough_destroy(Passthrough_t *dev)
 {
+	if (dev->completion_fd >= 0)
+		close(dev->completion_fd);
 	if (dev->type == device_input && dev->branch.dev)
 	{
 		dev->branch.ops->destroy(dev->branch.dev);
