@@ -265,10 +265,11 @@ int main_loop(FastVideoList_t *pipes)
 		{
 			continue;
 		}
-		ret = 0;
-		for(FastVideoPipe_t *pipe = fastvideolist_next(pipes);
-				pipe != NULL; pipe = fastvideolist_next(pipes))
+		fastvideolist_reset(pipes);
+		for(FastVideoList_t *it = fastvideolist_first(pipes);
+				it != NULL; it = fastvideolist_up(pipes))
 		{
+			FastVideoPipe_t *pipe = fastvideolist_get(it);
 			int infd = -1;
 			if (pipe->input->ops->eventfd)
 				infd = pipe->input->ops->eventfd(pipe->input->dev, 0);
@@ -292,9 +293,11 @@ int main_loop(FastVideoList_t *pipes)
 			}
 		}
 
-		for (FastVideoPipe_t *pipe = fastvideolist_previous(pipes);
-					pipe != NULL; pipe = fastvideolist_previous(pipes))
+		fastvideolist_reset(pipes);
+		for(FastVideoList_t *it = fastvideolist_last(pipes);
+				it != NULL; it = fastvideolist_down(pipes))
 		{
+			FastVideoPipe_t *pipe = fastvideolist_get(it);
 			int outfd = -1;
 			if (pipe->output->ops->eventfd)
 				outfd = pipe->output->ops->eventfd(pipe->output->dev, 1);
