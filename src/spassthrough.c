@@ -289,7 +289,6 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 	}
 	dev->mems = mems;
 	dev->dmabufs = dmabufs;
-	buffer_linkring(dev->buffers, dev->nbuffers);
 	return ret;
 }
 
@@ -469,7 +468,11 @@ EXT_API int spassthrough_start(Passthrough_t *dev)
 		else
 			dev->buffers[i].state = dequeued;
 	}
-	dev->curbuffer = &dev->buffers[0];
+	if (dev->type == device_input)
+	{
+		buffer_linkring(dev->buffers, dev->nbuffers);
+		dev->curbuffer = &dev->buffers[0];
+	}
 	if (dev->copy && dev->dup->buffers[0].size == 0)
 	{
 		/// disable copy mode on buffer allocation error
@@ -533,9 +536,9 @@ EXT_API int spassthrough_dequeue_output(Passthrough_t *dev, void **mem, size_t *
 {
 	int state = dev->state;
 	FrameBuffer_t *buffer = dev->curbuffer;
-	if (buffer->state != ready)
+	if (buffer == NULL || buffer->state != ready)
 	{
-		spassthrough_dbg("spassthrough: dequeue output buffer %d not ready", buffer->id);
+		if (buffer) {spassthrough_dbg("spassthrough: dequeue output buffer %d %s missmatch", buffer->id, (buffer->state == queued)?"queued": "dequeued");}
 		errno = EAGAIN;
 		return -1;
 	}
@@ -568,6 +571,7 @@ EXT_API int spassthrough_dequeue_output(Passthrough_t *dev, void **mem, size_t *
 		*mem = buffer->mem;
 	if (flags)
 		*flags = buffer->flags;
+	dev->curbuffer = dev->curbuffer->next;
 	buffer->state = dequeued;
 	return buffer->id;
 }
@@ -602,7 +606,7 @@ EXT_API int spassthrough_queue_output(Passthrough_t *dev, int index, void *mem, 
 	FrameBuffer_t *buffer = &dev->buffers[index];
 	if (buffer->state != dequeued)
 	{
-		spassthrough_dbg("spassthrough:   queue %s buffer %d not dequeued", (dev->type != device_input)?"output":"input", buffer->id);
+		spassthrough_dbg("spassthrough:   queue %s buffer %d %s missmatch", (dev->type != device_input)?"output":"input", buffer->id, (buffer->state == ready)?"always ready":"already queued");
 		errno = EAGAIN;
 		return -1;
 	}
@@ -627,7 +631,15 @@ EXT_API int spassthrough_queue_output(Passthrough_t *dev, int index, void *mem, 
 	buffer->flags = flags;
 	buffer->state = ready;
 	/** insert into fifo **/
-	dev->curbuffer = buffer;
+	buffer->next = NULL;
+	if (dev->curbuffer == NULL)
+		dev->curbuffer = buffer;
+	else
+	{
+		FrameBuffer_t *curbuffer = dev->curbuffer;
+		while (curbuffer->next) curbuffer = curbuffer->next;
+		curbuffer->next = buffer;
+	}
 	return 0;
 }
 
