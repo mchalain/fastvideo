@@ -102,8 +102,14 @@ hostobjdir:=$(hostbuilddir)$(cwdir)
 ifneq ($(file),)
   include $(file)
 endif
+ifneq ($(TOOLCHAIN),)
+  PATH:=$(value PATH):$(TOOLCHAIN)/bin
+  export TOOLCHAIN
+endif
 
 PATH:=$(value PATH):$(hostobjdir)
+export PATH
+
 TMPDIR:=/tmp
 TESTFILE:=makemore_test
 ##
@@ -125,7 +131,6 @@ MOC?=moc$(QT:%=-%)
 UIC?=uic$(QT:%=-%)
 RANLIB?=ranlib
 
-TOOLCHAIN?=
 CROSS_COMPILE?=
 
 HOSTCC=cc
@@ -154,12 +159,16 @@ ifneq ($(dir $(CC)),./)
 else
   ifneq ($(CROSS_COMPILE),)
     ifeq ($(findstring $(CROSS_COMPILE),$(CC)),)
-      TARGETPREFIX=$(CROSS_COMPILE:%-=%)-
+      TARGETPREFIX:=$(CROSS_COMPILE:%-=%)-
+    endif
+    ifneq ($(wildcard $(TOOLCHAIN)/bin/$(TARGETPREFIX)$(CC)),)
+      TARGETPREFIX:=$(TOOLCHAIN)/bin/$(TARGETPREFIX)
     endif
   else
     TARGETPREFIX=
   endif
 endif
+
 TARGETCC:=$(TARGETPREFIX)$(CC)
 TARGETLD:=$(TARGETPREFIX)$(LD)
 TARGETAS:=$(TARGETPREFIX)$(AS)
@@ -184,19 +193,22 @@ ifeq ($(HOST_COMPILE),$(ARCH))
   RANLIB?=$(HOSTRANLIB)
   STRIP?=$(HOSTSTRIP)
 else
-  TOOLCHAIN?=$(dir $(dir $(realpath $(shell which $(TARGETCC)))))
-endif
-
-ifneq ($(TOOLCHAIN),)
-  export PATH:=$(TOOLCHAIN):$(TOOLCHAIN)/bin:$(PATH)
+  TOOLCHAIN?=$(dir $(abspath $(dir $(realpath $(shell which $(TARGETCC))))))
 endif
 
 ifeq ($(findstring gcc,$(TARGETCC)),gcc)
   SYSROOT?=$(shell $(TARGETCC) -print-sysroot)
 endif
 
+ifneq ($(SYSROOT),)
+ ifeq ($(DESTDIR),)
+   DESTDIR=$(SYSROOT)
+ endif
+endif
+
 ifeq ($(destdir),)
   destdir:=$(abspath $(DESTDIR))
+  export destdir
 endif
 
 ifneq ($(SYSROOT),)
@@ -233,12 +245,6 @@ ifneq ($(strip $(pkglibdir)),)
   RPATHFLAGS+=-Wl,--disable-new-dtags -Wl,--as-needed
   SYSROOT_LDFLAGS+=$(addprefix -L=,$(pkglibdir))
 endif
-endif
-
-ifneq ($(destdir),)
-  SYSROOT_CFLAGS+=$(addprefix -I$(destdir),$(includedir))
-  SYSROOT_LDFLAGS+=$(addprefix -L$(destdir),$(libdir))
-  SYSROOT_LDFLAGS+=$(addprefix -L$(destdir),$(pkglibdir))
 endif
 
 SYSROOT_LDFLAGS:=$(sort $(SYSROOT_LDFLAGS))
@@ -518,6 +524,10 @@ endif
 ##
 # install recipes generation
 ##
+ifneq ($(CROSS_COMPILE),)
+  destdir?=$(sysroot)
+endif
+
 sysconf-install:=$(addprefix $(destdir)$(sysconfdir:%/=%)/,$(sort $(sysconf-y)))
 data-install:=$(addprefix $(destdir)$(datadir:%/=%)/,$(sort $(data-target)))
 doc-install:=$(addprefix $(destdir)$(docdir:%/=%)/,$(sort $(doc-y)))
@@ -704,6 +714,7 @@ quiet_cmd_generate_makefile=MAKEFILE $(notdir $@/Makefile)
  define cmd_generate_makefile
   $(file >  $@,BUILDDIR=$$(realpath $$(dir $$(firstword $$(MAKEFILE_LIST)))))
   $(file >> $@,srcdir=$(srcdir))
+  $(if $(TOOLCHAIN),$(file >>  $@,TOOLCHAIN=$(TOOLCHAIN)))
   $(if $(CROSS_COMPILE),$(file >> $@,MAKE_OPTS+=CROSS_COMPILE=$(CROSS_COMPILE)))
   $(if $(SYSROOT),$(file >> $@,MAKE_OPTS+=SYSROOT=$(SYSROOT)))
   $(if $(ARCH),$(file >> $@,MAKE_OPTS+=ARCH=$(ARCH)))
@@ -721,9 +732,9 @@ quiet_cmd_generate_makefile=MAKEFILE $(notdir $@/Makefile)
   $(if $(CPPFLAGS),$(file >> $@,MAKE_OPTS+=CPPFLAGS="$(CPPFLAGS)"))
   $(if $(LDFLAGS),$(file >> $@,MAKE_OPTS+=LDFLAGS="$(LDFLAGS)"))
   $(file >> $@,all:)
-  $(file >> $@,	make -C $$(srcdir) BUILDDIR=$$(BUILDDIR) $$(MAKE_OPTS) $$@)
+  $(file >> $@,	make -C $$(srcdir) BUILDDIR=$$(BUILDDIR) TOOLCHAIN=$$(TOOLCHAIN) $$(MAKE_OPTS) $$@)
   $(file >> $@,%:)
-  $(file >> $@,	make -C $$(srcdir) BUILDDIR=$$(BUILDDIR) $$(MAKE_OPTS) $$@)
+  $(file >> $@,	make -C $$(srcdir) BUILDDIR=$$(BUILDDIR) TOOLCHAIN=$$(TOOLCHAIN) $$(MAKE_OPTS) $$@)
  endef
 ##
 # build rules
@@ -962,7 +973,7 @@ Name: $(1)
 Version: @version@
 Description: $($(1)_DESC)
 Cflags: -I$${includedir}
-Libs: -L$${libdir} $(foreach lib,$(sort $($(1)_LIBS)),-l$(lib:lib%=%))
+Libs: -L$${libdir} $(1)_PKGCONFIG $(foreach lib,$(sort $($(1)_PKGCONFIG)) $($(1)_LIBS)),-l$(lib:lib%=%))
 
 endef
 
