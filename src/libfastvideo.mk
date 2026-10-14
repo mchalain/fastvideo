@@ -1,5 +1,6 @@
 HAVE_WAYLAND=$(sort $(HAVE_WAYLAND_EGL) $(HAVE_WAYLAND_PROTOCOLS))
 lib-y+=fastvideo
+fastvideo_DESC="plugins library for fastvideo"
 fastvideo_SOURCES+=sfastvideo.c
 fastvideo_SOURCES-$(HAVE_JANSSON)+=sconfig.c
 fastvideo_SOURCES+=sproto_udp.c
@@ -35,6 +36,8 @@ fastvideo_LIBRARY-$(EGL)+=gbm
 fastvideo_LIBRARY-$(EGL)+=x11
 fastvideo_LIBRARY-$(EGL)+=wayland-protocols
 fastvideo_LIBRARY-$(EGL)+=wayland-egl
+fastvideo_HEADERS+=fastvideo.h
 fastvideo_PKGCONFIG+=fastvideo
 fastvideo_CFLAGS-$(SANITIZER)+=-fsanitize=address
 
+pkgconfig-y+=fastvideo
