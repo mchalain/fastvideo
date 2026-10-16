@@ -8,7 +8,7 @@
  * coefs[lane & 1] in the portable version), vqrshrn.u16 narrows back
  * with rounding + saturation, vst4.u16 re-interleaves and stores.
  */
-size_t bg10tor16_default_convertline(const char *src, char *dst, size_t size, uint16_t *coefs)
+size_t bg10tor16_convertline(const char *src, char *dst, size_t size, uint16_t *coefs)
 {
 	asm volatile (
 		" vld1.u16      {d7}, [%[coefs]]            \n"

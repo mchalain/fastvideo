@@ -9,6 +9,7 @@ lib-y+=fastconvert
 fastconvert_SOURCES+=sconvert_BG10toR16.c
 fastconvert_SOURCES-$(ARMV7)+=sconvert_BG10toR16_armv7.c
 fastconvert_CFLAGS-$(ARMV7)+=-DBG10toR16_CONVERTLINE=y
+sconvert_BG10toR16_armv7_CFLAGS+=-march=armv7-a -mfpu=neon
 fastconvert_SOURCES-$(ARMV8)+=sconvert_BG10toR16_armv8.c
 fastconvert_CFLAGS-$(ARMV8)+=-DBG10toR16_CONVERTLINE=y
 fastconvert_SOURCES+=sconvert_NV12toR8.c
