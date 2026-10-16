@@ -5,6 +5,8 @@
 #include <string.h>
 #include <errno.h>
 #include <dlfcn.h>
+#include <unistd.h>
+#include <sys/eventfd.h>
 
 #include "log.h"
 #include "sconfig.h"
@@ -53,6 +55,7 @@ struct Passthrough_s
 	} resize;
 	Passthrough_Control_t *controls;
 	uint32_t periodic;
+	int completion_fd;
 };
 
 static FastVideoList_t *g_Converts = NULL;
@@ -113,6 +116,7 @@ static size_t _passthrough_copy(Passthrough_t *dev, FrameBuffer_t *src, FrameBuf
 EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Passthrough_config_t *config)
 {
 	Passthrough_t *dev = calloc(1, sizeof(*dev));
+	dev->completion_fd = -1;
 	dev->resize.numerator = 1;
 	dev->resize.denominator = 1;
 	dev->config = config;
@@ -156,6 +160,7 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 		return NULL;
 	}
 	Passthrough_t *dup = calloc(1, sizeof(*dup));
+	dup->completion_fd = -1;
 	dev->type = device_output;
 	dup->type = device_input;
 	dup->resize.numerator = 1;
@@ -171,7 +176,8 @@ EXT_API void *spassthrough_duplicate(Passthrough_t *dev, Passthrough_config_t **
 	{
 		if (config->convert->fourcc_out != 0)
 			dup->config->parent.fourcc = config->convert->fourcc_out;
-		dev->resize.numerator = config->convert->resize.numerator;
+		if (config->convert->resize.numerator)
+			dev->resize.numerator = config->convert->resize.numerator;
 		if (config->convert->resize.denominator)
 			dev->resize.denominator = config->convert->resize.denominator;
 		dup->config->parent.stride *= dev->resize.numerator;
@@ -282,9 +288,12 @@ static int _passthrough_createbuffers(Passthrough_t *dev, int nmems, void **mems
 		else
 			dev->buffers[i].strides[0] = size;
 	}
+	if (!ret)
+	{
+		dbg("spassthrough: %d %s buffers allocation %s", nmems, (dmabufs)?"dma":"mem", copy?"with copy":"");
+	}
 	dev->mems = mems;
 	dev->dmabufs = dmabufs;
-	buffer_linkring(dev->buffers, dev->nbuffers);
 	return ret;
 }
 
@@ -373,7 +382,7 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 			if (size != NULL)
 				*size = dev->size;
 			ret = 0;
-			if (dev->type == device_input && dev->branch.dev)
+			if (dev->type != device_input && dev->branch.dev)
 			{
 				dev->branch.ops->requestbuffer(dev->branch.dev, buf_type_memory, dev->nbuffers, dev->mems, dev->size, NULL);
 			}
@@ -437,7 +446,7 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 			if (size != NULL)
 				*size = dev->size;
 			ret = 0;
-			if (dev->type == device_input && dev->branch.dev)
+			if (dev->type != device_input && dev->branch.dev)
 			{
 				dev->branch.ops->requestbuffer(dev->branch.dev, buf_type_dmabuf, dev->nbuffers, dev->dmabufs, dev->size, NULL);
 			}
@@ -452,11 +461,20 @@ EXT_API int spassthrough_requestbuffer(Passthrough_t *dev, enum buf_type_e t, ..
 
 EXT_API int spassthrough_fd(Passthrough_t *dev, int writer)
 {
+	if (writer != 1)
+		return dev->completion_fd;
 	return -1;
 }
 
 EXT_API int spassthrough_start(Passthrough_t *dev)
 {
+	if (dev->completion_fd < 0)
+	{
+		dev->completion_fd = eventfd(0, EFD_NONBLOCK);
+		if (dev->completion_fd < 0)
+			warn("spassthrough: %s eventfd creation failed %m, falling back to unconditional polling",
+				dev->config->parent.name);
+	}
 	for (int i = 0; i < dev->nbuffers; i++)
 	{
 		if (dev->type == device_input)
@@ -464,7 +482,11 @@ EXT_API int spassthrough_start(Passthrough_t *dev)
 		else
 			dev->buffers[i].state = dequeued;
 	}
-	dev->curbuffer = &dev->buffers[0];
+	if (dev->type == device_input)
+	{
+		buffer_linkring(dev->buffers, dev->nbuffers);
+		dev->curbuffer = &dev->buffers[0];
+	}
 	if (dev->copy && dev->dup->buffers[0].size == 0)
 	{
 		/// disable copy mode on buffer allocation error
@@ -488,43 +510,18 @@ EXT_API int spassthrough_stop(Passthrough_t *dev)
 	return 0;
 }
 
-EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused, int *flags)
+EXT_API int spassthrough_dequeue_input(Passthrough_t *dev, void **mem, size_t *bytesused, int *flags)
 {
-	int state = dev->state;
-	if (dev->branch.dev && dev->state & MODE_TEE)
-	{
-		dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused, NULL);
-	}
-	if (dev->type != device_input && dev->dup && (dev->state & MODE_SHOOTING))
-	{
-		warn("spassthrough: shoot off %p", dev->dup);
-		dev->state |= MODE_DRYRUN;
-		dev->state &= ~MODE_SHOOTING;
-	}
 	FrameBuffer_t *buffer = dev->curbuffer;
 	if (buffer->state != ready)
 	{
-		spassthrough_dbg("spassthrough: dequeue %s buffer %d not ready", (dev->type != device_input)?"output":"input", buffer->id);
+		spassthrough_dbg("spassthrough: dequeue input buffer %d not ready", buffer->id);
 		errno = EAGAIN;
 		return -1;
 	}
-	if (dev->type != device_input && dev->dup && !(state & MODE_DRYRUN))
-	{
-		spassthrough_dbg("spassthrough: dequeue output buffer %d", buffer->id);
-		if (dev->dup->curbuffer->state == dequeued)
-		{
-			dbg("spassthrough: dequeue %s buffer %d not ready", dev->dup?"output":"input", buffer->id);
-			errno = EAGAIN;
-			return -1;
-		}
-		dev->dup->curbuffer->flags = buffer->flags;
-		dev->dup->curbuffer->state = ready;
-	}
-	else if (dev->type == device_input)
-	{
-		spassthrough_dbg("spassthrough: dequeue input buffer %d", buffer->id);
-		dev->curbuffer = buffer->next;
-	}
+	spassthrough_dbg("spassthrough: dequeue input buffer %d", buffer->id);
+	dev->curbuffer = buffer->next;
+
 	if (bytesused)
 		*bytesused = (buffer->bytesused * dev->resize.numerator) / dev->resize.denominator;
 	if (mem)
@@ -532,17 +529,84 @@ EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesus
 	if (flags)
 		*flags = buffer->flags;
 	buffer->state = dequeued;
-
+	if (dev->completion_fd >= 0)
+	{
+		uint64_t val;
+		(void)read(dev->completion_fd, &val, sizeof(val));
+	}
 	return buffer->id;
 }
 
-EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused, int flags)
+EXT_API int spassthrough_queue_input(Passthrough_t *dev, int index, void *mem, size_t bytesused, int flags)
 {
-	if (index < 0 || index >= dev->nbuffers)
+	FrameBuffer_t *buffer = &dev->buffers[index];
+	if (buffer->state != dequeued)
 	{
-		err("spassthrough: unkown %d buffer index to queue", index);
+		spassthrough_dbg("spassthrough: queue input buffer %d not dequeued", buffer->id);
+		errno = EAGAIN;
 		return -1;
 	}
+	buffer->state = queued;
+	spassthrough_dbg("spassthrough:   queue input buffer %d", buffer->id);
+	return 0;
+}
+
+EXT_API int spassthrough_dequeue_output(Passthrough_t *dev, void **mem, size_t *bytesused, int *flags)
+{
+	int state = dev->state;
+	FrameBuffer_t *buffer = dev->curbuffer;
+	if (buffer == NULL || buffer->state != ready)
+	{
+		if (buffer) {spassthrough_dbg("spassthrough: dequeue output buffer %d %s missmatch", buffer->id, (buffer->state == queued)?"queued": "dequeued");}
+		errno = EAGAIN;
+		return -1;
+	}
+	spassthrough_dbg("spassthrough: dequeue output buffer %d", buffer->id);
+	if (dev->branch.dev && dev->state & MODE_TEE)
+	{
+		dev->branch.ops->dequeue(dev->branch.dev, mem, bytesused, NULL);
+	}
+	if (dev->state & MODE_SHOOTING)
+	{
+		warn("spassthrough: shoot off %p", dev->dup);
+		dev->state |= MODE_DRYRUN;
+		dev->state &= ~MODE_SHOOTING;
+	}
+	if (dev->dup && !(state & MODE_DRYRUN))
+	{
+		FrameBuffer_t *dupbuffer = (FrameBuffer_t *)dev->dup->curbuffer;
+		if (dupbuffer->state != queued)
+		{
+			dbg("spassthrough: set input buffer %d %s", buffer->id, (dupbuffer->state == dequeued)?"not queued":"already ready");
+			errno = EAGAIN;
+			return -1;
+		}
+		dupbuffer->flags = buffer->flags;
+		dupbuffer->state = ready;
+		if (dev->dup->completion_fd >= 0)
+		{
+			uint64_t one = 1;
+			(void)write(dev->dup->completion_fd, &one, sizeof(one));
+		}
+	}
+	if (bytesused)
+		*bytesused = (buffer->bytesused * dev->resize.numerator) / dev->resize.denominator;
+	if (mem)
+		*mem = buffer->mem;
+	if (flags)
+		*flags = buffer->flags;
+	dev->curbuffer = dev->curbuffer->next;
+	buffer->state = dequeued;
+	if (dev->completion_fd >= 0)
+	{
+		uint64_t val;
+		(void)read(dev->completion_fd, &val, sizeof(val));
+	}
+	return buffer->id;
+}
+
+EXT_API int spassthrough_queue_output(Passthrough_t *dev, int index, void *mem, size_t bytesused, int flags)
+{
 	if (dev->controls && dev->controls->state)
 	{
 		dev->state |= dev->controls->state;
@@ -557,7 +621,7 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 			dev->state |= MODE_SHOOT;
 		}
 	}
-	if (dev->type != device_input && dev->dup && (dev->state & MODE_SHOOT))
+	if (dev->dup && (dev->state & MODE_SHOOT))
 	{
 		warn("spassthrough: shoot on %p", dev->dup);
 		dev->state &= ~MODE_DRYRUN;
@@ -571,32 +635,65 @@ EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t 
 	FrameBuffer_t *buffer = &dev->buffers[index];
 	if (buffer->state != dequeued)
 	{
-		spassthrough_dbg("spassthrough: queue %s buffer %d not dequeued", (dev->type != device_input)?"output":"input", buffer->id);
+		spassthrough_dbg("spassthrough:   queue %s buffer %d %s missmatch", (dev->type != device_input)?"output":"input", buffer->id, (buffer->state == ready)?"always ready":"already queued");
 		errno = EAGAIN;
 		return -1;
 	}
 	buffer->state = queued;
-	if (dev->type == device_input)
-	{
-		spassthrough_dbg("spassthrough:   queue input buffer %d", buffer->id);
-		return 0;
-	}
 	spassthrough_dbg("spassthrough:   queue output buffer %d", buffer->id);
 	if (mem)
 		buffer->mem = mem;
 	if (bytesused == 0)
 		bytesused = buffer->size;
-	if (dev->type != device_input && dev->dup && !(dev->state & MODE_SHOOT))
+	if (dev->dup && !(dev->state & MODE_DRYRUN))
 	{
-		bytesused = _passthrough_copy(dev, buffer, dev->dup->curbuffer, bytesused);
-		dev->dup->curbuffer->bytesused = bytesused;
+		FrameBuffer_t *dupbuffer = (FrameBuffer_t *)dev->dup->curbuffer;
+		if (dupbuffer == NULL)
+		{
+			err("spassthrough: buffers bad configuration");
+			return -1;
+		}
+		bytesused = _passthrough_copy(dev, buffer, dupbuffer, bytesused);
+		dupbuffer->bytesused = bytesused;
 	}
 	buffer->bytesused = bytesused;
 	buffer->flags = flags;
 	buffer->state = ready;
 	/** insert into fifo **/
-	dev->curbuffer = buffer;
+	buffer->next = NULL;
+	if (dev->curbuffer == NULL)
+		dev->curbuffer = buffer;
+	else
+	{
+		FrameBuffer_t *curbuffer = dev->curbuffer;
+		while (curbuffer->next) curbuffer = curbuffer->next;
+		curbuffer->next = buffer;
+	}
+	if (dev->completion_fd >= 0)
+	{
+		uint64_t one = 1;
+		(void)write(dev->completion_fd, &one, sizeof(one));
+	}
 	return 0;
+}
+
+EXT_API int spassthrough_dequeue(Passthrough_t *dev, void **mem, size_t *bytesused, int *flags)
+{
+	if (dev->type == device_input)
+		return spassthrough_dequeue_input(dev, mem, bytesused, flags);
+	return spassthrough_dequeue_output(dev, mem, bytesused, flags);
+}
+
+EXT_API int spassthrough_queue(Passthrough_t *dev, int index, void *mem, size_t bytesused, int flags)
+{
+	if (index < 0 || index >= dev->nbuffers)
+	{
+		err("spassthrough: unkown %d buffer index to queue", index);
+		return -1;
+	}
+	if (dev->type == device_input)
+		return spassthrough_queue_input(dev,index, mem, bytesused, flags);
+	return spassthrough_queue_output(dev,index, mem, bytesused, flags);
 }
 
 static void _passthrough_freedmabuf(Passthrough_t *dev)
@@ -612,6 +709,8 @@ static void _passthrough_freedmabuf(Passthrough_t *dev)
 
 EXT_API void spassthrough_destroy(Passthrough_t *dev)
 {
+	if (dev->completion_fd >= 0)
+		close(dev->completion_fd);
 	if (dev->type == device_input && dev->branch.dev)
 	{
 		dev->branch.ops->destroy(dev->branch.dev);
