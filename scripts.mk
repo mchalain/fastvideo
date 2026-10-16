@@ -973,7 +973,7 @@ Name: $(1)
 Version: @version@
 Description: $($(1)_DESC)
 Cflags: -I$${includedir}
-Libs: -L$${libdir} $(1)_PKGCONFIG $(foreach lib,$(sort $($(1)_PKGCONFIG)) $($(1)_LIBS)),-l$(lib:lib%=%))
+Libs: -L$${libdir} $(1)_PKGCONFIG $(foreach lib,$(sort $($(1)_PKGCONFIG) $($(1)_LIBS)),-l$(lib:lib%=%))
 
 endef
 
