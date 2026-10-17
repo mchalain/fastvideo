@@ -10,7 +10,107 @@
 #include "sv4l2.h"
 #include "segl.h"
 #include "sdrm.h"
+
+#define DEFAULT_PORT 1024
+
 static json_t *g_jconfig = NULL;
+
+int sconfig_initproto(Proto_Config_t *protoconf, const char *name)
+{
+	protoconf->host = NULL;
+	protoconf->port = DEFAULT_PORT;
+	protoconf->maxclients = 5;
+	protoconf->maxframes = -1;
+	char *hostname = strchr(name, ':');
+	if (hostname)
+	{
+		hostname++;
+		if (hostname[0] == '/' && hostname[1] == '/')
+		{
+			hostname += 2;
+		}
+		protoconf->host = strdup(hostname);
+		char *end = strchr(protoconf->host, '?');
+		if (end)
+			*end = '\0';
+	}
+	if (protoconf->host)
+	{
+		char *port = strchr(protoconf->host, ':');
+		if (port)
+		{
+			*port = '\0';
+			port++;
+			protoconf->port = atoi(port);
+		}
+	}
+	const char *host = strstr(name, "host=");
+	if (host)
+	{
+		protoconf->host = strdup(host + 5);
+		char *end = strchr(protoconf->host, ',');
+		if (end)
+			*end = '\0';
+	}
+	const char *port = strstr(name, "port=");
+	if (port)
+	{
+		protoconf->port = atoi(port + 5);
+	}
+	const char *maxframes = strstr(name, "maxframes=");
+	if (maxframes)
+	{
+		protoconf->maxframes = atoi(maxframes + 10);
+	}
+	const char *mode = strstr(name, "mode=");
+	if (mode)
+	{
+		protoconf->mode = mode + 5;
+	}
+	return 0;
+}
+
+void sconfig_finalproto(Proto_Config_t *protoconf)
+{
+	free(protoconf->host);
+}
+
+int sconfig_loadproto(Proto_Config_t *protoconf, json_t *jconfig)
+{
+	json_t *host = json_object_get(jconfig, "host");
+	if (host == NULL)
+		host = json_object_get(jconfig, "path");
+	if (! protoconf->host && host && json_is_string(host))
+	{
+		const char *value = json_string_value(host);
+		protoconf->host = strdup(value);
+	}
+	json_t *port = json_object_get(jconfig, "port");
+	if (protoconf->port == DEFAULT_PORT && port && json_is_integer(port))
+	{
+		int value = json_integer_value(port);
+		protoconf->port = value;
+	}
+	json_t *mode = json_object_get(jconfig, "mode");
+	if (mode && json_is_string(mode))
+	{
+		const char *value = json_string_value(mode);
+		protoconf->mode = value;
+	}
+	json_t *maxframes = json_object_get(jconfig, "maxframes");
+	if (maxframes && json_is_integer(maxframes))
+	{
+		uint32_t value = json_integer_value(maxframes);
+		protoconf->maxframes = value;
+	}
+	json_t *maxclients = json_object_get(jconfig, "maxclients");
+	if (maxclients && json_is_integer(maxclients))
+	{
+		uint32_t value = json_integer_value(maxclients);
+		protoconf->maxclients = value;
+	}
+	return 0;
+}
 
 int sconfig_loaddefinition(DeviceConf_t *config, json_t *definition)
 {

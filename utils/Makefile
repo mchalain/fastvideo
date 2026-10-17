@@ -45,3 +45,6 @@ shoot_SOURCES+=$(srcdir)src/daemonize.c
 shoot_LIBRARY+=libgpiod
 shoot_CFLAGS+=-I$(srcdir)src
 shoot_LDFLAGS+=-L$(builddir)src
+
+bin-y+=csv2pisp_fe_config
+csv2pisp_fe_config_SOURCES+=csv2pisp_fe_config.c

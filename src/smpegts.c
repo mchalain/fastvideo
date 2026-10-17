@@ -339,42 +339,17 @@ static void _destroy_buffer(FrameBuffer_t *buffer)
 #ifdef HAVE_JANSSON
 int mpegts_loadjsonconfiguration(void *arg, void *entry);
 #endif
-#ifdef IPV6
-static const char default_addr[] = "FF02::1:FF00:56";
-#else
-static const char default_addr[] = "239.0.0.14";
-#endif
-#define DEFAULT_PORT 1024
 
 DeviceConf_t *mpegts_createconfig(const char *name)
 {
 	MPEG_TSConf_t *config = calloc(1, sizeof(*config));
 	config->parent.fourcc = FOURCC_H264;
-	config->host = NULL;
-	config->port = DEFAULT_PORT;
 	config->pid = 0x41;
-	config->maxclients = 5;
 	config->proto = _protos[0];
 #ifdef HAVE_JANSSON
 	config->parent.ops.loadconfiguration = mpegts_loadjsonconfiguration;
 #endif
-	char *hostname = strchr(name, ':');
-	if (hostname)
-	{
-		hostname++;
-		if (hostname[0] == '/' && hostname[1] == '/')
-		{
-			hostname = strdup(hostname + 2);
-			config->host = hostname;
-			char *port = strchr(hostname, ':');
-			if (port)
-			{
-				*port = '\0';
-				port++;
-				config->port = atoi(port);
-			}
-		}
-	}
+	sconfig_initproto(&config->protoconf, name);
 	return &config->parent;
 }
 
@@ -841,8 +816,6 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	const Proto_t *proto = &proto_udp;
 	if (config && config->proto)
 		proto = config->proto;
-	if (config->host == NULL)
-		config->host = strdup(default_addr);
 	void *protoctx = proto->create(&config->protoconf);
 	if (protoctx == NULL)
 		return NULL;
@@ -921,7 +894,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	dumpfd = open("/tmp/dump.h264", O_RDWR | O_CREAT);
 	err("dumpfd %d %m", dumpfd);
 #endif
-	warn("smpegts: stream %s out to %s", dev->proto->name , config->host);
+	warn("smpegts: stream %s out to %s", dev->proto->name , config->protoconf.host);
 	return dev;
 }
 
@@ -1104,7 +1077,7 @@ EXT_API void mpegts_destroy(Dev_t *dev)
 	if (dumpfd > 0)
 		close(dumpfd);
 #endif
-	free(dev->config->host);
+	sconfig_finalproto(&dev->config->protoconf);
 	if (dev->config)
 		free(dev->config);
 	free(dev);
@@ -1117,18 +1090,6 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 	json_t *jconfig = entry;
 
 	MPEG_TSConf_t *config = (MPEG_TSConf_t *)arg;
-	json_t *host = json_object_get(jconfig, "host");
-	if (! config->host && host && json_is_string(host))
-	{
-		const char *value = json_string_value(host);
-		config->host = strdup(value);
-	}
-	json_t *port = json_object_get(jconfig, "port");
-	if (config->port == DEFAULT_PORT && port && json_is_integer(port))
-	{
-		int value = json_integer_value(port);
-		config->port = value;
-	}
 	json_t *pid = json_object_get(jconfig, "pid");
 	if (pid && json_is_integer(pid))
 	{
@@ -1140,24 +1101,6 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 	{
 		int value = json_integer_value(periodic);
 		config->periodic = value;
-	}
-	json_t *maxframes = json_object_get(jconfig, "maxframes");
-	if (maxframes && json_is_integer(maxframes))
-	{
-		uint32_t value = json_integer_value(maxframes);
-		config->maxframes = value;
-	}
-	json_t *maxclients = json_object_get(jconfig, "maxclients");
-	if (maxclients && json_is_integer(maxclients))
-	{
-		uint32_t value = json_integer_value(maxclients);
-		config->maxclients = value;
-	}
-	json_t *mode = json_object_get(jconfig, "mode");
-	if (mode && json_is_string(mode))
-	{
-		const char *value = json_string_value(mode);
-		config->mode = value;
 	}
 	json_t *proto = json_object_get(jconfig, "proto");
 	if (proto == NULL)
@@ -1174,6 +1117,7 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 			}
 		}
 	}
+	sconfig_loadproto(&config->protoconf, jconfig);
 	return 0;
 }
 #endif

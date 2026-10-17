@@ -103,7 +103,7 @@ static socklen_t _proto_address(Proto_Config_t *config, struct sockaddr_storage 
 	hints.ai_protocol = IPPROTO_TCP;
 
 	if (config->host == NULL)
-		return -1;
+		config->host = strdup("0.0.0.0");
 	if (getaddrinfo(config->host, NULL, &hints, &result))
 		err("tcp: config error %m");
 	rp = result;

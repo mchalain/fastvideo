@@ -22,6 +22,12 @@
 #define IP_HEADER_LENGTH 20
 #define UDP_HEADER_LENGTH 8
 
+#ifdef IPV6
+static const char default_addr[] = "FF02::1:FF00:56";
+#else
+static const char default_addr[] = "239.0.0.14";
+#endif
+
 typedef struct Proto_UDP_s Proto_UDP_t;
 struct Proto_UDP_s
 {
@@ -142,7 +148,8 @@ static void *proto_create(Proto_Config_t *config)
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_flags = AI_PASSIVE;
 	hints.ai_protocol = IPPROTO_UDP;
-
+	if (!config->host)
+		config->host = strdup(default_addr);
 	if (getaddrinfo(config->host, NULL, &hints, &result))
 		err("udp: config error %m");
 	rp = result;

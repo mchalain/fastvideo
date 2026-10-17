@@ -8,7 +8,7 @@
   {
     "name": ["pisp-out","pips-out0","pips0-out0","pispbe-output0"],
     "type": "v4l2",
-    "device": "/dev/video24",
+    "device": "/dev/video23",
     "definition": {
       "fourcc": "YUYV",
       "width": 1920,
@@ -19,7 +19,7 @@
   {
     "name": ["pisp-out1","pisp0-out1","pispbe-output1"],
     "type": "v4l2",
-    "device": "/dev/video25",
+    "device": "/dev/video24",
     "definition": {
       "fourcc": "YUYV",
       "width": 1920,
@@ -30,7 +30,7 @@
   {
     "name": ["pisp-config","pisp0-config","pispbe-config"],
     "type": "v4l2",
-    "device": "/dev/video25",
+    "device": "/dev/video27",
     "definition": {
       "fourcc": "RPBC",
       "size": 16720
@@ -38,7 +38,7 @@
     "end": true
   },
   {
-    "name": ["enc-hevc","rpivid-source"],
+    "name": ["dec-hevc","rpivid-source"],
     "type": "v4l2",
     "device": "/dev/video19",
     "definition": {
@@ -111,6 +111,7 @@
     "type": "v4l2",
     "device": "/dev/video6",
     "definition": {
+      "mode": "meta",
       "fourcc": "RPFS",
       "size": 23200
     },
@@ -130,15 +131,18 @@
   {
     "name": ["config-cam"],
     "type": "file",
-    "filename": "data/rp1_fe_config.bin",
+    "path": "./rp1_fe_config.raw",
+    "mode": "static",
     "definition": {
       "fourcc": "RPFC",
-      "size": 632
+      "width": 632,
+      "height": 1,
+      "stride": 632
     },
     "end": true
   },
   {
-    "name": ["cam-embedded","rp1-cfe-fe_embedded"],
+    "name": ["cam-embedded","rp1-cfe-embedded"],
     "type": "v4l2",
     "device": "/dev/video1",
     "definition": {
@@ -232,10 +236,10 @@
     "end": true
   },
   {
-    "name": ["cam","cam-imx708","cam-imx296","cam-imx477","rp1-cfe-fe_image0"],
+    "name": ["cam","cam-ov9281","cam-imx708","cam-imx296","cam-imx477","rp1-cfe-fe_image0"],
     "type": "v4l2",
     "device": "/dev/video4",
-    "disable": true,
+    "disable": false,
     "subdevices": [
       {
         "name": ["cam-imx296","cam-imx708","pisp-fe"],
@@ -302,6 +306,19 @@
           "end": true
         },
         "end": true
+      },
+      {
+        "name": ["cam-ov9281","ov9281 4-0060"],
+        "type": "subv4l",
+        "disable": false,
+        "device": "/dev/v4l-subdev2",
+        "definition": {
+          "fourcc": "Y16 ",
+          "fmtbus": "0x200a",
+          "width": 1280,
+          "height":  720,
+          "end": true
+        }
       }
     ]
   },
@@ -340,27 +357,19 @@
     "native": ["x11","wayland","drm"],
     "device": "/dev/dri/card1",
     "programs":[{
-      "disable": false,
+      "name": "grey",
+      "disable": true,
       "vertex": "simplevertex.glsl",
       "fragment": "grey.glsl",
       "end": true
     },{
+      "name": "debayer",
       "disable": true,
       "vertex": "simplevertex.glsl",
       "fragment": "debayer.glsl"
-    }],
-    "transfer": {
-      "fourcc": "XB24"
-    },
-    "end": true
-  },
-  {
-    "name": ["shadertoy"],
-    "type": "gpu",
-    "native": ["x11","wayland","drm"],
-    "device": "/dev/dri/card1",
-    "programs":[{
-      "disable": false,
+    },{
+      "name": "shadertoy-funny",
+      "disable": true,
       "vertex": "ShaderToy/vertex.glsl",
       "fragment": ["ShaderToy/fragment.glsl","ShaderToy/Funny.glsl"],
       "controls": [{
@@ -373,19 +382,14 @@
         "value": "frames"
       }],
       "end": true
-    }],
-    "end": true
-  },
-  {
-    "name": ["gpu-isp"],
-    "type": "gpu",
-    "native": ["x11","wayland","drm"],
-    "device": "/dev/dri/card0",
-    "programs":[{
-      "disable": false,
+    },{
+      "disable": true,
       "vertex": "simplevertex.glsl",
       "fragment": "debayer.glsl"
     }],
+    "transfer": {
+      "fourcc": "XB24"
+    },
     "end": true
   }
 ]
