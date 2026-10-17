@@ -25,7 +25,9 @@
 
 #define Proto_FILE_Hls 0x010000
 #define Proto_FILE_Static 0x020000
-#define Proto_FILE_Loop 0x030000
+#define Proto_FILE_Loop 0x040000
+#define Proto_FILE_Read (Proto_FILE_Static | Proto_FILE_Loop)
+
 typedef struct Proto_FILE_s Proto_FILE_t;
 struct Proto_FILE_s
 {
@@ -208,6 +210,20 @@ static int proto_connect_reg(void *arg)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
 
+	if (proto->mode & Proto_FILE_Read)
+	{
+		/// read modes open the file itself, never the temporary one
+		if (proto->fd[proto->currentfd] > 0)
+			close(proto->fd[proto->currentfd]);
+		proto->fd[proto->currentfd] = openat(proto->rootfd, proto->filename, O_RDONLY);
+		if (proto->fd[proto->currentfd] < 0)
+		{
+			err("sproto: file %s/%s opening error %m", proto->root, proto->filename);
+			return -1;
+		}
+		warn("sproto: read %s file(%d)", proto->filename, proto->fd[proto->currentfd]);
+		return 0;
+	}
 	int newfd = proto->currentfd + 1;
 	newfd %= (sizeof(proto->fd) / sizeof(*proto->fd));
 #if 0
@@ -302,6 +318,13 @@ static void proto_close(void *arg)
 {
 	Proto_FILE_t *proto = (Proto_FILE_t *)arg;
 
+	if (proto->fd[proto->currentfd] > 0 && (proto->mode & Proto_FILE_Read))
+	{
+		/// keep the file name, the file is opened again on the next connect
+		close(proto->fd[proto->currentfd]);
+		proto->fd[proto->currentfd] = -1;
+		return;
+	}
 	if (proto->fd[proto->currentfd])
 	{
 		warn("sproto: close file (%d)", proto->fd[proto->currentfd]);
