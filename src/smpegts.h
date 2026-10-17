@@ -11,13 +11,7 @@ typedef struct MPEG_TSConf_s MPEG_TSConf_t;
 struct MPEG_TSConf_s
 {
 	union {
-		struct {
-			DeviceConf_t parent;
-			char *host;
-			int port;
-			int maxclients;
-			const char *mode;
-		};
+		DeviceConf_t parent;
 		Proto_Config_t protoconf;
 	};
 	int pid;

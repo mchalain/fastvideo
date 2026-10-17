@@ -116,16 +116,6 @@ struct FrameBuffer_s
 	FrameBuffer_t *next;
 };
 
-typedef struct Proto_Config_s Proto_Config_t;
-struct Proto_Config_s
-{
-	DeviceConf_t parent;
-	const char *host;
-	int port;
-	int maxclients;
-	const char *mode;
-};
-
 enum Proto_Flags_e
 {
 	Proto_Flush = 0,

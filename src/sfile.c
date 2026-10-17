@@ -20,7 +20,6 @@
 #include "log.h"
 
 #define MAX_BUFFERS 4
-#define DEFAULT_PORT 1024
 
 extern const Proto_t proto_file;
 
@@ -102,7 +101,7 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 	dev->ctx = ctx;
 	dev->ops = ops;
 	dev->type = type;
-	dev->path = config->filename;
+	dev->path = config->protoconf.host;
 	dev->width = config->parent.width;
 	dev->height = config->parent.height;
 	dev->fourcc = config->parent.fourcc;
@@ -133,7 +132,7 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 			break;
 			default:
 		}
-		warn("sfile: %s opened for %ux%u %.4s", config->filename, dev->width, dev->height, (const char*)&dev->fourcc);
+		warn("sfile: %s opened for %ux%u %.4s", dev->path, dev->width, dev->height, (const char*)&dev->fourcc);
 	}
 	if (type == device_input)
 	{
@@ -177,7 +176,7 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 		config->parent.fourcc = dev->fourcc;
 		config->parent.stride = dev->width * dev->bpp;
 
-		warn("sfile: %s opened for %ux%u %.4s", config->filename, dev->width, dev->height, (const char*)&dev->fourcc);
+		warn("sfile: %s opened for %ux%u %.4s", dev->path, dev->width, dev->height, (const char*)&dev->fourcc);
 
 		dev->buffers = calloc(MAX_BUFFERS, sizeof(FrameBuffer_t));
 		size_t size = dev->width;
@@ -505,6 +504,7 @@ EXT_API void sfile_destroy(File_t *dev)
 		free(dev->outmem);
 	if (dev->nbuffers > 0)
 		free(dev->buffers);
+	sconfig_finalproto(&dev->config->protoconf);
 	if (dev->config)
 		free(dev->config);
 	free(dev);
@@ -517,26 +517,12 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 	json_t *jconfig = entry;
 
 	FileConfig_t *config = (FileConfig_t *)arg;
-	json_t *path = json_object_get(jconfig, "path");
-	if (path && json_is_string(path))
-	{
-		const char *value = json_string_value(path);
-		config->filename = value;
-	}
 	json_t *definition = json_object_get(jconfig, "definition");
 	if (definition)
 		sconfig_loaddefinition(&config->parent, definition);
-	json_t *port = json_object_get(jconfig, "port");
-	if (config->port == DEFAULT_PORT && port && json_is_integer(port))
-	{
-		int value = json_integer_value(port);
-		config->port = value;
-	}
 	json_t *modes = json_object_get(jconfig, "protocol");
 	if (modes == NULL)
 		modes = json_object_get(jconfig, "proto");
-	if (modes == NULL)
-		modes = json_object_get(jconfig, "mode");
 	if (config->protoconf.mode == NULL && modes && json_is_array(modes))
 	{
 		json_t *mode;
@@ -546,7 +532,6 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 			if (mode && json_is_string(mode))
 			{
 				const char *value = json_string_value(mode);
-				config->protoconf.mode = value;
 				for (int i = 0; i < (sizeof(_protos)/sizeof(*_protos)); i++)
 				{
 					if (_protos[i] && !strcasecmp(value, _protos[i]->name))
@@ -571,6 +556,7 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 			}
 		}
 	}
+	sconfig_loadproto(&config->protoconf, jconfig);
 	if (config->protoconf.mode && ! strncasecmp(config->protoconf.mode, "pam", 3))
 		config->header = File_PAM_e;
 	json_t *convert = json_object_get(jconfig, "convert");
@@ -587,18 +573,6 @@ int sfile_loadjsonconfiguration(void *arg, void *entry)
 				break;
 			}
 		}
-	}
-	json_t *maxframes = json_object_get(jconfig, "maxframes");
-	if (maxframes && json_is_integer(maxframes))
-	{
-		uint32_t value = json_integer_value(maxframes);
-		config->maxframes = value;
-	}
-	json_t *maxclients = json_object_get(jconfig, "maxclients");
-	if (maxclients && json_is_integer(maxclients))
-	{
-		uint32_t value = json_integer_value(maxclients);
-		config->maxclients = value;
 	}
 	return 0;
 }
@@ -624,26 +598,7 @@ DeviceConf_t * sfile_createconfig(const char *name)
 
 	/// this is possible if name variable exits when "create" is called
 	devconfig = calloc(1, sizeof(FileConfig_t));
-	devconfig->port = DEFAULT_PORT;
-	const char *filepath = strchr(name, ':');
-	if (filepath)
-	{
-		filepath++;
-		/// the filepath may be an URL
-		if (filepath[0] == '/' && filepath[1] == '/') filepath += 2;
-		devconfig->filename = filepath;
-		const char *port = strchr(filepath, ':');
-		if (port)
-		{
-			port++;
-			devconfig->port = strtol(port, NULL, 10);
-		}
-	}
-	const char *mode = strstr(name, "mode=");
-	if (mode)
-	{
-		devconfig->mode = mode + 5;
-	}
+	sconfig_initproto(&devconfig->protoconf, name);
 #ifdef HAVE_JANSSON
 	devconfig->parent.ops.loadconfiguration = sfile_loadjsonconfiguration;
 #endif

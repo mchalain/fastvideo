@@ -164,7 +164,7 @@ int main(int argc, char * const argv[])
 	outconfig.parent.fourcc = inconfig.parent.fourcc;
 	outconfig.parent.stride = inconfig.parent.stride;
 	outconfig.direction = File_Input_e;
-	File_t *file = sfile_ops.create(outconfig.filename, device_output, &outconfig.parent);
+	File_t *file = sfile_ops.create(outconfig.protoconf.host, device_output, &outconfig.parent);
 	if (!file)
 	{
 		err("file not available");

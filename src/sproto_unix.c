@@ -51,6 +51,8 @@ static void *proto_create(Proto_Config_t *config)
 	size_t mtu = 1500;
 	int family = AF_UNIX;
 
+	if (config->host == NULL)
+		config->host = strdup("/tmp/fastvideo.unixsocket");
 	sock = socket(family, SOCK_STREAM, 0);
 	if (sock < 0)
 		return NULL;

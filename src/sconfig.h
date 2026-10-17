@@ -81,12 +81,26 @@ struct DeviceConf_s
 		.ops.loadconfiguration = _loadconfig, \
 	}
 
+typedef struct Proto_Config_s Proto_Config_t;
+struct Proto_Config_s
+{
+	DeviceConf_t parent;
+	char *host;
+	int port;
+	int maxclients;
+	int maxframes;
+	const char *mode;
+};
+
 #ifdef HAVE_JANSSON
 typedef struct FastVideoDevice_ops_s FastVideoDevice_ops_t;
 DeviceConf_t *config_create(const char *name, FastVideoDevice_ops_t *ops, void *entry);
 
 int sconfig_loaddefinition(DeviceConf_t *config, json_t *definition);
 int sconfig_mergedefinition(DeviceConf_t *dest, DeviceConf_t *src);
+int sconfig_loadproto(Proto_Config_t *protoconf, json_t *jconfig);
+int sconfig_initproto(Proto_Config_t *protoconf, const char *name);
+void sconfig_finalproto(Proto_Config_t *protoconf);
 
 int sconfig_isnamed(DeviceConf_t *devconfig, const char *name);
 json_t *sconfig_getdevice(DeviceConf_t *config);

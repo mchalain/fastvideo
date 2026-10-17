@@ -15,13 +15,7 @@ typedef struct FileConfig_s FileConfig_t;
 struct FileConfig_s
 {
 	union {
-		struct {
-			DeviceConf_t parent;
-			const char *filename;
-			int port;
-			int maxclients;
-			const char *mode;
-		};
+		DeviceConf_t parent;
 		Proto_Config_t protoconf;
 	};
 	const Proto_t *proto;

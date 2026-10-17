@@ -46,6 +46,7 @@ struct Proto_FILE_s
 
 static const char ext_ts[] = "ts";
 static const char ext_jpeg[] = "jpg";
+static const char ext_mjpg[] = "mjpg";
 static const char ext_h264[] = "h264";
 static const char ext_pam[] = "pam";
 static const char ext_raw[] = "raw";
@@ -68,7 +69,7 @@ static void *proto_create(Proto_Config_t *config)
 	int rootfd;
 	size_t mtu = 188 * 10;
 	if (config->host == NULL)
-		return NULL;
+		config->host = strdup("./");
 	char *host = strndup(config->host, 1024);
 	char *filename = NULL;
 	struct stat fs;
@@ -110,6 +111,12 @@ static void *proto_create(Proto_Config_t *config)
 		proto->mode |= Proto_FILE_Loop;
 	switch (config->parent.fourcc)
 	{
+	case FOURCC_MJPG:
+		if (config->maxframes != 1)
+			proto->ext = ext_mjpg;
+		else
+			proto->ext = ext_jpeg;
+	break;
 	case FOURCC_JPEG:
 		proto->ext = ext_jpeg;
 	break;
