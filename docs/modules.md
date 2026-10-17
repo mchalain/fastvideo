@@ -53,6 +53,7 @@ Most modules share the following entries:
 | `width`      | integer              | `definition`, `transfer`  | Image width.                                   |
 | `height`     | integer              | `definition`, `transfer`  | Image height.                                  |
 | `stride`     | integer              | `definition`, `transfer`  | Image pitch (bytes per line).                  |
+| `fps`        | integer              | `definition`              | Frame rate of the stream.                      |
 
 ## v4l2
 
@@ -85,7 +86,6 @@ In addition to the [common entries](#common-entries) (`type` must be
 
 | Entry      | Type             | Parent     | Description                      |
 |:-----------|:----------------:|:-----------|:---------------------------------|
-| `fps`      | integer          | root       | Frame rate of the stream.        |
 | `controls` | array of objects | root       | Image settings.                  |
 | `name`     | string           | `controls` | Name of the setting.             |
 | `id`       | integer          | `controls` | V4L2 control ID of the setting.  |
@@ -129,6 +129,8 @@ the GPU in two ways:
 - **pixels** – uses `glReadPixels()`; slow, but always available;
 - **imagemesa** – uses `eglExportDMABUFImageMESA()`; very fast, but the
   output may be altered by the GPU's tiled memory layout.
+- **drm** - uses "drm writeback"; very fast, but only available with "drm"
+  native.
 
 ```json
 {
@@ -149,7 +151,7 @@ In addition to the [common entries](#common-entries) (`type` must be
 | `programs` | array of objects | root       | GLSL programs to apply.                             |
 | `vertex`   | string           | `programs` | Path of the GLSL vertex shader.                     |
 | `fragment` | string           | `programs` | Path of the GLSL fragment shader.                   |
-| `export`   | string           | root       | Export API: `"pixels"` or `"imagemesa"`.            |
+| `export`   | string           | root       | Export API: '"drm"', `"pixels"` or `"imagemesa"`.   |
 
 ## screen
 
@@ -179,6 +181,31 @@ In addition to the [common entries](#common-entries) (`type` must be
 | `name`     | string                | `controls` | Name of the setting; must be `"rotation"`.   |
 | `value`    | string &#124; integer | `controls` | `"reflect"`, `"90"`, `"180"` or `"270"`.     |
 
+## file
+
+Writes data to, or reads data from, a file, a FIFO or a socket. If the path
+is a directory, a `stream_XXX` file is created inside it.
+
+The path can also be given on the command line as an URL:
+
+```shell
+$ fastvideo -j fastconfig.json -i uvc:fourcc=MJPG -o file://./test.mjpeg
+$ fastvideo -j fastconfig.json -i uvc:fourcc=MJPG -o file://./test.jpg?maxframes=1
+```
+
+```json
+{
+  "name": "file",
+  "type": "file"
+}
+```
+
+| Entry   | Type                 | Parent | Description                                        |
+|:--------|:--------------------:|:-------|:---------------------------------------------------|
+| `type`  | string               | root   | Must be `"file"`.                                  |
+| `name`  | string &#124; array  | root   | One or several names for the module.               |
+| `proto` | string               | root   | Cf. [protocol configuration](#proto)               |
+
 ## mpegts
 
 Generates an MPEG-2 transport stream. The input must be an H.264 stream.
@@ -198,10 +225,40 @@ Generates an MPEG-2 transport stream. The input must be an H.264 stream.
 |:-----------|:--------------------:|:-------|:-----------------------------------------------------|
 | `type`     | string               | root   | Must be `"mpegts"`.                                  |
 | `name`     | string &#124; array  | root   | One or several names for the module.                 |
-| `proto`    | string               | root   | `"udp"`, `"unix"`, `"file"`, `"fifo"` or `"tcp"`.    |
-| `host`     | string               | root   | Destination address or socket path.                  |
-| `port`     | integer              | root   | Port number (`udp` only).                            |
+| `proto`    | string               | root   | Cf. [protocol configuration](#proto)                 |
 | `periodic` | integer              | root   | Number of frames between two I-frames.               |
+| `pid'      | integer              | root   | Pid of video inside the stream.                      |
+
+## proto
+
+Proto is common part of "file" and "mpegts" plugin. It allows to send data on different sinks.
+
+```json
+{
+  "name": ["config"],
+  "type": "file",
+  "proto": "file",
+  "host": "./device.conf",
+  "mode": ["static"],
+  "maxframes": 1
+}
+```
+
+| Entry        | Type                 | Parent  | Description                                                |
+|:-------------|:--------------------:|:--------|:-----------------------------------------------------------|
+| `tcp`        | string               | "proto" | Waits client connections or connect to tcp server.         |
+| `udp`        | string               | "proto" | Sends or broadcast stream on network (Multicast available).|
+| `unix'       | string               | "proto" | Waits client connections or connect on local socket.       |
+| `file'       | string               | "proto" | Copies data to file.                                       |
+| `fifo'       | string               | "proto" | Copies data to named fifo.                                 |
+| `host`       | string               | root    | The network address or path depends on "proto".            |
+| `port`       | integer              | root    | The network port for "udp", "tcp".                         |
+| `maxframes'  | integer              | root    | Number of frames before closing the connection.            !
+| 'maxclients' | integer              | root    | Maximum number of connections on a server's socket.        |
+| 'mode'       | array of strings     | root    | Protocol mode modifications.                               |
+| 'hls'        |                      | "mode"  | Creates .m3u file and .ts files (with "file" protocol).    |
+| 'static'     |                      | "mode"  | Reads and sends the all file into each frame.              |
+| 'loop'       |                      | "mode"  | Reads and rewinds the file from the end.                   |
 
 ## passthrough
 
@@ -223,39 +280,18 @@ Some options change its behaviour:
 }
 ```
 
-| Entry      | Type                  | Parent     | Description                                       |
-|:-----------|:---------------------:|:-----------|:--------------------------------------------------|
-| `type`     | string                | root       | Must be `"passthrough"`.                          |
-| `name`     | string &#124; array   | root       | One or several names for the module.              |
-| `branch`   | object                | root       | Description of the second sink (tee).             |
-| `name`     | string                | `branch`   | Name of the module.                               |
-| `type`     | string                | `branch`   | Type of the module: `"v4l2"`, `"gpu"`, `"screen"`.|
-| `convert`  | string &#124; object  | root       | Converter to use (see [convert library](convert-library.md)). |
-| `controls` | array of objects      | root       | Settings.                                         |
-| `dryrun`   | boolean               | `controls` | Discard the stream.                               |
-| `tee`      | boolean               | `controls` | Enable the `branch` sink.                         |
+| Entry      | Type                  | Parent     | Description                                         |
+|:-----------|:---------------------:|:-----------|:----------------------------------------------------|
+| `type`     | string                | root       | Must be `"passthrough"`.                            |
+| `name`     | string &#124; array   | root       | One or several names for the module.                |
+| `branch`   | object                | root       | Description of the second sink (tee).               |
+| `name`     | string                | `branch`   | Name of the module.                                 |
+| `type`     | string                | `branch`   | Type of the module: `"v4l2"`, `"gpu"`, `"screen"`.  |
+| `convert`  | string &#124; object  | root       | Converter to use                                    |
+|            |                       |            |        (see [convert library](convert-library.md)). |
+| `controls` | array of objects      | root       | Settings.                                           |
+| `dryrun`   | boolean               | `controls` | Discard the stream.                                 |
+| `tee`      | boolean               | `controls` | Enable the `branch` sink.                           |
+| `shoot'    | boolean               | `controls` | Reenable the stream for one frame in "dryrun" mode. |
+| `periodic' | integer               | `controls` | Repeat the control each periodic frame.             |
 
-## file
-
-Writes data to, or reads data from, a file, a FIFO or a socket. If the path
-is a directory, a `stream_XXX` file is created inside it.
-
-The path can also be given on the command line:
-
-```shell
-$ fastvideo -j fastconfig.json -i cam -o file:./test.mjpeg
-```
-
-```json
-{
-  "name": "file",
-  "type": "file"
-}
-```
-
-| Entry  | Type                 | Parent | Description                                        |
-|:-------|:--------------------:|:-------|:---------------------------------------------------|
-| `type` | string               | root   | Must be `"file"`.                                  |
-| `name` | string &#124; array  | root   | One or several names for the module.               |
-| `path` | string               | root   | File or directory to use.                          |
-| `mode` | string &#124; array  | root   | `"file"`, `"fifo"`, `"tcp"`, `"udp"` or `"unix"`.  |
