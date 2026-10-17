@@ -123,7 +123,9 @@ Device set to /dev/video4
 ```
 
 > **Important:** you **must** answer **y** to the question
-> *disable the pisp_fe*.
+> *disable the pisp_fe*. Otherwise the image goes through the PiSP Front
+> End, which produces nothing until it receives a configuration buffer: see
+> [RP1 front-end configuration file](rp1-fe-config.md).
 
 ### ov9281 camera
 
