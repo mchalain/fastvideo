@@ -251,7 +251,7 @@
     "definition": {
       "fourcc": "YUYV",
       "width": 640,
-      "height": 480,
+      "height": 640,
       "end": true
     },
     "end": true
@@ -499,6 +499,12 @@
       "dryrun": true,
       "end": true
     },
+    "end": true
+  },
+  {
+    "name": ["yolov8"],
+    "type": "hailo",
+    "hef": "/media/models/yolov8n.hef",
     "end": true
   }
 ]

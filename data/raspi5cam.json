@@ -22,8 +22,8 @@
     "device": "/dev/video24",
     "definition": {
       "fourcc": "YUYV",
-      "width": 1920,
-      "height": 1080
+      "width": 640,
+      "height": 640
     },
     "end": true
   },

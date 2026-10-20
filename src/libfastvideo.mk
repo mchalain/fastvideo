@@ -41,3 +41,11 @@ fastvideo_PKGCONFIG+=fastvideo
 fastvideo_CFLAGS-$(SANITIZER)+=-fsanitize=address
 
 pkgconfig-y+=fastvideo
+
+lib-$(HAVE_HAILORT)+=fasthailo
+fasthailo_DESC="plugins library for fastvideo"
+fasthailo_SOURCES+=shailo.c
+fasthailo_LIBS+=fastvideo
+fasthailo_LIBRARY+=hailort
+fasthailo_PKGCONFIG+=fasthailo
+pkgconfig-$(HAVE_HAILORT)+=fasthailo
