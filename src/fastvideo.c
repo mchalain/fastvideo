@@ -26,6 +26,7 @@
 unsigned int _mode = 0;
 
 #define MAX_DRAIN_PER_ITERATION 16
+#define MAX_LIBRARIES 8
 
 #define verbose_warn(f,...) do{if ((_mode & MODE_VERBOSE) != 0) warn(f,  ##__VA_ARGS__);} while(0)
 #define fastvideo_dbg(...)
@@ -429,6 +430,8 @@ int main(int argc, char * const argv[])
 	const char *cwd = PKG_DATADIR;
 	FastVideoList_t *pipes = NULL;
 	FastVideoPipe_t *pipe = NULL;
+	const char *libraries[MAX_LIBRARIES];
+	int nlibraries = 0;
 
 	fastvideodevice_ops_append(&spassthrough_ops);
 
@@ -461,7 +464,10 @@ int main(int argc, char * const argv[])
 				configfile = optarg;
 			break;
 			case 'l':
-				scommon_loadlibrary(optarg);
+				if (nlibraries < MAX_LIBRARIES)
+					libraries[nlibraries++] = optarg;
+				else
+					err("main: too many libraries, %s not loaded", optarg);
 			break;
 			case 'U':
 				owner = optarg;
@@ -471,6 +477,9 @@ int main(int argc, char * const argv[])
 
 	/// The fork of the daemon must be before setting
 	daemonize((_mode & MODE_DAEMONIZE) == MODE_DAEMONIZE, logfile, pidfile, owner, NULL);
+
+	for (int i = 0; i < nlibraries; i++)
+		scommon_loadlibrary(libraries[i]);
 
 	if (cwd  && chdir(cwd) != 0)
 		err("main: working directory %m");
