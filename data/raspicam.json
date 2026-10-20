@@ -506,5 +506,12 @@
     "type": "hailo",
     "hef": "/media/models/yolov8n.hef",
     "end": true
+  },
+  {
+    "name": ["nms-fifo"],
+    "type": "file",
+    "path": "/tmp/nms.fifo",
+    "end": true,
+    "proto": "fifo"
   }
 ]

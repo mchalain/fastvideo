@@ -54,3 +54,10 @@ rectdraw_SOURCES+=rectdraw.c
 rectdraw_SOURCES+=rectshm.c
 rectdraw_LIBRARY+=jansson
 rectdraw_CFLAGS+=-I$(srcdir)src
+
+bin-$(HAVE_JANSSON)+=nmsclient
+nmsclient_SOURCES+=nmsclient.c
+nmsclient_SOURCES+=rectshm.c
+nmsclient_SOURCES+=$(srcdir)src/daemonize.c
+nmsclient_LIBRARY+=jansson
+nmsclient_CFLAGS+=-I$(srcdir)src

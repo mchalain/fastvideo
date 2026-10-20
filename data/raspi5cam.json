@@ -417,7 +417,7 @@
   {
     "name": ["nms-fifo"],
     "type": "file",
-    "path": "/tmp/nmstest/nms.fifo",
+    "path": "/tmp/nms.fifo",
     "end": true,
     "proto": "fifo"
   }
