@@ -2,6 +2,7 @@ data-y+=simplevertex.glsl
 data-y+=simplefragment.glsl
 data-y+=debayer.glsl
 data-y+=grey.glsl
+data-y+=rectangles.glsl
 data-y+=textureprint.glsl
 data-y+=basemap.tga
 data-y+=GIST/mainfragment.glsl

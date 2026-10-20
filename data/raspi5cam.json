@@ -357,6 +357,26 @@
     "native": ["x11","wayland","drm"],
     "device": "/dev/dri/card1",
     "programs":[{
+      "name": "rectangles",
+      "vertex": "/usr/share/fastvideo/simplevertex.glsl",
+      "fragment": "/usr/share/fastvideo/rectangles.glsl",
+      "controls": [
+        { "name": "vRects[0]", "type": "vec4", "value": [0.0, 0.0, 0.0, 0.0] },
+        { "name": "vRects[1]", "type": "vec4", "value": [0.0, 0.0, 0.0, 0.0] },
+        { "name": "vRects[2]", "type": "vec4", "value": [0.0, 0.0, 0.0, 0.0] },
+        { "name": "vRects[3]", "type": "vec4", "value": [0.0, 0.0, 0.0, 0.0] },
+        { "name": "vRects[4]", "type": "vec4", "value": [0.0, 0.0, 0.0, 0.0] },
+        { "name": "vRects[5]", "type": "vec4", "value": [0.0, 0.0, 0.0, 0.0] },
+        { "name": "vRects[6]", "type": "vec4", "value": [0.0, 0.0, 0.0, 0.0] },
+        { "name": "vRects[7]", "type": "vec4", "value": [0.0, 0.0, 0.0, 0.0] },
+        { "name": "vRects[8]", "type": "vec4", "value": [0.0, 0.0, 0.0, 0.0] },
+        { "name": "vRects[9]", "type": "vec4", "value": [0.0, 0.0, 0.0, 0.0] },
+        { "name": "vColor", "type": "vec4", "value": [1.0, 0.0, 0.0, 1.0] },
+        { "name": "vThickness", "type": "float", "value": 4.0 },
+        { "name": "vMono", "type": "int", "value": 0 }
+      ],
+      "end": true
+    },{
       "name": "grey",
       "disable": true,
       "vertex": "simplevertex.glsl",
@@ -382,14 +402,23 @@
         "value": "frames"
       }],
       "end": true
-    },{
-      "disable": true,
-      "vertex": "simplevertex.glsl",
-      "fragment": "debayer.glsl"
     }],
     "transfer": {
       "fourcc": "XB24"
     },
     "end": true
+  },
+  {
+    "name": ["yolov8"],
+    "type": "hailo",
+    "hef": "/media/models/yolov8n.hef",
+    "end": true
+  },
+  {
+    "name": ["nms-fifo"],
+    "type": "file",
+    "path": "/tmp/nmstest/nms.fifo",
+    "end": true,
+    "proto": "fifo"
   }
 ]

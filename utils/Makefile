@@ -48,3 +48,9 @@ shoot_LDFLAGS+=-L$(builddir)src
 
 bin-y+=csv2pisp_fe_config
 csv2pisp_fe_config_SOURCES+=csv2pisp_fe_config.c
+
+bin-$(HAVE_JANSSON)+=rectdraw
+rectdraw_SOURCES+=rectdraw.c
+rectdraw_SOURCES+=rectshm.c
+rectdraw_LIBRARY+=jansson
+rectdraw_CFLAGS+=-I$(srcdir)src
