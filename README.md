@@ -74,6 +74,7 @@ The webcam image should appear in a window rendered by the GPU.
 | [Examples on a PC](docs/examples-pc.md)              | Webcam, ShaderToy filters, software trigger, performance checks.  |
 | [Raspberry Pi](docs/raspberry-pi.md)                 | Camera modules on Raspberry Pi 3, 4 and 5, 3A algorithms.          |
 | [RP1 front-end configuration](docs/rp1-fe-config.md) | CSV format of the Pi 5 front-end configuration and the `csv2pisp_fe_config` tool. |
+| [Object detection with Hailo and YOLOv8](docs/hailo-yolov8.md) | The `hailo` module, `nmsclient` and the `rectangles.glsl` overlay. |
 | [Writing a convert library](docs/convert-library.md) | Adding your own CPU pixel converters.                             |
 | [Contributing and roadmap](docs/contributing.md)     | Writing a new module and the features still missing.             |
 
