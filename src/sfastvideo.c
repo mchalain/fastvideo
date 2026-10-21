@@ -294,7 +294,7 @@ void *fastcontrols_create(const char *dir, const char *keyname, unsigned int siz
 	if (fd < 0)
 		err("sfastvideo: shm file error %m");
 	close(fd);
-	int shmid = 0;
+	int shmid = -1;
 	key_t key;
 	if (rootfd != AT_FDCWD)
 		fchdir(rootfd);
@@ -307,7 +307,7 @@ void *fastcontrols_create(const char *dir, const char *keyname, unsigned int siz
 	void *controls = (void *)-1;
 	if (key != -1)
 		shmid = shmget(key, size, IPC_CREAT| 0644);
-	if (shmid > 0)
+	if (shmid > -1)
 	{
 		controls = shmat(shmid, NULL, 0);
 	}

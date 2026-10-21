@@ -96,11 +96,11 @@ static int native_fd(void *native_ctx)
 static int native_flush(void *native_ctx)
 {
 	SEGLNative_ctx_t *ctx = (SEGLNative_ctx_t*)native_ctx;
-	int run = 1;
-	while (run)
+	if (wl_display_dispatch(ctx->display) == -1)
 	{
-		if (wl_display_dispatch(ctx->display) != -1)
-			run = 0;
+		err("segl: wayland connection error %m");
+		ctx->run = 0;
+		return -1;
 	}
 	return 0;
 }
@@ -122,8 +122,10 @@ static void shell_surface_ping(void* data, struct wl_shell_surface* shell_surfac
 
 static void shell_surface_configure(void* data, struct wl_shell_surface* shell_surface, uint32_t edges, int32_t width, int32_t height)
 {
-	SEGLNative_ctx_t *context = data;
-	wl_egl_window_resize(context->egl_window, width, height, 0, 0);
+	SEGLNative_ctx_t *ctx = data;
+	if (ctx->egl_window)
+		wl_egl_window_resize(ctx->egl_window, width, height, 0, 0);
+	ctx->run = 1;
 }
 
 static void shell_surface_popup_done(void* data, struct wl_shell_surface* shell_surface)
@@ -149,7 +151,9 @@ static const struct xdg_wm_base_listener wm_base_listener = {
 
 static void surface_configure(void *data, struct xdg_surface *xdg_surface, uint32_t serial)
 {
+	SEGLNative_ctx_t *ctx = data;
 	xdg_surface_ack_configure(xdg_surface, serial);
+	ctx->run = 1;
 }
 
 static const struct xdg_surface_listener xdg_surface_listener = {
@@ -169,6 +173,8 @@ static void toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
 		context->width = width;
 		context->height = height;
 
+		if (context->egl_window == NULL)
+			return;
 		wl_egl_window_resize(context->egl_window, width, height, 0, 0);
 		wl_surface_commit(context->surface);
 	}
@@ -251,6 +257,7 @@ static EGLSurface native_surface(void *native_ctx, EGLConfig eglConfig)
 		ctx->shell_surface = wl_shell_get_shell_surface(ctx->shell, ctx->surface);
 		wl_shell_surface_add_listener(ctx->shell_surface, &shell_surface_listener, ctx);
 		wl_shell_surface_set_toplevel(ctx->shell_surface);
+		wl_shell_surface_set_maximized(ctx->shell_surface, NULL);
 	}
 	else
 #endif
@@ -270,11 +277,19 @@ static EGLSurface native_surface(void *native_ctx, EGLConfig eglConfig)
 #endif
 	{
 		err("segl: surface not found");
+		return EGL_NO_SURFACE;
 	}
 	wl_surface_commit(ctx->surface);
+	while (!ctx->run)
+	{
+		if (wl_display_dispatch(ctx->display) == -1)
+		{
+			err("segl: wayland surface configuration error %m");
+			return EGL_NO_SURFACE;
+		}
+	}
 
 	ctx->egl_window = wl_egl_window_create(ctx->surface, ctx->width, ctx->height);
-	ctx->run = 1;
 
 	EGLint attribs[] = {
 		//EGL_GL_COLORSPACE,  EGL_GL_COLORSPACE_LINEAR,
