@@ -37,7 +37,7 @@ struct Proto_UDP_s
 	size_t mtu;
 };
 
-static int proto_bindinterface(int sock, int family, unsigned long longaddress)
+static int proto_bindinterface(int sock, int family, unsigned long longaddress, char *interface)
 {
 	int status = -1;
 	struct sockaddr* saddr = NULL;
@@ -55,6 +55,8 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 				if (ifa_main->ifa_addr == NULL)
 					continue;
 				if (ifa_main->ifa_addr->sa_family != family)
+					continue;
+				if (interface && strcmp(ifa_main->ifa_name, interface))
 					continue;
 				if ((ifa_main->ifa_flags & IFF_UP) == 0)
 					continue;
@@ -187,7 +189,7 @@ static void *proto_create(Proto_Config_t *config, ImageDefinition_t *definition)
 < 0)
 			warn("udp: setsockopt(SO_REUSEPORT) failed");
 #endif
-	int status = proto_bindinterface(sock, family, longaddress);
+	int status = proto_bindinterface(sock, family, longaddress, config->interface);
 
 	if (status)
 	{

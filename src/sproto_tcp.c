@@ -57,6 +57,8 @@ static socklen_t _proto_interface(Proto_Config_t *config, struct sockaddr_storag
 				continue;
 			if (ifa_main->ifa_addr->sa_family != family)
 				continue;
+			if (config->interface && strcmp(ifa_main->ifa_name, config->interface))
+				continue;
 			if ((ifa_main->ifa_flags & IFF_UP) == 0)
 				continue;
 			if (ifa_main->ifa_flags & IFF_LOOPBACK)

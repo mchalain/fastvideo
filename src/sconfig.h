@@ -98,6 +98,7 @@ struct Proto_Config_s
 	int maxclients;
 	int maxframes;
 	const char *mode;
+	char *interface;
 };
 
 #ifdef HAVE_JANSSON
