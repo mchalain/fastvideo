@@ -22,13 +22,9 @@ int sconfig_initproto(Proto_Config_t *protoconf, const char *name)
 	protoconf->maxclients = 5;
 	protoconf->maxframes = -1;
 	char *hostname = strchr(name, ':');
-	if (hostname)
+	if (hostname && (hostname[1] == '/' && hostname[2] == '/'))
 	{
-		hostname++;
-		if (hostname[0] == '/' && hostname[1] == '/')
-		{
-			hostname += 2;
-		}
+		hostname += 3;
 		protoconf->host = strdup(hostname);
 		char *end = strchr(protoconf->host, '?');
 		if (end)
