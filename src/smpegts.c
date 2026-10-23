@@ -646,6 +646,9 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 		Proto_Flags_t flags = Proto_More;
 		if (dev->header.pusi)
 			flags |= Proto_Started;
+		Proto_Flags_t lastflags = flags;
+		if (mtu < 2 * dev->packetlen)
+			lastflags = 0;
 		size_t buflength; /// the length of buffer to send with this ts packet
 		/// the packet must contain 188 bytes even when the payload is smaller
 		buflength = dev->packetlen;
@@ -705,8 +708,6 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			{
 				buflength -= ret;
 				mtu -= ret;
-				if (mtu < 2 * dev->packetlen)
-					flags = 0;
 				if (paddinglength > dev->packetlen - sizeof(dev->header) - 1) /// see the declaration of "padding"
 				{
 					err("smpegts: padding length overflow the pecket");
@@ -753,9 +754,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 		{
 			buflength -= ret;
 			mtu -= ret;
-			if (mtu < 2 * dev->packetlen)
-				flags = 0;
-			ret = dev->proto->send(dev->protoctx, buffer, buflength, flags);
+			ret = dev->proto->send(dev->protoctx, buffer, buflength, lastflags);
 		}
 		if (ret > 0)
 		{
@@ -763,7 +762,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			if (buflength != 0)
 				err("mpegts: format error");
 			mtu -= ret;
-			if (flags == 0)
+			if (lastflags == 0)
 				mtu = dev->proto->mtu(dev->protoctx);
 			if (length > ret)
 				length -= ret;
