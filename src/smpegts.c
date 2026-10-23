@@ -644,7 +644,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	{
 		int paddinglength = 0;
 		Proto_Flags_t flags = Proto_More;
-		if (! dev->header.pusi)
+		if (dev->header.pusi)
 			flags |= Proto_Started;
 		size_t buflength; /// the length of buffer to send with this ts packet
 		/// the packet must contain 188 bytes even when the payload is smaller
@@ -660,6 +660,8 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			dev->header.afi |= 0x2;
 		}
 		ret = dev->proto->send(dev->protoctx, &dev->header, sizeof(dev->header), flags);
+		/// first header sent
+		flags &= ~Proto_Started;
 		/// add the adaptation field
 		if (ret > 0 && dev->header.afi & 0x02)
 		{
@@ -780,7 +782,6 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 		}
 		else if (errno == EAGAIN)
 		{
-			ret = 0;
 			length = 0;
 		}
 	}
