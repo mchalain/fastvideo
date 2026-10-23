@@ -44,9 +44,13 @@ typedef struct ImageDefinition_s ImageDefinition_t;
 struct ImageDefinition_s
 {
 	uint32_t fourcc;
+	uint32_t x;
+	uint32_t y;
 	uint32_t width;
 	uint32_t height;
 	uint32_t stride;
+	uint32_t fps;
+	uint64_t modifiers;
 };
 
 typedef struct DeviceConf_s DeviceConf_t;
@@ -60,14 +64,19 @@ struct DeviceConf_s
 #endif
 	const char *name;
 	const char *type;
-	uint32_t fourcc;
-	uint32_t x;
-	uint32_t y;
-	uint32_t width;
-	uint32_t height;
-	uint32_t stride;
-	uint32_t fps;
-	uint64_t modifiers;
+	union {
+		struct {
+			uint32_t fourcc;
+			uint32_t x;
+			uint32_t y;
+			uint32_t width;
+			uint32_t height;
+			uint32_t stride;
+			uint32_t fps;
+			uint64_t modifiers;
+		};
+		ImageDefinition_t definition;
+	};
 	struct
 	{
 		int (*loadconfiguration)(void *storage, void *config);
@@ -84,7 +93,6 @@ struct DeviceConf_s
 typedef struct Proto_Config_s Proto_Config_t;
 struct Proto_Config_s
 {
-	DeviceConf_t parent;
 	char *host;
 	int port;
 	int maxclients;

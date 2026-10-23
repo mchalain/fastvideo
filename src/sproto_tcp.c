@@ -202,7 +202,7 @@ static void *_proto_create(Proto_Config_t *config, int (*_bind)(int sock, struct
 	return proto;
 }
 
-static void *proto_create_server(Proto_Config_t *config)
+static void *proto_create_server(Proto_Config_t *config, ImageDefinition_t *definition)
 {
 	Proto_TCP_t *proto = _proto_create(config, _proto_bindserver);
 	if (config->mode && strstr(config->mode, "http"))
@@ -213,7 +213,7 @@ static void *proto_create_server(Proto_Config_t *config)
 	return proto;
 }
 
-static void *proto_create_client(Proto_Config_t *config)
+static void *proto_create_client(Proto_Config_t *config, ImageDefinition_t *definition)
 {
 	Proto_TCP_t *proto = _proto_create(config, _proto_bindclient);
 	proto->clientfd = proto->sock;

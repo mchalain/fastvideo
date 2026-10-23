@@ -135,7 +135,7 @@ static int proto_bindinterface(int sock, int family, unsigned long longaddress)
 	return status;
 }
 
-static void *proto_create(Proto_Config_t *config)
+static void *proto_create(Proto_Config_t *config, ImageDefinition_t *definition)
 {
 	int sock = 0;
 	size_t mtu = 1500;

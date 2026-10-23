@@ -14,10 +14,8 @@ typedef struct File_ops_s File_ops_t;
 typedef struct FileConfig_s FileConfig_t;
 struct FileConfig_s
 {
-	union {
-		DeviceConf_t parent;
-		Proto_Config_t protoconf;
-	};
+	DeviceConf_t parent;
+	Proto_Config_t protoconf;
 	const Proto_t *proto;
 	enum {
 		File_None_e = 0,
@@ -29,7 +27,6 @@ struct FileConfig_s
 		File_Output_e = 0x02,
 	} direction;
 	Convert_t *convert;
-	int maxframes;
 };
 
 typedef struct File_s File_t;

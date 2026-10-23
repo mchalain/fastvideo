@@ -45,7 +45,7 @@ struct Proto_UNIX_s
 	size_t offset;
 };
 
-static void *proto_create(Proto_Config_t *config)
+static void *proto_create(Proto_Config_t *config, ImageDefinition_t *definition)
 {
 	int sock = 0;
 	size_t mtu = 1500;

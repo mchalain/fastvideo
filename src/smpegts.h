@@ -10,10 +10,8 @@ typedef struct Proto_s Proto_t;
 typedef struct MPEG_TSConf_s MPEG_TSConf_t;
 struct MPEG_TSConf_s
 {
-	union {
-		DeviceConf_t parent;
-		Proto_Config_t protoconf;
-	};
+	DeviceConf_t parent;
+	Proto_Config_t protoconf;
 	int pid;
 	int periodic;
 	uint32_t maxframes;

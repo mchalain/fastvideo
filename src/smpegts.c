@@ -816,7 +816,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	const Proto_t *proto = &proto_udp;
 	if (config && config->proto)
 		proto = config->proto;
-	void *protoctx = proto->create(&config->protoconf);
+	void *protoctx = proto->create(&config->protoconf, &config->parent.definition);
 	if (protoctx == NULL)
 		return NULL;
 

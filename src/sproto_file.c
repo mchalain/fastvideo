@@ -66,7 +66,7 @@ struct timespec *timespec_subs( struct timespec *a, struct timespec *b)
 	return a;
 }
 
-static void *proto_create(Proto_Config_t *config)
+static void *proto_create(Proto_Config_t *config, ImageDefinition_t *definition)
 {
 	int rootfd;
 	size_t mtu = 188 * 10;
@@ -111,7 +111,7 @@ static void *proto_create(Proto_Config_t *config)
 		proto->mode |= Proto_FILE_Static;
 	if (config->mode && strstr(config->mode, "loop"))
 		proto->mode |= Proto_FILE_Loop;
-	switch (config->parent.fourcc)
+	switch (definition->fourcc)
 	{
 	case FOURCC_MJPG:
 		if (config->maxframes != 1)
