@@ -55,6 +55,7 @@ struct Proto_TCP_s
 	int running;
 	int error;
 	int dropping;
+	unsigned int lost;
 
 	Proto_TCP_Buffer_t *buffers;
 	Proto_TCP_Buffer_t *out;
@@ -262,11 +263,15 @@ static int _proto_send(Proto_TCP_t *proto, const void* buf, size_t len, int flag
 		pthread_mutex_unlock(&proto->mutex);
 		if (state != dequeued || len > proto->mtu)
 		{
-			warn("tcp: network too slow, frames are dropped");
+			if (proto->lost++ == 0)
+				warn("tcp: network too slow, frames are dropped");
 			proto->dropping = 1;
 			errno = EAGAIN;
 			return -1;
 		}
+		if (proto->lost)
+			warn("tcp: %u frames lost", proto->lost);
+		proto->lost = 0;
 		proto->dropping = 0;
 		buff->state = queued;
 		buff->len = 0;
@@ -529,6 +534,7 @@ static void proto_close(void *arg)
 		proto->out->len = 0;
 	}
 	proto->dropping = 1;
+	proto->lost = 0;
 }
 
 static void proto_destroy(void *arg)
