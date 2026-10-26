@@ -149,6 +149,16 @@ static int _proto_bindserver(int sock, struct sockaddr *saddr, socklen_t saddrle
 	return status;
 }
 
+static int _proto_send(Proto_TCP_t *proto, const void* buf, size_t len, int flags)
+{
+	return send(proto->clientfd, buf, len, flags);
+}
+
+static int _proto_recv(Proto_TCP_t *proto, void* buf, size_t len, int flags)
+{
+	return recv(proto->clientfd, buf, len, flags);
+}
+
 static void *_proto_create(Proto_Config_t *config, int (*_bind)(int sock, struct sockaddr *, socklen_t))
 {
 	int sock = -1;
@@ -271,7 +281,7 @@ Connection: Close\r\n\
 		setsockopt(proto->clientfd, IPPROTO_TCP, TCP_NODELAY, (char *) &sflag, sizeof(int));
 		size_t len = sizeof(buf);
 		int flags = MSG_NOSIGNAL;
-		ret = send(proto->clientfd, buf, len, flags);
+		ret = _proto_send(proto, buf, len, flags);
 		if (ret > 0)
 			warn("tcp: send HTTP response");
 	}
@@ -303,11 +313,11 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 	if (flags & Proto_More)
 		sflags |= MSG_MORE;
 	int retries = 0;
-	ret = send(proto->clientfd, buf, len, sflags);
+	ret = _proto_send(proto, buf, len, sflags);
 	while (ret < 0 && errno == EAGAIN && ++retries < PROTO_TCP_SEND_RETRY_MAX)
 	{
 		usleep(PROTO_TCP_SEND_RETRY_DELAY_US);
-		ret = send(proto->clientfd, buf, len, sflags);
+		ret = _proto_send(proto, buf, len, sflags);
 	}
 	if (ret < 0 && errno != EAGAIN)
 	{
@@ -334,7 +344,7 @@ static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 		return -1;
 	}
 	int sflags = MSG_NOSIGNAL;
-	ret = recv(proto->clientfd, buf, len, sflags);
+	ret = _proto_recv(proto, buf, len, sflags);
 	if (ret < 0 && errno != EAGAIN)
 	{
 		err("tcp: receiving error %m");
