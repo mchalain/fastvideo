@@ -789,9 +789,10 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 		ret = _client_filldata(dev, mtu);
 		mtu -= ret;
 	}
-	if (ret < 0 && errno != EAGAIN)
+	if (ret < 0)
 	{
-		dev->proto->close(dev->protoctx);
+		if (errno != EAGAIN)
+			dev->proto->close(dev->protoctx);
 	}
 	else
 	{
@@ -998,6 +999,19 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 	buffer->state = queued;
 	if (_client_pushdata(dev, id) < 0)
 	{
+		if (errno == EAGAIN)
+		{
+			/// the frame is lost, the buffer goes back to the input
+			if (buffer->dma_buf > 0)
+			{
+				struct dma_buf_sync sync = { 0 };
+				munmap(buffer->mem, buffer->size);
+				buffer->mem = NULL;
+				sync.flags = DMA_BUF_SYNC_READ | DMA_BUF_SYNC_END;
+				ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, &sync);
+			}
+			buffer->state = dequeued;
+		}
 		return -1;
 	}
 	return 0;
