@@ -128,7 +128,7 @@ typedef struct Proto_s Proto_t;
 struct Proto_s
 {
 	const char *name;
-	void *(*create)(Proto_Config_t *config);
+	void *(*create)(Proto_Config_t *config, ImageDefinition_t *definition);
 	int (*connect)(void *arg);
 	void (*close)(void *arg);
 	size_t (*mtu)(void *arg);

@@ -21,14 +21,11 @@ int sconfig_initproto(Proto_Config_t *protoconf, const char *name)
 	protoconf->port = DEFAULT_PORT;
 	protoconf->maxclients = 5;
 	protoconf->maxframes = -1;
+	protoconf->interface = NULL;
 	char *hostname = strchr(name, ':');
-	if (hostname)
+	if (hostname && (hostname[1] == '/' && hostname[2] == '/'))
 	{
-		hostname++;
-		if (hostname[0] == '/' && hostname[1] == '/')
-		{
-			hostname += 2;
-		}
+		hostname += 3;
 		protoconf->host = strdup(hostname);
 		char *end = strchr(protoconf->host, '?');
 		if (end)
@@ -67,12 +64,21 @@ int sconfig_initproto(Proto_Config_t *protoconf, const char *name)
 	{
 		protoconf->mode = mode + 5;
 	}
+	const char *interface = strstr(name, "interface=");
+	if (interface)
+	{
+		protoconf->interface = strdup(interface + 10);
+		char *end = strchr(protoconf->interface, ',');
+		if (end)
+			*end = '\0';
+	}
 	return 0;
 }
 
 void sconfig_finalproto(Proto_Config_t *protoconf)
 {
 	free(protoconf->host);
+	free(protoconf->interface);
 }
 
 int sconfig_loadproto(Proto_Config_t *protoconf, json_t *jconfig)
@@ -108,6 +114,12 @@ int sconfig_loadproto(Proto_Config_t *protoconf, json_t *jconfig)
 	{
 		uint32_t value = json_integer_value(maxclients);
 		protoconf->maxclients = value;
+	}
+	json_t *interface = json_object_get(jconfig, "interface");
+	if (! protoconf->interface && interface && json_is_string(interface))
+	{
+		const char *value = json_string_value(interface);
+		protoconf->interface = strdup(value);
 	}
 	return 0;
 }

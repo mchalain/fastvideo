@@ -34,6 +34,11 @@
 #define PSI_SDTPACKET 1
 #define GLOBAL_PCR 1
 
+/// KLV metadata stream (MISB ST 1402 synchronous metadata)
+#define KLV_DEFAULTKEY "fastvideo"
+#define KLV_TAG_FLAGS 1
+#define KLV_TAG_TIMESTAMP 2
+
 typedef struct MPEGHeader_s MPEGHeader_t;
 struct MPEGHeader_s
 {
@@ -318,6 +323,8 @@ struct Dev_s
 	time_t start;
 	uint32_t pcr;
 	int periodic;
+	uint8_t klvcc;
+	uint8_t klvseq;
 };
 
 #if 0
@@ -346,6 +353,7 @@ DeviceConf_t *mpegts_createconfig(const char *name)
 	config->parent.fourcc = FOURCC_H264;
 	config->pid = 0x41;
 	config->proto = _protos[0];
+	memcpy(config->klvkey, KLV_DEFAULTKEY, sizeof(KLV_DEFAULTKEY) - 1);
 #ifdef HAVE_JANSSON
 	config->parent.ops.loadconfiguration = mpegts_loadjsonconfiguration;
 #endif
@@ -582,6 +590,136 @@ int _client_filldata(Dev_t *dev, size_t mtu)
 	return ret;
 }
 
+/// metadata_application_format, metadata_format and metadata_service_id
+static const uint8_t klv_metadata_id[] = {
+	0xff, 0xff, 'K', 'L', 'V', 'A', 0xff, 'K', 'L', 'V', 'A', 0x00,
+};
+
+/**
+ * add the KLV stream and its descriptors to the pmt
+ * raw: the pmt ts packet, start: offset of the psi section
+ */
+static void _client_klvpmt(Dev_t *dev, uint8_t *raw, int start, int pid)
+{
+	/// the program info length follows the pcr pid
+	int offset = start + 10;
+	uint8_t es1[5];
+	memcpy(es1, &raw[offset + 2], sizeof(es1));
+
+	/// program info: metadata_pointer_descriptor
+	raw[offset++] = 0xf0;
+	raw[offset++] = 2 + sizeof(klv_metadata_id) + 3;
+	raw[offset++] = 0x25;
+	raw[offset++] = sizeof(klv_metadata_id) + 3;
+	memcpy(&raw[offset], klv_metadata_id, sizeof(klv_metadata_id));
+	offset += sizeof(klv_metadata_id);
+	raw[offset++] = 0x1f; /// no locator, same transport stream
+	raw[offset++] = 0x00; /// program number
+	raw[offset++] = 0x01;
+
+	memcpy(&raw[offset], es1, sizeof(es1));
+	offset += sizeof(es1);
+
+	/// es2: synchronous metadata with its metadata_descriptor
+	raw[offset++] = 0x15;
+	raw[offset++] = 0xe0 | ((pid >> 8) & 0x1f);
+	raw[offset++] = pid & 0xff;
+	raw[offset++] = 0xf0;
+	raw[offset++] = 2 + sizeof(klv_metadata_id) + 1;
+	raw[offset++] = 0x26;
+	raw[offset++] = sizeof(klv_metadata_id) + 1;
+	memcpy(&raw[offset], klv_metadata_id, sizeof(klv_metadata_id));
+	offset += sizeof(klv_metadata_id);
+	raw[offset++] = 0x0f; /// no decoder config, no DSM-CC
+
+	/// section length counts the bytes after the length field with the crc
+	uint16_t pmtlen = offset + sizeof(uint32_t) - (start + 3);
+	raw[start + 1] = 0xb0 | (pmtlen >> 8);
+	raw[start + 2] = pmtlen & 0xff;
+	uint32_t crc = htonl(crc32(&raw[start], offset - start));
+	memcpy(&raw[offset], &crc, sizeof(crc));
+	offset += sizeof(crc);
+	memset(&raw[offset], 0xff, MPEG_TS_LENGTH - offset);
+}
+
+/**
+ * send one ts packet with the KLV PES of the frame:
+ * the flags of the buffer and the sending time (us since epoch)
+ */
+static int _client_pushklv(Dev_t *dev, int bufferid, uint32_t pts, size_t mtu)
+{
+	uint8_t pes[MPEG_TS_LENGTH];
+	int length = 0;
+
+	/// PES header with the pts of the video frame
+	pes[length++] = 0x00;
+	pes[length++] = 0x00;
+	pes[length++] = 0x01;
+	pes[length++] = 0xfc; /// metadata stream
+	length += 2; /// PES packet length
+	pes[length++] = 0x84; /// data alignment
+	pes[length++] = 0x80; /// pts only
+	pes[length++] = 5;
+	pes[length++] = 0x21 | ((pts >> 29) & 0x0e);
+	pes[length++] = (pts >> 22) & 0xff;
+	pes[length++] = ((pts >> 14) & 0xfe) | 0x01;
+	pes[length++] = (pts >> 7) & 0xff;
+	pes[length++] = ((pts << 1) & 0xfe) | 0x01;
+
+	/// metadata AU cell header
+	pes[length++] = 0x00; /// metadata service id
+	pes[length++] = dev->klvseq++;
+	pes[length++] = 0xdf; /// complete cell, random access
+	int cell = length;
+	length += 2;
+
+	/// KLV: key, length, local set (tag, length, value)
+	memcpy(&pes[length], dev->config->klvkey, sizeof(dev->config->klvkey));
+	length += sizeof(dev->config->klvkey);
+	pes[length++] = 2 + sizeof(uint32_t) + 2 + sizeof(uint64_t);
+	uint32_t flags = dev->buffers[bufferid].flags;
+	pes[length++] = KLV_TAG_FLAGS;
+	pes[length++] = sizeof(flags);
+	for (int i = sizeof(flags) - 1; i >= 0; i--)
+		pes[length++] = (flags >> (8 * i)) & 0xff;
+	struct timespec tp;
+	clock_gettime(CLOCK_REALTIME, &tp);
+	uint64_t timestamp = (uint64_t)tp.tv_sec * 1000000 + tp.tv_nsec / 1000;
+	pes[length++] = KLV_TAG_TIMESTAMP;
+	pes[length++] = sizeof(timestamp);
+	for (int i = sizeof(timestamp) - 1; i >= 0; i--)
+		pes[length++] = (timestamp >> (8 * i)) & 0xff;
+
+	pes[cell] = (length - cell - 2) >> 8;
+	pes[cell + 1] = (length - cell - 2) & 0xff;
+	pes[4] = (length - 6) >> 8;
+	pes[5] = (length - 6) & 0xff;
+
+	/// the adaptation field completes the ts packet
+	uint8_t packet[MPEG_TS_LENGTH];
+	int pid = dev->config->pid + 2;
+	int afl = MPEG_TS_LENGTH - 5 - length;
+	packet[0] = 'G';
+	packet[1] = 0x40 | ((pid >> 8) & 0x1f); /// pusi
+	packet[2] = pid & 0xff;
+	packet[3] = 0x30 | (dev->klvcc & 0x0f);
+	packet[4] = afl;
+	if (afl > 0)
+	{
+		packet[5] = 0x00;
+		memset(&packet[6], 0xff, afl - 1);
+	}
+	memcpy(&packet[5 + afl], pes, length);
+
+	Proto_Flags_t pflags = Proto_More;
+	if (mtu < 2 * dev->packetlen)
+		pflags = 0;
+	int ret = dev->proto->send(dev->protoctx, packet, dev->packetlen, pflags);
+	if (ret == dev->packetlen)
+		dev->klvcc = (dev->klvcc + 1) & 0x0f;
+	return ret;
+}
+
 static int _client_pushdata(Dev_t *dev, int bufferid)
 {
 	int ret = 1;
@@ -609,6 +747,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	}
 #endif
 	uint32_t pcr = 0;
+	uint32_t pts = 0;
 #if GLOBAL_PCR
 	struct timespec tp;
 	if (clock_gettime(CLOCK_TAI, &tp) == 0)
@@ -644,8 +783,11 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 	{
 		int paddinglength = 0;
 		Proto_Flags_t flags = Proto_More;
-		if (! dev->header.pusi)
+		if (dev->header.pusi)
 			flags |= Proto_Started;
+		Proto_Flags_t lastflags = flags;
+		if (mtu < 2 * dev->packetlen)
+			lastflags = 0;
 		size_t buflength; /// the length of buffer to send with this ts packet
 		/// the packet must contain 188 bytes even when the payload is smaller
 		buflength = dev->packetlen;
@@ -660,6 +802,8 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			dev->header.afi |= 0x2;
 		}
 		ret = dev->proto->send(dev->protoctx, &dev->header, sizeof(dev->header), flags);
+		/// first header sent
+		flags &= ~Proto_Started;
 		/// add the adaptation field
 		if (ret > 0 && dev->header.afi & 0x02)
 		{
@@ -703,8 +847,6 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			{
 				buflength -= ret;
 				mtu -= ret;
-				if (mtu < 2 * dev->packetlen)
-					flags = 0;
 				if (paddinglength > dev->packetlen - sizeof(dev->header) - 1) /// see the declaration of "padding"
 				{
 					err("smpegts: padding length overflow the pecket");
@@ -722,6 +864,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 #if PES_PTSDTS_ENABLE
 			/// this extend the latency in all cases ?
 			pcr += 90; /// 90 ticks means 1ms
+			pts = pcr;
 			int nibble = 0x00;
 			if (dev->pes_header.ptsi & 0x02)
 			{
@@ -751,9 +894,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 		{
 			buflength -= ret;
 			mtu -= ret;
-			if (mtu < 2 * dev->packetlen)
-				flags = 0;
-			ret = dev->proto->send(dev->protoctx, buffer, buflength, flags);
+			ret = dev->proto->send(dev->protoctx, buffer, buflength, lastflags);
 		}
 		if (ret > 0)
 		{
@@ -761,7 +902,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 			if (buflength != 0)
 				err("mpegts: format error");
 			mtu -= ret;
-			if (flags == 0)
+			if (lastflags == 0)
 				mtu = dev->proto->mtu(dev->protoctx);
 			if (length > ret)
 				length -= ret;
@@ -780,18 +921,29 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 		}
 		else if (errno == EAGAIN)
 		{
-			ret = 0;
 			length = 0;
 		}
+	}
+	if (ret > 0 && dev->config->meta)
+	{
+		Proto_Flags_t lastflags = Proto_More;
+		if (mtu < 2 * dev->packetlen)
+			lastflags = 0;
+		ret = _client_pushklv(dev, bufferid, pts, mtu);
+		if (ret > 0)
+			mtu -= ret;
+		if (ret > 0 && lastflags == 0)
+			mtu = dev->proto->mtu(dev->protoctx);
 	}
 	if (ret > 0)
 	{
 		ret = _client_filldata(dev, mtu);
 		mtu -= ret;
 	}
-	if (ret < 0 && errno != EAGAIN)
+	if (ret < 0)
 	{
-		dev->proto->close(dev->protoctx);
+		if (errno != EAGAIN)
+			dev->proto->close(dev->protoctx);
 	}
 	else
 	{
@@ -816,7 +968,7 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 	const Proto_t *proto = &proto_udp;
 	if (config && config->proto)
 		proto = config->proto;
-	void *protoctx = proto->create(&config->protoconf);
+	void *protoctx = proto->create(&config->protoconf, &config->parent.definition);
 	if (protoctx == NULL)
 		return NULL;
 
@@ -869,6 +1021,8 @@ EXT_API Dev_t *mpegts_create(const char *devicename, device_type_e type, MPEG_TS
 		pmtlen -= sizeof(dev->pmt.pointer);
 		uint32_t crc = crc32(&dev->pmt.raw[start], pmtlen);
 		dev->pmt.pmt.crc = htonl(crc);
+		if (config->meta)
+			_client_klvpmt(dev, dev->pmt.raw, start, config->pid + 2);
 	}
 #if PSI_SDTPACKET
 	/// setup the sdt packet
@@ -998,6 +1152,19 @@ EXT_API int mpegts_queue(Dev_t *dev, int id, void *mem, size_t size, int flags)
 	buffer->state = queued;
 	if (_client_pushdata(dev, id) < 0)
 	{
+		if (errno == EAGAIN)
+		{
+			/// the frame is lost, the buffer goes back to the input
+			if (buffer->dma_buf > 0)
+			{
+				struct dma_buf_sync sync = { 0 };
+				munmap(buffer->mem, buffer->size);
+				buffer->mem = NULL;
+				sync.flags = DMA_BUF_SYNC_READ | DMA_BUF_SYNC_END;
+				ioctl(buffer->dma_buf, DMA_BUF_IOCTL_SYNC, &sync);
+			}
+			buffer->state = dequeued;
+		}
 		return -1;
 	}
 	return 0;
@@ -1101,6 +1268,19 @@ int mpegts_loadjsonconfiguration(void *arg, void *entry)
 	{
 		int value = json_integer_value(periodic);
 		config->periodic = value;
+	}
+	json_t *meta = json_object_get(jconfig, "meta");
+	if (meta && json_is_true(meta))
+		config->meta = 1;
+	else if (meta && json_is_object(meta))
+	{
+		config->meta = 1;
+		json_t *klv = json_object_get(meta, "klv");
+		if (klv && json_is_string(klv))
+		{
+			memset(config->klvkey, 0, sizeof(config->klvkey));
+			strncpy((char *)config->klvkey, json_string_value(klv), sizeof(config->klvkey));
+		}
 	}
 	json_t *proto = json_object_get(jconfig, "proto");
 	if (proto == NULL)

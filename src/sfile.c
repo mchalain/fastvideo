@@ -92,7 +92,7 @@ EXT_API File_t * sfile_create(const char *filename, device_type_e type, FileConf
 	}
 	if (config && config->proto)
 		ops = config->proto;
-	void *ctx = ops->create(&config->protoconf);
+	void *ctx = ops->create(&config->protoconf, &config->parent.definition);
 	if (ctx == NULL)
 		return NULL;
 
@@ -397,7 +397,7 @@ EXT_API int sfile_dequeue(File_t *dev, void **mem, size_t *bytesused, int *flags
 		usleep(usec);
 	}
 		dev->frames++;
-	if (dev->frames == dev->config->maxframes)
+	if (dev->frames == dev->config->protoconf.maxframes)
 	{
 		dev->frames = 0;
 		dev->ops->close(dev->ctx);

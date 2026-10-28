@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -13,6 +14,7 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <ifaddrs.h>
+#include <pthread.h>
 
 #include "fastvideo.h"
 #include "sconfig.h"
@@ -24,8 +26,17 @@
 
 #define Proto_TCP_Http 0x01
 
-#define PROTO_TCP_SEND_RETRY_MAX 5
-#define PROTO_TCP_SEND_RETRY_DELAY_US 200
+#define PROTO_TCP_MAX_BUFFERS 64
+
+typedef struct Proto_TCP_Buffer_s Proto_TCP_Buffer_t;
+struct Proto_TCP_Buffer_s
+{
+	void *data;
+	size_t len;
+	int flags;
+	volatile int state;
+	Proto_TCP_Buffer_t *next;
+};
 
 typedef struct Proto_TCP_s Proto_TCP_t;
 struct Proto_TCP_s
@@ -37,7 +48,29 @@ struct Proto_TCP_s
 	socklen_t dest_size;
 	size_t mtu;
 	int mode;
+
+	pthread_t thread_send;
+	pthread_mutex_t mutex;
+	pthread_cond_t cond;
+	int running;
+	int error;
+	int dropping;
+	unsigned int lost;
+
+	Proto_TCP_Buffer_t *buffers;
+	Proto_TCP_Buffer_t *out;
+	Proto_TCP_Buffer_t *in;
 };
+
+static void proto_destroy(void *arg);
+static void proto_close(void *arg);
+
+static int _proto_set_buffer(Proto_TCP_t *proto, Proto_TCP_Buffer_t*buffer)
+{
+	buffer->data = malloc(proto->mtu);
+	buffer->state = dequeued;
+	return (buffer->data == NULL);
+}
 
 static socklen_t _proto_interface(Proto_Config_t *config, struct sockaddr_storage *address)
 {
@@ -56,6 +89,8 @@ static socklen_t _proto_interface(Proto_Config_t *config, struct sockaddr_storag
 			if (ifa_main->ifa_addr == NULL)
 				continue;
 			if (ifa_main->ifa_addr->sa_family != family)
+				continue;
+			if (config->interface && strcmp(ifa_main->ifa_name, config->interface))
 				continue;
 			if ((ifa_main->ifa_flags & IFF_UP) == 0)
 				continue;
@@ -147,6 +182,113 @@ static int _proto_bindserver(int sock, struct sockaddr *saddr, socklen_t saddrle
 	return status;
 }
 
+static int _proto_sendall(int fd, Proto_TCP_Buffer_t *buff)
+{
+	int sflags = 1;
+	if (buff->flags & Proto_More)
+		sflags = 0;
+	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *) &sflags, sizeof(int));
+	sflags = MSG_NOSIGNAL;
+	if (buff->flags & Proto_More)
+		sflags |= MSG_MORE;
+	ssize_t ret = send(fd, buff->data, buff->len, sflags);
+	if (ret != buff->len)
+		return -1;
+	return 0;
+}
+
+static void *_proto_send_thread(void *arg)
+{
+	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
+	pthread_mutex_lock(&proto->mutex);
+	while (proto->running)
+	{
+		Proto_TCP_Buffer_t *buff = proto->in;
+		if (buff->state != ready)
+		{
+			pthread_cond_wait(&proto->cond, &proto->mutex);
+			continue;
+		}
+		int fd = proto->clientfd;
+		int ret = 0;
+		if (fd != -1 && !proto->error)
+		{
+			pthread_mutex_unlock(&proto->mutex);
+			ret = _proto_sendall(fd, buff);
+			pthread_mutex_lock(&proto->mutex);
+		}
+		if (ret < 0 && proto->clientfd == fd)
+			proto->error = errno;
+		buff->state = dequeued;
+		buff->len = 0;
+		proto->in = buff->next;
+	}
+	pthread_mutex_unlock(&proto->mutex);
+	return NULL;
+}
+
+static void _proto_push(Proto_TCP_t *proto, int flags)
+{
+	Proto_TCP_Buffer_t *buff = proto->out;
+	pthread_mutex_lock(&proto->mutex);
+	buff->flags = flags;
+	buff->state = ready;
+	pthread_cond_signal(&proto->cond);
+	pthread_mutex_unlock(&proto->mutex);
+	proto->out = buff->next;
+}
+
+static int _proto_send(Proto_TCP_t *proto, const void* buf, size_t len, int flags)
+{
+	if (proto->error)
+	{
+		errno = proto->error;
+		return -1;
+	}
+	Proto_TCP_Buffer_t *buff = proto->out;
+	if (buff->state == queued && buff->len + len > proto->mtu)
+	{
+		_proto_push(proto, flags | Proto_More);
+		buff = proto->out;
+	}
+	if (buff->state != queued)
+	{
+		if (proto->dropping && !(flags & Proto_Started))
+		{
+			errno = EAGAIN;
+			return -1;
+		}
+		pthread_mutex_lock(&proto->mutex);
+		int state = buff->state;
+		pthread_mutex_unlock(&proto->mutex);
+		if (state != dequeued || len > proto->mtu)
+		{
+			if (proto->lost++ == 0)
+				warn("tcp: network too slow, frames are dropped");
+			proto->dropping = 1;
+			errno = EAGAIN;
+			return -1;
+		}
+		if (proto->lost)
+			warn("tcp: %u frames lost", proto->lost);
+		proto->lost = 0;
+		proto->dropping = 0;
+		buff->state = queued;
+		buff->len = 0;
+	}
+	memcpy(buff->data + buff->len, buf, len);
+	buff->len += len;
+	if (!(flags & Proto_More))
+		_proto_push(proto, flags);
+	return len;
+}
+
+static int _proto_recv(Proto_TCP_t *proto, void* buf, size_t len, int flags)
+{
+	int sflags = MSG_NOSIGNAL | MSG_DONTWAIT;
+	return recv(proto->clientfd, buf, len, sflags);
+}
+
 static void *_proto_create(Proto_Config_t *config, int (*_bind)(int sock, struct sockaddr *, socklen_t))
 {
 	int sock = -1;
@@ -198,13 +340,37 @@ static void *_proto_create(Proto_Config_t *config, int (*_bind)(int sock, struct
 	Proto_TCP_t *proto = calloc(1, sizeof(*proto));
 	proto->mtu = mtu - IP_HEADER_LENGTH - UDP_HEADER_LENGTH; /// size of udp/ip header
 	proto->sock = sock;
+	proto->serverfd = -1;
+	proto->clientfd = -1;
+	proto->dropping = 1;
 
+	proto->buffers = calloc(PROTO_TCP_MAX_BUFFERS, sizeof(*proto->buffers));
+	for (int i = 0; i < PROTO_TCP_MAX_BUFFERS; i++)
+	{
+		_proto_set_buffer(proto, &proto->buffers[i]);
+		proto->buffers[i].next = &proto->buffers[i + 1];
+	}
+	proto->buffers[PROTO_TCP_MAX_BUFFERS - 1].next = &proto->buffers[0];
+	proto->out = &proto->buffers[0];
+	proto->in = &proto->buffers[0];
+
+	pthread_mutex_init(&proto->mutex, NULL);
+	pthread_cond_init(&proto->cond, NULL);
+	proto->running = 1;
+	if (pthread_create(&proto->thread_send, NULL, _proto_send_thread, proto) != 0)
+	{
+		err("sproto: thread sender error %m");
+		proto_destroy(proto);
+		return NULL;
+	}
 	return proto;
 }
 
-static void *proto_create_server(Proto_Config_t *config)
+static void *proto_create_server(Proto_Config_t *config, ImageDefinition_t *definition)
 {
 	Proto_TCP_t *proto = _proto_create(config, _proto_bindserver);
+	if (proto == NULL)
+		return NULL;
 	if (config->mode && strstr(config->mode, "http"))
 		proto->mode |= Proto_TCP_Http;
 	proto->serverfd = proto->sock;
@@ -213,9 +379,11 @@ static void *proto_create_server(Proto_Config_t *config)
 	return proto;
 }
 
-static void *proto_create_client(Proto_Config_t *config)
+static void *proto_create_client(Proto_Config_t *config, ImageDefinition_t *definition)
 {
 	Proto_TCP_t *proto = _proto_create(config, _proto_bindclient);
+	if (proto == NULL)
+		return NULL;
 	proto->clientfd = proto->sock;
 	proto->serverfd = -1;
 	warn("tcp: client to %s:%d", config->host, config->port);
@@ -227,7 +395,7 @@ static int proto_connect_client(void *arg)
 	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
 	int flags;
 	flags = fcntl(proto->clientfd, F_GETFL, 0);
-	fcntl(proto->clientfd, F_SETFL, flags | O_NONBLOCK);
+	fcntl(proto->clientfd, F_SETFL, flags & ~O_NONBLOCK);
 	return 0;
 }
 
@@ -240,16 +408,20 @@ static int proto_connect_server(void *arg)
 
 	/// the listening socket is non-blocking (see _proto_create()) - this
 	/// polls for a pending client, it never waits for one.
-	proto->clientfd = accept(proto->serverfd, NULL, 0);
-	if (proto->clientfd < 0)
+	int clientfd = accept(proto->serverfd, NULL, 0);
+	if (clientfd < 0)
 	{
 		if (errno == EAGAIN || errno == EWOULDBLOCK)
 			return 0;
 		err("tcp: error on client connection %m");
 		return -1;
 	}
-	int flags = fcntl(proto->clientfd, F_GETFL, 0);
-	ret = fcntl(proto->clientfd, F_SETFL, flags | O_NONBLOCK);
+	int flags = fcntl(clientfd, F_GETFL, 0);
+	ret = fcntl(clientfd, F_SETFL, flags & ~O_NONBLOCK);
+	pthread_mutex_lock(&proto->mutex);
+	proto->clientfd = clientfd;
+	proto->error = 0;
+	pthread_mutex_unlock(&proto->mutex);
 	warn("tcp: new connection");
 	if (proto->mode & Proto_TCP_Http)
 	{
@@ -263,15 +435,15 @@ X-Frame-Options: SAMEORIGIN\r\n\
 Referrer-Policy: origin-when-cross-origin\r\n\
 Access-Control-Allow-Origin: *\r\n\
 Content-Type: video/mp2t\r\n\
-Connection: Close\r\n\
+Connection: Close\r\n\r\n\
 ";
-		int sflag = 1;
-		setsockopt(proto->clientfd, IPPROTO_TCP, TCP_NODELAY, (char *) &sflag, sizeof(int));
 		size_t len = sizeof(buf);
-		int flags = MSG_NOSIGNAL;
-		ret = send(proto->clientfd, buf, len, flags);
+		ret = _proto_send(proto, buf, len, Proto_Started);
 		if (ret > 0)
+		{
 			warn("tcp: send HTTP response");
+			ret = 0;
+		}
 	}
 	return ret;
 }
@@ -282,39 +454,23 @@ static ssize_t proto_send(void *arg, const void *buf, size_t len, Proto_Flags_t 
 	ssize_t ret = -1;
 	errno = EAGAIN;
 	if (proto->clientfd == -1 && proto->serverfd > 0)
-		proto_connect_server(arg);
+		return proto_connect_server(arg);
 	else if (proto->clientfd == -1)
 	{
 		warn("tcp: no client connected");
 		return -1;
 	}
-	/// server mode and no client are connected
-	if (proto->clientfd == -1)
-		return len;
-	int sflags = 1;
-	if (flags & Proto_More)
-		sflags = 0;
-	setsockopt(proto->clientfd, IPPROTO_TCP, TCP_NODELAY, (char *) &sflags, sizeof(int));
 	if (len == 0)
 		warn("tcp: send empty packet");
-	sflags = MSG_NOSIGNAL;
-	if (flags & Proto_More)
-		sflags |= MSG_MORE;
-	int retries = 0;
-	ret = send(proto->clientfd, buf, len, sflags);
-	while (ret < 0 && errno == EAGAIN && ++retries < PROTO_TCP_SEND_RETRY_MAX)
-	{
-		usleep(PROTO_TCP_SEND_RETRY_DELAY_US);
-		ret = send(proto->clientfd, buf, len, sflags);
-	}
+
+	ret = _proto_send(proto, buf, len, flags);
 	if (ret < 0 && errno != EAGAIN)
 	{
 		if (errno == ECONNRESET || errno == EPIPE)
 			warn("tcp: connection closed");
 		else
 			err("tcp: sending error %m");
-		close(proto->clientfd);
-		proto->clientfd = -1;
+		proto_close(proto);
 		if (proto->serverfd > 0)
 			ret = 0;
 	}
@@ -331,13 +487,11 @@ static ssize_t proto_recv(void *arg, void *buf, size_t len, Proto_Flags_t flags)
 		warn("tcp: no client connected");
 		return -1;
 	}
-	int sflags = MSG_NOSIGNAL;
-	ret = recv(proto->clientfd, buf, len, sflags);
+	ret = _proto_recv(proto, buf, len, flags);
 	if (ret < 0 && errno != EAGAIN)
 	{
 		err("tcp: receiving error %m");
-		close(proto->clientfd);
-		proto->clientfd = -1;
+		proto_close(proto);
 		if (proto->serverfd > 0)
 			ret = 0;
 	}
@@ -364,16 +518,48 @@ static size_t proto_mtu(void *arg)
 static void proto_close(void *arg)
 {
 	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
-	shutdown(proto->clientfd, SHUT_RDWR);
-	close(proto->clientfd);
+	pthread_mutex_lock(&proto->mutex);
+	int fd = proto->clientfd;
 	proto->clientfd = -1;
+	proto->error = 0;
+	pthread_mutex_unlock(&proto->mutex);
+	if (fd != -1)
+	{
+		shutdown(fd, SHUT_RDWR);
+		close(fd);
+	}
+	if (proto->out->state == queued)
+	{
+		proto->out->state = dequeued;
+		proto->out->len = 0;
+	}
+	proto->dropping = 1;
+	proto->lost = 0;
 }
 
 static void proto_destroy(void *arg)
 {
 	Proto_TCP_t *proto = (Proto_TCP_t *)arg;
-	shutdown(proto->serverfd, SHUT_RDWR);
-	close(proto->serverfd);
+	if (proto->serverfd > -1)
+	{
+		shutdown(proto->serverfd, SHUT_RDWR);
+		close(proto->serverfd);
+	}
+	pthread_mutex_lock(&proto->mutex);
+	proto->running = 0;
+	pthread_cond_signal(&proto->cond);
+	pthread_mutex_unlock(&proto->mutex);
+	/// wake up the thread blocked into send()
+	if (proto->clientfd != -1)
+		shutdown(proto->clientfd, SHUT_RDWR);
+	pthread_join(proto->thread_send, NULL);
+	if (proto->clientfd != -1 && proto->clientfd != proto->serverfd)
+		close(proto->clientfd);
+	pthread_mutex_destroy(&proto->mutex);
+	pthread_cond_destroy(&proto->cond);
+	for (int i = 0; i < PROTO_TCP_MAX_BUFFERS; i++)
+		free(proto->buffers[i].data);
+	free(proto->buffers);
 	free(proto);
 }
 
