@@ -16,6 +16,8 @@ struct MPEG_TSConf_s
 	int periodic;
 	uint32_t maxframes;
 	const Proto_t *proto;
+	int meta;
+	uint8_t klvkey[16];
 };
 
 extern const Proto_t proto_udp;
