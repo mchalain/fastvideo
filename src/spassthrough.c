@@ -135,19 +135,23 @@ EXT_API void *spassthrough_create(const char *devicename, device_type_e type, Pa
 		dev->controls->state = 0;
 	else
 		err("spassthrough: controls disabled");
-	if (config && config->convert &&
-		(config->convert->fourcc_in == 0 || config->convert->fourcc_in == config->parent.fourcc))
+	if (config && config->convert)
 	{
-		dev->convert_ctx = config->convert->ops.create(config);
-		if (dev->convert_ctx)
-		{
-			dev->copy = config->convert->ops.convert;
-			config->mode |= (config->convert->copy)?MODE_COPY:0;
-		}
-		else
-			err("spassthrough: %s convert create failed", config->parent.name);
-	}
 
+		if (config->convert->fourcc_in && config->convert->fourcc_in != config->parent.fourcc)
+			err("spassthrough: convertion bad %.4s format", &config->parent.fourcc);
+		else
+		{
+			dev->convert_ctx = config->convert->ops.create(config);
+			if (dev->convert_ctx)
+			{
+				dev->copy = config->convert->ops.convert;
+				config->mode |= (config->convert->copy)?MODE_COPY:0;
+			}
+			else
+				err("spassthrough: %s convert create failed", config->parent.name);
+		}
+	}
 	return dev;
 }
 
@@ -876,9 +880,12 @@ EXT_API int spassthrough_loadjsonconfiguration(void *arg, void *entry)
 					config->transfer.fourcc = plugin->fourcc_out;
 				if (plugin->copy)
 					config->mode |= MODE_COPY;
+				warn("spassthrough: convertion %s found", convert);
 				break;
 			}
 		}
+		if (config->convert == NULL)
+			err("spassthrough: convertion %s not found", convert);
 	}
 
 	return 0;
