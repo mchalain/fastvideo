@@ -322,6 +322,9 @@ struct Dev_s
 	uint8_t packetlen;
 	time_t start;
 	uint32_t pcr;
+	uint32_t lastclock;
+	uint32_t smoothclock;
+	int32_t period;
 	int periodic;
 	uint8_t klvcc;
 	uint8_t klvseq;
@@ -720,6 +723,58 @@ static int _client_pushklv(Dev_t *dev, int bufferid, uint32_t pts, size_t mtu)
 	return ret;
 }
 
+#if GLOBAL_PCR
+/**
+ * The previous stages may give the frames in bursts, and a PCR/PTS read from
+ * the clock when the frame is sent follows the bursts.
+ * The timeline is smoothed instead: each frame comes one period after the
+ * previous one, the period follows the average interval between the frames
+ */
+#define SMOOTH_MAXDRIFT (200 * 90)
+#define SMOOTH_CORRECTION 16
+#define SMOOTH_AVERAGE 16
+static uint32_t _mpegts_smoothclock(Dev_t *dev, uint32_t clock)
+{
+	if (dev->lastclock == 0)
+	{
+		/// first frame
+		uint32_t fps = dev->config->parent.definition.fps;
+		dev->period = (fps > 0) ? 90000 / fps : 0;
+		dev->lastclock = clock;
+		dev->smoothclock = clock;
+		return clock;
+	}
+	int32_t interval = (int32_t)(clock - dev->lastclock);
+	dev->lastclock = clock;
+	if (interval > 0 && interval < SMOOTH_MAXDRIFT)
+	{
+		if (dev->period == 0)
+			dev->period = interval;
+		else
+			dev->period += (interval - dev->period) / SMOOTH_AVERAGE;
+	}
+	uint32_t next = clock;
+	if (dev->period > 0)
+	{
+		next = dev->smoothclock + dev->period;
+		int32_t drift = (int32_t)(clock - next);
+		if (drift > SMOOTH_MAXDRIFT || drift < -SMOOTH_MAXDRIFT)
+		{
+			/// back to the clock, even backward: the pcr discontinuity
+			/// is signaled by _client_pushdata()
+			dev->smoothclock = clock;
+			return clock;
+		}
+		next += drift / SMOOTH_CORRECTION;
+	}
+	/// the timeline never goes back
+	if ((int32_t)(next - dev->smoothclock) <= 0)
+		next = dev->smoothclock + 1;
+	dev->smoothclock = next;
+	return next;
+}
+#endif
+
 static int _client_pushdata(Dev_t *dev, int bufferid)
 {
 	int ret = 1;
@@ -769,7 +824,7 @@ static int _client_pushdata(Dev_t *dev, int bufferid)
 #define __NB_TICKS_FOR_40ms (40 * 90)
 		//if (C90kHz > (dev->pcr + __NB_TICKS_FOR_40ms))
 		{
-			pcr = C90kHz;
+			pcr = _mpegts_smoothclock(dev, C90kHz);
 			dev->header.afi |= 0x2;
 		}
 	}
