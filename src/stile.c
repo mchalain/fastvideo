@@ -143,19 +143,22 @@ EXT_API void *stile_create(const char *devicename, device_type_e type, STileConf
 	{
 		dev->dst_width = config->transfer.width;
 		dev->ntiles_x = dev->src_width / dev->dst_width;
-		dev->tile_xoff = (dev->src_width - dev->ntiles_x * dev->dst_width) / 2;
 	}
 	if (config->transfer.height > 0)
 	{
 		dev->dst_height = config->transfer.height;
 		dev->ntiles_y = dev->src_height / dev->dst_height;
-		dev->tile_yoff = (dev->src_height - dev->ntiles_y * dev->dst_height) / 2;
 	}
 	if (config->ntiles && config->ntiles < (dev->ntiles_x * dev->ntiles_y) && config->ntiles < dev->ntiles_x)
 	{
 		dev->ntiles_x = config->ntiles;
 		dev->ntiles_y = 1;
 	}
+	/// the grid is centred in the source image, on the final grid
+	if (dev->src_width >= dev->ntiles_x * dev->dst_width)
+		dev->tile_xoff = (dev->src_width - dev->ntiles_x * dev->dst_width) / 2;
+	if (dev->src_height >= dev->ntiles_y * dev->dst_height)
+		dev->tile_yoff = (dev->src_height - dev->ntiles_y * dev->dst_height) / 2;
 	dev->ntiles = dev->ntiles_x * dev->ntiles_y;
 	if (dev->ntiles == 0)
 	{
@@ -471,7 +474,7 @@ EXT_API int stile_queue(STile_t *dev, int id, void *mem, size_t bytesused, int f
 					errno = EAGAIN;
 					return -1;
 				}
-				uint32_t xoffset0 = tx * dev->src2dst_stride;
+				uint32_t xoffset0 = dev->tile_xoff * (dev->src2dst_stride / dev->dst_width) + tx * dev->src2dst_stride;
 				uint32_t y0 = dev->tile_yoff + ty * dev->dst_height;
 				uint8_t *d = (uint8_t *)dup->buffers[slot].mem;
 				if (dup->buffers[slot].dma_buf)
